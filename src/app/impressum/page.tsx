@@ -24,9 +24,14 @@ export default function ImpressumPage() {
               <p className="text-gray-700 leading-relaxed">
                 <strong>SnifferTrek</strong>
                 <br />
-                Josef Zwyssig
-                <br />
                 Schweiz
+                <br />
+                <a
+                  href="mailto:info@sniffertrek.com"
+                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  info@sniffertrek.com
+                </a>
               </p>
             </div>
           </section>

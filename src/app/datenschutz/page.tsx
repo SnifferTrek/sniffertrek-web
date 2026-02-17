@@ -35,7 +35,7 @@ export default function DatenschutzPage() {
               <p className="text-gray-700">
                 <strong>SnifferTrek</strong>
                 <br />
-                Josef Zwyssig
+                Schweiz
                 <br />
                 E-Mail:{" "}
                 <a
