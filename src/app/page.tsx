@@ -18,43 +18,11 @@ import {
   Map,
   BookOpen,
 } from "lucide-react";
+import Link from "next/link";
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-white overflow-x-hidden">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center">
-                <Globe className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold text-gray-900">
-                Sniffer<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">Trek</span>
-              </span>
-            </div>
-            <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
-                Features
-              </a>
-              <a href="#how-it-works" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
-                So funktioniert&apos;s
-              </a>
-              <a href="#services" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
-                Services
-              </a>
-              <a
-                href="#cta"
-                className="bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-5 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-105"
-              >
-                Reise planen
-              </a>
-            </div>
-          </div>
-        </div>
-      </nav>
-
       {/* Hero Section */}
       <section className="relative pt-28 pb-24 px-4 sm:px-6 lg:px-8 overflow-hidden">
         {/* Animated background */}
@@ -98,14 +66,14 @@ export default function Home() {
             </p>
 
             <div className="animate-fade-in-up delay-300 flex flex-col sm:flex-row gap-4 justify-center">
-              <a
-                href="#cta"
+              <Link
+                href="/planer"
                 className="group inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-8 py-4 rounded-2xl text-lg font-semibold hover:shadow-xl hover:shadow-blue-500/25 transition-all hover:scale-105 animate-pulse-glow"
               >
                 <Map className="w-5 h-5" />
                 Jetzt Reise planen
                 <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-              </a>
+              </Link>
               <a
                 href="#features"
                 className="inline-flex items-center justify-center gap-2 bg-white text-gray-700 px-8 py-4 rounded-2xl text-lg font-semibold border border-gray-200 hover:border-gray-300 hover:bg-gray-50 transition-all shadow-sm"
@@ -493,14 +461,14 @@ export default function Home() {
             Deine Traumreise wartet.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href="#"
+            <Link
+              href="/planer"
               className="group inline-flex items-center justify-center gap-3 bg-white text-blue-700 px-8 py-4 rounded-2xl text-lg font-semibold hover:bg-blue-50 transition-all shadow-xl hover:scale-105"
             >
               <Map className="w-5 h-5" />
               Reise planen
               <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
-            </a>
+            </Link>
             <a
               href="#"
               className="inline-flex items-center justify-center gap-3 bg-white/10 backdrop-blur text-white px-8 py-4 rounded-2xl text-lg font-semibold hover:bg-white/20 transition-all border border-white/20"
@@ -515,54 +483,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-16 px-4 sm:px-6 lg:px-8 bg-gray-950 text-gray-400">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-4 gap-10">
-            <div>
-              <div className="flex items-center gap-2.5 mb-5">
-                <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center">
-                  <Globe className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-lg font-bold text-white">
-                  Sniffer<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">Trek</span>
-                </span>
-              </div>
-              <p className="text-sm leading-relaxed">
-                Dein All-in-One Reiseplaner. Route, Hotels, Flüge und mehr – alles in einem Tool.
-              </p>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4 text-sm uppercase tracking-wider">Planen</h4>
-              <ul className="space-y-3 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors">Routenplanung</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Bucket List</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Reiseführer</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4 text-sm uppercase tracking-wider">Buchen</h4>
-              <ul className="space-y-3 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors">Hotels</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Flüge</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Mietwagen</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Kreuzfahrten</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="text-white font-semibold mb-4 text-sm uppercase tracking-wider">Rechtliches</h4>
-              <ul className="space-y-3 text-sm">
-                <li><a href="#" className="hover:text-white transition-colors">Impressum</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">Datenschutz</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">AGB</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-gray-800 mt-12 pt-8 text-center text-sm">
-            <p>&copy; {new Date().getFullYear()} SnifferTrek. Alle Rechte vorbehalten.</p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
