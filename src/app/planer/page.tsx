@@ -47,8 +47,11 @@ import {
   getTripDisplayName,
   formatDate,
 } from "@/lib/tripStorage";
+import { saveTripToCloud, deleteTripFromCloud } from "@/lib/cloudSync";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function PlanerPage() {
+  const { user } = useAuth();
   const [trip, setTrip] = useState<Trip>(createNewTrip());
   const [savedTrips, setSavedTrips] = useState<Trip[]>([]);
   const [showTripList, setShowTripList] = useState(false);
@@ -91,7 +94,10 @@ export default function PlanerPage() {
     setHasUnsavedChanges(false);
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 2000);
-  }, [trip]);
+    if (user) {
+      saveTripToCloud(trip, user.id);
+    }
+  }, [trip, user]);
 
   const handleNewTrip = () => {
     if (hasUnsavedChanges) {
@@ -117,6 +123,9 @@ export default function PlanerPage() {
   const handleDeleteTrip = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     deleteTrip(id);
+    if (user) {
+      deleteTripFromCloud(id);
+    }
     setSavedTrips(getAllTrips());
     if (trip.id === id) {
       const newTrip = createNewTrip();
@@ -346,25 +355,27 @@ export default function PlanerPage() {
         </div>
       </div>
 
-      {/* Account Hint Banner */}
-      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <BookmarkPlus className="w-5 h-5 text-amber-500" />
-            <p className="text-sm text-amber-800">
-              <strong>Tipp:</strong> Erstelle ein kostenloses Konto, um deine
-              Reisen auf allen Geräten zu synchronisieren.
-            </p>
+      {/* Account Hint Banner – only show when not logged in */}
+      {!user && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BookmarkPlus className="w-5 h-5 text-amber-500" />
+              <p className="text-sm text-amber-800">
+                <strong>Tipp:</strong> Erstelle ein kostenloses Konto, um deine
+                Reisen auf allen Geräten zu synchronisieren.
+              </p>
+            </div>
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              Anmelden
+            </Link>
           </div>
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-          >
-            <LogIn className="w-3.5 h-3.5" />
-            Anmelden
-          </Link>
         </div>
-      </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid lg:grid-cols-[380px_1fr] gap-8">
