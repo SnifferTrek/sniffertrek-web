@@ -49,10 +49,17 @@ import {
 } from "@/lib/tripStorage";
 import { saveTripToCloud, deleteTripFromCloud } from "@/lib/cloudSync";
 import { useAuth } from "@/components/AuthProvider";
+import GoogleMap, { useGoogleAutocomplete } from "@/components/GoogleMap";
 
 export default function PlanerPage() {
   const { user } = useAuth();
+  const { ready: autocompleteReady, attachAutocomplete } = useGoogleAutocomplete();
   const [trip, setTrip] = useState<Trip>(createNewTrip());
+  const [routeInfo, setRouteInfo] = useState<{
+    distance: string;
+    duration: string;
+    stops: number;
+  } | null>(null);
   const [savedTrips, setSavedTrips] = useState<Trip[]>([]);
   const [showTripList, setShowTripList] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
@@ -452,7 +459,14 @@ export default function PlanerPage() {
                     <div className="flex-1">
                       <input
                         type="text"
-                        value={stop.name}
+                        defaultValue={stop.name}
+                        ref={(el) => {
+                          if (el && autocompleteReady) {
+                            attachAutocomplete(el, (place) => {
+                              updateStop(stop.id, place);
+                            });
+                          }
+                        }}
                         onChange={(e) => updateStop(stop.id, e.target.value)}
                         placeholder={
                           stop.type === "start"
@@ -622,24 +636,11 @@ export default function PlanerPage() {
             {activeTab === "route" && (
               <div className="space-y-6">
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="bg-gradient-to-br from-blue-50 via-green-50 to-cyan-50 h-[400px] flex items-center justify-center relative">
-                    <div className="absolute inset-0 opacity-10">
-                      <div className="absolute top-[20%] left-[30%] w-3 h-3 bg-blue-500 rounded-full" />
-                      <div className="absolute top-[40%] left-[45%] w-3 h-3 bg-orange-500 rounded-full" />
-                      <div className="absolute top-[60%] left-[65%] w-3 h-3 bg-red-500 rounded-full" />
-                    </div>
-                    <div className="text-center">
-                      <div className="w-16 h-16 bg-white/80 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
-                        <Map className="w-8 h-8 text-blue-500" />
-                      </div>
-                      <p className="text-gray-500 font-medium">
-                        Interaktive Karte
-                      </p>
-                      <p className="text-gray-400 text-sm mt-1">
-                        Gib Start und Ziel ein, um die Route zu sehen
-                      </p>
-                    </div>
-                  </div>
+                  <GoogleMap
+                    stops={trip.stops}
+                    travelMode={trip.travelMode}
+                    onRouteCalculated={setRouteInfo}
+                  />
                 </div>
 
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -651,17 +652,23 @@ export default function PlanerPage() {
                   </div>
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="text-2xl font-bold text-gray-300">—</div>
+                      <div className={`text-2xl font-bold ${routeInfo ? "text-blue-600" : "text-gray-300"}`}>
+                        {routeInfo?.distance || "—"}
+                      </div>
                       <div className="text-xs text-gray-400 mt-1">Distanz</div>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="text-2xl font-bold text-gray-300">—</div>
+                      <div className={`text-2xl font-bold ${routeInfo ? "text-blue-600" : "text-gray-300"}`}>
+                        {routeInfo?.duration || "—"}
+                      </div>
                       <div className="text-xs text-gray-400 mt-1">
                         Fahrzeit
                       </div>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className="text-2xl font-bold text-gray-300">—</div>
+                      <div className={`text-2xl font-bold ${routeInfo ? "text-blue-600" : "text-gray-300"}`}>
+                        {routeInfo?.stops ?? "—"}
+                      </div>
                       <div className="text-xs text-gray-400 mt-1">
                         Zwischenstopps
                       </div>
