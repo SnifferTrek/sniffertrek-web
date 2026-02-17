@@ -31,8 +31,8 @@ export default function Header() {
             <Link href="/#how-it-works" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
               So funktioniert&apos;s
             </Link>
-            <Link href="/#services" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
-              Services
+            <Link href="/meine-reisen" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+              Meine Reisen
             </Link>
             <Link
               href="/planer"
@@ -61,8 +61,8 @@ export default function Header() {
             <Link href="/#how-it-works" onClick={() => setMenuOpen(false)} className="block text-sm text-gray-600 hover:text-gray-900 py-2">
               So funktioniert&apos;s
             </Link>
-            <Link href="/#services" onClick={() => setMenuOpen(false)} className="block text-sm text-gray-600 hover:text-gray-900 py-2">
-              Services
+            <Link href="/meine-reisen" onClick={() => setMenuOpen(false)} className="block text-sm text-gray-600 hover:text-gray-900 py-2">
+              Meine Reisen
             </Link>
             <Link
               href="/planer"

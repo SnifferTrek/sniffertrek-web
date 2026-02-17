@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   MapPin,
   Hotel,
@@ -22,28 +22,108 @@ import {
   Compass,
   Map,
   Sparkles,
+  Save,
+  FolderOpen,
+  Trash2,
+  Check,
+  BookmarkPlus,
+  LogIn,
 } from "lucide-react";
-
-type TravelMode = "auto" | "zug" | "flug";
-
-interface RouteStop {
-  id: string;
-  name: string;
-  type: "start" | "stop" | "end";
-}
+import Link from "next/link";
+import {
+  Trip,
+  TravelMode,
+  RouteStop,
+  BucketListItem,
+} from "@/lib/types";
+import {
+  createNewTrip,
+  saveTrip,
+  getAllTrips,
+  getTrip,
+  deleteTrip,
+  getActiveTripId,
+  setActiveTripId,
+  getTripDisplayName,
+  formatDate,
+} from "@/lib/tripStorage";
 
 export default function PlanerPage() {
-  const [travelMode, setTravelMode] = useState<TravelMode>("auto");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [travelers, setTravelers] = useState(2);
-  const [stops, setStops] = useState<RouteStop[]>([
-    { id: "start", name: "", type: "start" },
-    { id: "end", name: "", type: "end" },
-  ]);
+  const [trip, setTrip] = useState<Trip>(createNewTrip());
+  const [savedTrips, setSavedTrips] = useState<Trip[]>([]);
+  const [showTripList, setShowTripList] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
   const [activeTab, setActiveTab] = useState<
     "route" | "hotels" | "flights" | "car" | "poi"
   >("route");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Load active trip or create new one
+  useEffect(() => {
+    const activeId = getActiveTripId();
+    if (activeId) {
+      const existing = getTrip(activeId);
+      if (existing) {
+        setTrip(existing);
+      }
+    }
+    setSavedTrips(getAllTrips());
+  }, []);
+
+  // Auto-save after 3 seconds of inactivity
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const timer = setTimeout(() => {
+      handleSave();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [trip, hasUnsavedChanges]);
+
+  const updateTrip = useCallback((updates: Partial<Trip>) => {
+    setTrip((prev) => ({ ...prev, ...updates }));
+    setHasUnsavedChanges(true);
+  }, []);
+
+  const handleSave = useCallback(() => {
+    saveTrip(trip);
+    setActiveTripId(trip.id);
+    setSavedTrips(getAllTrips());
+    setHasUnsavedChanges(false);
+    setSaveStatus("saved");
+    setTimeout(() => setSaveStatus("idle"), 2000);
+  }, [trip]);
+
+  const handleNewTrip = () => {
+    if (hasUnsavedChanges) {
+      handleSave();
+    }
+    const newTrip = createNewTrip();
+    setTrip(newTrip);
+    setActiveTripId(newTrip.id);
+    setHasUnsavedChanges(false);
+    setShowTripList(false);
+  };
+
+  const handleLoadTrip = (id: string) => {
+    const loaded = getTrip(id);
+    if (loaded) {
+      setTrip(loaded);
+      setActiveTripId(id);
+      setHasUnsavedChanges(false);
+      setShowTripList(false);
+    }
+  };
+
+  const handleDeleteTrip = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteTrip(id);
+    setSavedTrips(getAllTrips());
+    if (trip.id === id) {
+      const newTrip = createNewTrip();
+      setTrip(newTrip);
+      setActiveTripId(newTrip.id);
+    }
+  };
 
   const addStop = () => {
     const newStop: RouteStop = {
@@ -51,18 +131,33 @@ export default function PlanerPage() {
       name: "",
       type: "stop",
     };
-    const endIdx = stops.findIndex((s) => s.type === "end");
-    const newStops = [...stops];
+    const endIdx = trip.stops.findIndex((s) => s.type === "end");
+    const newStops = [...trip.stops];
     newStops.splice(endIdx, 0, newStop);
-    setStops(newStops);
+    updateTrip({ stops: newStops });
   };
 
   const removeStop = (id: string) => {
-    setStops(stops.filter((s) => s.id !== id));
+    updateTrip({ stops: trip.stops.filter((s) => s.id !== id) });
   };
 
   const updateStop = (id: string, name: string) => {
-    setStops(stops.map((s) => (s.id === id ? { ...s, name } : s)));
+    updateTrip({
+      stops: trip.stops.map((s) => (s.id === id ? { ...s, name } : s)),
+    });
+  };
+
+  const addToBucketList = (item: Omit<BucketListItem, "id" | "added">) => {
+    const newItem: BucketListItem = {
+      ...item,
+      id: `bl_${Date.now()}`,
+      added: new Date().toISOString(),
+    };
+    updateTrip({ bucketList: [...trip.bucketList, newItem] });
+  };
+
+  const removeFromBucketList = (id: string) => {
+    updateTrip({ bucketList: trip.bucketList.filter((b) => b.id !== id) });
   };
 
   const travelModes = [
@@ -111,49 +206,184 @@ export default function PlanerPage() {
       name: "Sagrada Família",
       category: "Sehenswürdigkeit",
       rating: 4.8,
-      desc: "Gaudís berühmte Basilika",
+      description: "Gaudís berühmte Basilika",
     },
     {
       name: "Park Güell",
       category: "Park",
       rating: 4.6,
-      desc: "Bunter Mosaikpark von Gaudí",
+      description: "Bunter Mosaikpark von Gaudí",
     },
     {
       name: "La Boqueria",
       category: "Markt",
       rating: 4.5,
-      desc: "Berühmter Lebensmittelmarkt",
+      description: "Berühmter Lebensmittelmarkt",
     },
     {
       name: "Casa Batlló",
       category: "Architektur",
       rating: 4.7,
-      desc: "Meisterwerk des Modernisme",
+      description: "Meisterwerk des Modernisme",
     },
   ];
+
+  const isInBucketList = (name: string) =>
+    trip.bucketList.some((b) => b.name === name);
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
       {/* Page Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-cyan-500 py-10 px-4">
+      <div className="bg-gradient-to-r from-blue-600 to-cyan-500 py-8 px-4">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center gap-3 mb-2">
-            <Map className="w-7 h-7 text-white/80" />
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">
-              Reise planen
-            </h1>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <Map className="w-6 h-6 text-white/80" />
+                <h1 className="text-2xl font-bold text-white">
+                  {getTripDisplayName(trip)}
+                </h1>
+              </div>
+              <p className="text-blue-100 text-sm">
+                {trip.startDate && trip.endDate
+                  ? `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)} · ${trip.travelers} ${trip.travelers === 1 ? "Person" : "Personen"}`
+                  : "Plane deine Route, vergleiche Angebote und buche direkt."}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Save Status */}
+              {saveStatus === "saved" && (
+                <span className="inline-flex items-center gap-1.5 text-sm text-green-100 bg-green-500/20 px-3 py-1.5 rounded-lg">
+                  <Check className="w-4 h-4" />
+                  Gespeichert
+                </span>
+              )}
+              {hasUnsavedChanges && saveStatus === "idle" && (
+                <span className="text-xs text-blue-200">Ungespeichert</span>
+              )}
+
+              {/* Save Button */}
+              <button
+                onClick={handleSave}
+                className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all border border-white/20"
+              >
+                <Save className="w-4 h-4" />
+                Speichern
+              </button>
+
+              {/* Trip List Toggle */}
+              <button
+                onClick={() => setShowTripList(!showTripList)}
+                className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all border border-white/20"
+              >
+                <FolderOpen className="w-4 h-4" />
+                Meine Reisen
+              </button>
+
+              {/* New Trip */}
+              <button
+                onClick={handleNewTrip}
+                className="inline-flex items-center gap-2 bg-white text-blue-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                Neue Reise
+              </button>
+            </div>
           </div>
-          <p className="text-blue-100 text-sm sm:text-base">
-            Plane deine Route, vergleiche Angebote und buche direkt.
-          </p>
+
+          {/* Trip List Dropdown */}
+          {showTripList && (
+            <div className="mt-4 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden max-h-80 overflow-y-auto">
+              {savedTrips.length === 0 ? (
+                <div className="p-6 text-center text-gray-400 text-sm">
+                  Noch keine gespeicherten Reisen.
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {savedTrips.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => handleLoadTrip(t.id)}
+                      className={`w-full flex items-center justify-between px-5 py-3.5 hover:bg-blue-50 transition-colors text-left ${
+                        t.id === trip.id ? "bg-blue-50" : ""
+                      }`}
+                    >
+                      <div>
+                        <div className="font-medium text-gray-900 text-sm">
+                          {getTripDisplayName(t)}
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {t.startDate
+                            ? `${formatDate(t.startDate)} – ${formatDate(t.endDate)}`
+                            : `Erstellt ${formatDate(t.createdAt)}`}
+                          {" · "}
+                          {t.stops.filter((s) => s.type === "stop").length}{" "}
+                          Zwischenstopps
+                          {t.bucketList.length > 0 &&
+                            ` · ${t.bucketList.length} POIs`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {t.id === trip.id && (
+                          <span className="text-xs text-blue-600 font-medium bg-blue-100 px-2 py-0.5 rounded-full">
+                            Aktiv
+                          </span>
+                        )}
+                        <button
+                          onClick={(e) => handleDeleteTrip(t.id, e)}
+                          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Account Hint Banner */}
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <BookmarkPlus className="w-5 h-5 text-amber-500" />
+            <p className="text-sm text-amber-800">
+              <strong>Tipp:</strong> Erstelle ein kostenloses Konto, um deine
+              Reisen auf allen Geräten zu synchronisieren.
+            </p>
+          </div>
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            Anmelden
+          </Link>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid lg:grid-cols-[380px_1fr] gap-8">
-          {/* Left Panel: Route & Settings */}
+          {/* Left Panel */}
           <div className="space-y-6">
+            {/* Trip Name */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                Reisename
+              </h3>
+              <input
+                type="text"
+                value={trip.name}
+                onChange={(e) => updateTrip({ name: e.target.value })}
+                placeholder="z.B. Sommerurlaub Barcelona"
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
             {/* Travel Mode */}
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
@@ -163,9 +393,9 @@ export default function PlanerPage() {
                 {travelModes.map((mode) => (
                   <button
                     key={mode.id}
-                    onClick={() => setTravelMode(mode.id)}
+                    onClick={() => updateTrip({ travelMode: mode.id })}
                     className={`flex flex-col items-center gap-1.5 p-3 rounded-xl text-sm font-medium transition-all ${
-                      travelMode === mode.id
+                      trip.travelMode === mode.id
                         ? "bg-blue-50 text-blue-700 border-2 border-blue-500 shadow-sm"
                         : "bg-gray-50 text-gray-500 border-2 border-transparent hover:bg-gray-100"
                     }`}
@@ -183,13 +413,14 @@ export default function PlanerPage() {
                 Route
               </h3>
               <div className="space-y-3 relative">
-                {/* Connecting line */}
-                {stops.length > 1 && (
+                {trip.stops.length > 1 && (
                   <div className="absolute left-[19px] top-[28px] bottom-[28px] w-0.5 bg-gradient-to-b from-blue-400 via-gray-200 to-red-400 z-0" />
                 )}
-
-                {stops.map((stop, i) => (
-                  <div key={stop.id} className="relative flex items-center gap-3 z-10">
+                {trip.stops.map((stop) => (
+                  <div
+                    key={stop.id}
+                    className="relative flex items-center gap-3 z-10"
+                  >
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                         stop.type === "start"
@@ -207,7 +438,7 @@ export default function PlanerPage() {
                         <MapPin className="w-5 h-5 text-white" />
                       )}
                     </div>
-                    <div className="flex-1 relative">
+                    <div className="flex-1">
                       <input
                         type="text"
                         value={stop.name}
@@ -233,7 +464,6 @@ export default function PlanerPage() {
                   </div>
                 ))}
               </div>
-
               <button
                 onClick={addStop}
                 className="mt-4 flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
@@ -257,8 +487,10 @@ export default function PlanerPage() {
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
+                      value={trip.startDate}
+                      onChange={(e) =>
+                        updateTrip({ startDate: e.target.value })
+                      }
                       className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
@@ -271,8 +503,8 @@ export default function PlanerPage() {
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
+                      value={trip.endDate}
+                      onChange={(e) => updateTrip({ endDate: e.target.value })}
                       className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
@@ -285,8 +517,10 @@ export default function PlanerPage() {
                 <div className="relative">
                   <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <select
-                    value={travelers}
-                    onChange={(e) => setTravelers(Number(e.target.value))}
+                    value={trip.travelers}
+                    onChange={(e) =>
+                      updateTrip({ travelers: Number(e.target.value) })
+                    }
                     className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
                   >
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
@@ -300,14 +534,60 @@ export default function PlanerPage() {
               </div>
             </div>
 
+            {/* Notes */}
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                Notizen
+              </h3>
+              <textarea
+                value={trip.notes}
+                onChange={(e) => updateTrip({ notes: e.target.value })}
+                placeholder="Eigene Notizen zur Reise..."
+                rows={3}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              />
+            </div>
+
             {/* Search Button */}
             <button className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-3.5 rounded-2xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]">
               <Search className="w-5 h-5" />
               Angebote suchen
             </button>
+
+            {/* Bucket List Summary */}
+            {trip.bucketList.length > 0 && (
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Bucket List ({trip.bucketList.length})
+                </h3>
+                <div className="space-y-2">
+                  {trip.bucketList.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between bg-green-50 rounded-xl px-4 py-2.5"
+                    >
+                      <div>
+                        <span className="text-sm font-medium text-gray-800">
+                          {item.name}
+                        </span>
+                        <span className="text-xs text-gray-400 ml-2">
+                          {item.category}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => removeFromBucketList(item.id)}
+                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Right Panel: Results / Map */}
+          {/* Right Panel */}
           <div>
             {/* Tabs */}
             <div className="flex gap-1 bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100 mb-6 overflow-x-auto">
@@ -327,18 +607,15 @@ export default function PlanerPage() {
               ))}
             </div>
 
-            {/* Tab Content */}
+            {/* Route Tab */}
             {activeTab === "route" && (
               <div className="space-y-6">
-                {/* Map Placeholder */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="bg-gradient-to-br from-blue-50 via-green-50 to-cyan-50 h-[400px] flex items-center justify-center relative">
                     <div className="absolute inset-0 opacity-10">
                       <div className="absolute top-[20%] left-[30%] w-3 h-3 bg-blue-500 rounded-full" />
                       <div className="absolute top-[40%] left-[45%] w-3 h-3 bg-orange-500 rounded-full" />
                       <div className="absolute top-[60%] left-[65%] w-3 h-3 bg-red-500 rounded-full" />
-                      <div className="absolute top-[20%] left-[30%] w-[200px] h-[1px] bg-blue-300 rotate-[30deg] origin-left" />
-                      <div className="absolute top-[40%] left-[45%] w-[150px] h-[1px] bg-blue-300 rotate-[25deg] origin-left" />
                     </div>
                     <div className="text-center">
                       <div className="w-16 h-16 bg-white/80 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
@@ -354,7 +631,6 @@ export default function PlanerPage() {
                   </div>
                 </div>
 
-                {/* Route Summary (empty state) */}
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                   <div className="flex items-center gap-3 mb-4">
                     <Navigation className="w-5 h-5 text-blue-500" />
@@ -384,6 +660,7 @@ export default function PlanerPage() {
               </div>
             )}
 
+            {/* Hotels Tab */}
             {activeTab === "hotels" && (
               <div className="space-y-6">
                 <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
@@ -457,6 +734,7 @@ export default function PlanerPage() {
               </div>
             )}
 
+            {/* Flights Tab */}
             {activeTab === "flights" && (
               <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
                 <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -477,6 +755,7 @@ export default function PlanerPage() {
               </div>
             )}
 
+            {/* Car Tab */}
             {activeTab === "car" && (
               <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
                 <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -496,6 +775,7 @@ export default function PlanerPage() {
               </div>
             )}
 
+            {/* POI Tab */}
             {activeTab === "poi" && (
               <div className="space-y-6">
                 <div className="bg-green-50 border border-green-100 rounded-2xl p-5">
@@ -514,34 +794,63 @@ export default function PlanerPage() {
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-4">
-                  {samplePOIs.map((poi) => (
-                    <div
-                      key={poi.name}
-                      className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer group"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                            {poi.name}
-                          </h4>
-                          <span className="text-xs text-gray-400">
-                            {poi.category}
-                          </span>
+                  {samplePOIs.map((poi) => {
+                    const added = isInBucketList(poi.name);
+                    return (
+                      <div
+                        key={poi.name}
+                        className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer group"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                              {poi.name}
+                            </h4>
+                            <span className="text-xs text-gray-400">
+                              {poi.category}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
+                            <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
+                            <span className="text-xs font-medium text-yellow-700">
+                              {poi.rating}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
-                          <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
-                          <span className="text-xs font-medium text-yellow-700">
-                            {poi.rating}
-                          </span>
-                        </div>
+                        <p className="text-sm text-gray-500">
+                          {poi.description}
+                        </p>
+                        <button
+                          onClick={() =>
+                            added
+                              ? removeFromBucketList(
+                                  trip.bucketList.find(
+                                    (b) => b.name === poi.name
+                                  )!.id
+                                )
+                              : addToBucketList(poi)
+                          }
+                          className={`mt-3 flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                            added
+                              ? "text-green-600"
+                              : "text-blue-600 hover:text-blue-700"
+                          }`}
+                        >
+                          {added ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              In Bucket List
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="w-3.5 h-3.5" />
+                              Zur Bucket List
+                            </>
+                          )}
+                        </button>
                       </div>
-                      <p className="text-sm text-gray-500">{poi.desc}</p>
-                      <button className="mt-3 flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium">
-                        <Plus className="w-3.5 h-3.5" />
-                        Zur Bucket List
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
