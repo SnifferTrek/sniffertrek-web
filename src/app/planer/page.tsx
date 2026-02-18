@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   MapPin,
   Hotel,
@@ -17,6 +17,7 @@ import {
   CircleDot,
   Flag,
   ChevronDown,
+  ChevronUp,
   Star,
   ExternalLink,
   Compass,
@@ -31,6 +32,7 @@ import {
   Smartphone,
   Shield,
   Globe,
+  GripVertical,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -192,6 +194,51 @@ export default function PlanerPage() {
     updateTrip({
       stops: trip.stops.map((s) => (s.id === id ? { ...s, name } : s)),
     });
+  };
+
+  const moveStop = (id: string, direction: "up" | "down") => {
+    const newStops = [...trip.stops];
+    const idx = newStops.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= newStops.length) return;
+    if (newStops[targetIdx].type === "start" && direction === "up") return;
+    if (newStops[targetIdx].type === "end" && direction === "down") return;
+    [newStops[idx], newStops[targetIdx]] = [newStops[targetIdx], newStops[idx]];
+    updateTrip({ stops: newStops });
+  };
+
+  const dragItem = useRef<string | null>(null);
+  const dragOverItem = useRef<string | null>(null);
+
+  const handleDragStart = (stopId: string) => {
+    dragItem.current = stopId;
+  };
+
+  const handleDragOver = (e: React.DragEvent, stopId: string) => {
+    e.preventDefault();
+    dragOverItem.current = stopId;
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!dragItem.current || !dragOverItem.current) return;
+    if (dragItem.current === dragOverItem.current) return;
+
+    const newStops = [...trip.stops];
+    const fromIdx = newStops.findIndex((s) => s.id === dragItem.current);
+    const toIdx = newStops.findIndex((s) => s.id === dragOverItem.current);
+
+    if (fromIdx < 0 || toIdx < 0) return;
+    if (newStops[fromIdx].type !== "stop") return;
+    if (newStops[toIdx].type === "start" || newStops[toIdx].type === "end") return;
+
+    const [moved] = newStops.splice(fromIdx, 1);
+    newStops.splice(toIdx, 0, moved);
+    updateTrip({ stops: newStops });
+
+    dragItem.current = null;
+    dragOverItem.current = null;
   };
 
   const addToBucketList = (item: Omit<BucketListItem, "id" | "added">) => {
@@ -458,11 +505,23 @@ export default function PlanerPage() {
                 {trip.stops.length > 1 && (
                   <div className="absolute left-[19px] top-[28px] bottom-[28px] w-0.5 bg-gradient-to-b from-blue-400 via-gray-200 to-red-400 z-0" />
                 )}
-                {trip.stops.map((stop) => (
+                {trip.stops.map((stop, index) => (
                   <div
                     key={`${trip.id}-${stop.id}`}
-                    className="relative flex items-center gap-3 z-10"
+                    className={`relative flex items-center gap-2 z-10 rounded-xl transition-all ${
+                      stop.type === "stop" ? "group" : ""
+                    }`}
+                    draggable={stop.type === "stop"}
+                    onDragStart={() => stop.type === "stop" && handleDragStart(stop.id)}
+                    onDragOver={(e) => stop.type === "stop" && handleDragOver(e, stop.id)}
+                    onDrop={handleDrop}
+                    onDragEnd={() => { dragItem.current = null; dragOverItem.current = null; }}
                   >
+                    {stop.type === "stop" && (
+                      <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0 touch-none">
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+                    )}
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
                         stop.type === "start"
@@ -480,7 +539,7 @@ export default function PlanerPage() {
                         <MapPin className="w-5 h-5 text-white" />
                       )}
                     </div>
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <input
                         type="text"
                         defaultValue={stop.name}
@@ -503,9 +562,29 @@ export default function PlanerPage() {
                       />
                     </div>
                     {stop.type === "stop" && (
+                      <div className="flex flex-col gap-0.5 flex-shrink-0">
+                        <button
+                          onClick={() => moveStop(stop.id, "up")}
+                          disabled={index <= 1}
+                          className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-30 disabled:hover:text-gray-300 transition-colors"
+                          title="Nach oben"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => moveStop(stop.id, "down")}
+                          disabled={index >= trip.stops.length - 2}
+                          className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-30 disabled:hover:text-gray-300 transition-colors"
+                          title="Nach unten"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                    {stop.type === "stop" && (
                       <button
                         onClick={() => removeStop(stop.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                        className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
                       >
                         <X className="w-4 h-4" />
                       </button>
