@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { RouteStop, RouteLegInfo } from "@/lib/types";
 
-const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "";
+const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "AIzaSyDTcV42T-ZkriZOB8RtNZMtGR8gZq3Izi0";
 
 const MAX_WAYPOINTS = 23;
 
