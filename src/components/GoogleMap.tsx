@@ -16,6 +16,7 @@ interface GoogleMapProps {
   stops: RouteStop[];
   travelMode: string;
   onRouteCalculated?: (info: RouteInfo) => void;
+  onError?: (message: string) => void;
 }
 
 let loadPromise: Promise<void> | null = null;
@@ -31,7 +32,10 @@ function loadGoogleMapsScript(): Promise<void> {
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Google Maps"));
+    script.onerror = () => {
+      loadPromise = null;
+      reject(new Error("Failed to load Google Maps"));
+    };
     document.head.appendChild(script);
   });
 
@@ -42,6 +46,7 @@ export default function GoogleMap({
   stops,
   travelMode,
   onRouteCalculated,
+  onError,
 }: GoogleMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -49,6 +54,7 @@ export default function GoogleMap({
     useRef<google.maps.DirectionsRenderer | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [calculating, setCalculating] = useState(false);
 
   useEffect(() => {
     if (!GOOGLE_MAPS_KEY || !mapRef.current) return;
@@ -90,7 +96,7 @@ export default function GoogleMap({
       })
       .catch((err) => {
         console.error("Google Maps load error:", err);
-        setError("Karte konnte nicht geladen werden");
+        setError("Karte konnte nicht geladen werden. Prüfe die Google Maps API-Konfiguration.");
       });
   }, []);
 
@@ -105,6 +111,7 @@ export default function GoogleMap({
       directionsRenderer.current.setDirections({
         routes: [],
       } as unknown as google.maps.DirectionsResult);
+      onRouteCalculated?.({ distance: "", duration: "", stops: 0 });
       return;
     }
 
@@ -121,6 +128,7 @@ export default function GoogleMap({
       flug: google.maps.TravelMode.DRIVING,
     };
 
+    setCalculating(true);
     const directionsService = new google.maps.DirectionsService();
 
     directionsService.route(
@@ -135,8 +143,11 @@ export default function GoogleMap({
         result: google.maps.DirectionsResult | null,
         status: google.maps.DirectionsStatus
       ) => {
+        setCalculating(false);
+
         if (status === google.maps.DirectionsStatus.OK && result) {
           directionsRenderer.current?.setDirections(result);
+          setError(null);
 
           let totalDistance = 0;
           let totalDuration = 0;
@@ -157,13 +168,23 @@ export default function GoogleMap({
               hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`,
             stops: waypoints.length,
           });
+        } else {
+          const errorMessages: Record<string, string> = {
+            NOT_FOUND: "Einer der Orte wurde nicht gefunden. Prüfe die Eingabe.",
+            ZERO_RESULTS: "Keine Route zwischen diesen Orten gefunden.",
+            OVER_QUERY_LIMIT: "Zu viele Anfragen. Bitte warte einen Moment.",
+            REQUEST_DENIED: "Directions API nicht aktiviert. Bitte in Google Cloud Console aktivieren.",
+            INVALID_REQUEST: "Ungültige Routenanfrage.",
+          };
+          const msg = errorMessages[status] || `Routenberechnung fehlgeschlagen (${status})`;
+          onError?.(msg);
         }
       }
     );
-  }, [loaded, stops, travelMode, onRouteCalculated]);
+  }, [loaded, stops, travelMode, onRouteCalculated, onError]);
 
   useEffect(() => {
-    const timer = setTimeout(calculateRoute, 500);
+    const timer = setTimeout(calculateRoute, 800);
     return () => clearTimeout(timer);
   }, [calculateRoute]);
 
@@ -180,12 +201,28 @@ export default function GoogleMap({
   if (error) {
     return (
       <div className="bg-red-50 h-[400px] flex items-center justify-center rounded-2xl">
-        <p className="text-red-400 text-sm">{error}</p>
+        <div className="text-center px-6">
+          <p className="text-red-500 text-sm font-medium">{error}</p>
+          <p className="text-red-400 text-xs mt-2">
+            Stelle sicher, dass Maps JavaScript API, Places API und Directions API
+            in der Google Cloud Console aktiviert sind.
+          </p>
+        </div>
       </div>
     );
   }
 
-  return <div ref={mapRef} className="h-[400px] w-full rounded-2xl" />;
+  return (
+    <div className="relative">
+      <div ref={mapRef} className="h-[400px] w-full rounded-2xl" />
+      {calculating && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs text-gray-600 font-medium">Route wird berechnet...</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function useGoogleAutocomplete() {
@@ -194,9 +231,9 @@ export function useGoogleAutocomplete() {
   useEffect(() => {
     if (!GOOGLE_MAPS_KEY) return;
 
-    loadGoogleMapsScript().then(() => {
-      setReady(true);
-    });
+    loadGoogleMapsScript()
+      .then(() => setReady(true))
+      .catch(() => {});
   }, []);
 
   const attachAutocomplete = useCallback(

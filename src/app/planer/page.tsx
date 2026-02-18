@@ -94,6 +94,7 @@ export default function PlanerPage() {
     "route" | "hotels" | "flights" | "car" | "poi" | "esim" | "train" | "insurance" | "timeline"
   >("route");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [pois, setPois] = useState<POI[]>([]);
   const [poisLoading, setPoisLoading] = useState(false);
   const [poisSearchedFor, setPoisSearchedFor] = useState("");
@@ -459,7 +460,7 @@ export default function PlanerPage() {
                 )}
                 {trip.stops.map((stop) => (
                   <div
-                    key={stop.id}
+                    key={`${trip.id}-${stop.id}`}
                     className="relative flex items-center gap-3 z-10"
                   >
                     <div
@@ -658,13 +659,44 @@ export default function PlanerPage() {
             {/* Route Tab */}
             {activeTab === "route" && (
               <div className="space-y-6">
+                {!origin && !destination && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-blue-500 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">Tipp</p>
+                        <p className="text-sm text-blue-600 mt-1">
+                          Gib links einen Start- und Zielort ein. Die Autocomplete-Suche hilft dir, 
+                          Städte schnell zu finden. Die Route wird automatisch auf der Karte berechnet.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <GoogleMap
                     stops={trip.stops}
                     travelMode={trip.travelMode}
-                    onRouteCalculated={setRouteInfo}
+                    onRouteCalculated={(info) => {
+                      setRouteInfo(info);
+                      setRouteError(null);
+                    }}
+                    onError={(msg) => setRouteError(msg)}
                   />
                 </div>
+
+                {routeError && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
+                    <div className="flex items-start gap-3">
+                      <Globe className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-amber-800">Routenberechnung</p>
+                        <p className="text-sm text-amber-600 mt-1">{routeError}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                   <div className="flex items-center gap-3 mb-4">
@@ -675,13 +707,13 @@ export default function PlanerPage() {
                   </div>
                   <div className="grid grid-cols-3 gap-4 text-center">
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className={`text-2xl font-bold ${routeInfo ? "text-blue-600" : "text-gray-300"}`}>
+                      <div className={`text-2xl font-bold ${routeInfo?.distance ? "text-blue-600" : "text-gray-300"}`}>
                         {routeInfo?.distance || "—"}
                       </div>
                       <div className="text-xs text-gray-400 mt-1">Distanz</div>
                     </div>
                     <div className="bg-gray-50 rounded-xl p-4">
-                      <div className={`text-2xl font-bold ${routeInfo ? "text-blue-600" : "text-gray-300"}`}>
+                      <div className={`text-2xl font-bold ${routeInfo?.duration ? "text-blue-600" : "text-gray-300"}`}>
                         {routeInfo?.duration || "—"}
                       </div>
                       <div className="text-xs text-gray-400 mt-1">
@@ -697,6 +729,12 @@ export default function PlanerPage() {
                       </div>
                     </div>
                   </div>
+
+                  {origin && destination && !routeInfo?.distance && !routeError && (
+                    <p className="text-xs text-gray-400 text-center mt-4">
+                      Wähle Start und Ziel über die Autocomplete-Vorschläge aus, damit die Route berechnet wird.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
