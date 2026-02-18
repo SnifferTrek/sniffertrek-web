@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   MapPin,
   Hotel,
@@ -17,7 +17,6 @@ import {
   CircleDot,
   Flag,
   ChevronDown,
-  ChevronUp,
   Star,
   ExternalLink,
   Compass,
@@ -196,49 +195,54 @@ export default function PlanerPage() {
     });
   };
 
-  const moveStop = (id: string, direction: "up" | "down") => {
-    const newStops = [...trip.stops];
-    const idx = newStops.findIndex((s) => s.id === id);
-    if (idx < 0) return;
-    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= newStops.length) return;
-    if (newStops[targetIdx].type === "start" && direction === "up") return;
-    if (newStops[targetIdx].type === "end" && direction === "down") return;
-    [newStops[idx], newStops[targetIdx]] = [newStops[targetIdx], newStops[idx]];
-    updateTrip({ stops: newStops });
-  };
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  const dragItem = useRef<string | null>(null);
-  const dragOverItem = useRef<string | null>(null);
-
-  const handleDragStart = (stopId: string) => {
-    dragItem.current = stopId;
+  const handleDragStart = (e: React.DragEvent, stopId: string) => {
+    setDragId(stopId);
+    e.dataTransfer.effectAllowed = "move";
+    if (e.currentTarget instanceof HTMLElement) {
+      e.dataTransfer.setDragImage(e.currentTarget, 0, 20);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent, stopId: string) => {
     e.preventDefault();
-    dragOverItem.current = stopId;
+    e.dataTransfer.dropEffect = "move";
+    if (stopId !== dragId) {
+      setDragOverId(stopId);
+    }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
     e.preventDefault();
-    if (!dragItem.current || !dragOverItem.current) return;
-    if (dragItem.current === dragOverItem.current) return;
+    if (!dragId || dragId === targetId) {
+      setDragId(null);
+      setDragOverId(null);
+      return;
+    }
 
     const newStops = [...trip.stops];
-    const fromIdx = newStops.findIndex((s) => s.id === dragItem.current);
-    const toIdx = newStops.findIndex((s) => s.id === dragOverItem.current);
+    const fromIdx = newStops.findIndex((s) => s.id === dragId);
+    const toIdx = newStops.findIndex((s) => s.id === targetId);
 
-    if (fromIdx < 0 || toIdx < 0) return;
-    if (newStops[fromIdx].type !== "stop") return;
-    if (newStops[toIdx].type === "start" || newStops[toIdx].type === "end") return;
+    if (fromIdx < 0 || toIdx < 0) { setDragId(null); setDragOverId(null); return; }
+    if (newStops[fromIdx].type !== "stop") { setDragId(null); setDragOverId(null); return; }
+
+    const startIdx = newStops.findIndex((s) => s.type === "start");
+    const endIdx = newStops.findIndex((s) => s.type === "end");
+    if (toIdx <= startIdx || toIdx >= endIdx) { setDragId(null); setDragOverId(null); return; }
 
     const [moved] = newStops.splice(fromIdx, 1);
     newStops.splice(toIdx, 0, moved);
     updateTrip({ stops: newStops });
+    setDragId(null);
+    setDragOverId(null);
+  };
 
-    dragItem.current = null;
-    dragOverItem.current = null;
+  const handleDragEnd = () => {
+    setDragId(null);
+    setDragOverId(null);
   };
 
   const addToBucketList = (item: Omit<BucketListItem, "id" | "added">) => {
@@ -505,92 +509,80 @@ export default function PlanerPage() {
                 {trip.stops.length > 1 && (
                   <div className="absolute left-[19px] top-[28px] bottom-[28px] w-0.5 bg-gradient-to-b from-blue-400 via-gray-200 to-red-400 z-0" />
                 )}
-                {trip.stops.map((stop, index) => (
-                  <div
-                    key={`${trip.id}-${stop.id}`}
-                    className={`relative flex items-center gap-2 z-10 rounded-xl transition-all ${
-                      stop.type === "stop" ? "group" : ""
-                    }`}
-                    draggable={stop.type === "stop"}
-                    onDragStart={() => stop.type === "stop" && handleDragStart(stop.id)}
-                    onDragOver={(e) => stop.type === "stop" && handleDragOver(e, stop.id)}
-                    onDrop={handleDrop}
-                    onDragEnd={() => { dragItem.current = null; dragOverItem.current = null; }}
-                  >
-                    {stop.type === "stop" && (
-                      <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0 touch-none">
-                        <GripVertical className="w-4 h-4" />
-                      </div>
-                    )}
+                {trip.stops.map((stop) => {
+                  const isDragging = dragId === stop.id;
+                  const isDropTarget = dragOverId === stop.id && stop.type === "stop" && dragId !== stop.id;
+
+                  return (
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                        stop.type === "start"
-                          ? "bg-blue-500"
-                          : stop.type === "end"
-                          ? "bg-red-500"
-                          : "bg-orange-400"
-                      }`}
+                      key={`${trip.id}-${stop.id}`}
+                      className={`relative flex items-center gap-2 z-10 rounded-xl py-1 transition-all ${
+                        isDragging ? "opacity-40 scale-95" : ""
+                      } ${isDropTarget ? "ring-2 ring-blue-400 ring-offset-2 bg-blue-50/50" : ""}`}
+                      draggable={stop.type === "stop"}
+                      onDragStart={(e) => stop.type === "stop" && handleDragStart(e, stop.id)}
+                      onDragOver={(e) => stop.type === "stop" && handleDragOver(e, stop.id)}
+                      onDrop={(e) => handleDrop(e, stop.id)}
+                      onDragEnd={handleDragEnd}
                     >
-                      {stop.type === "start" ? (
-                        <CircleDot className="w-5 h-5 text-white" />
-                      ) : stop.type === "end" ? (
-                        <Flag className="w-5 h-5 text-white" />
+                      {stop.type === "stop" ? (
+                        <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0">
+                          <GripVertical className="w-5 h-5" />
+                        </div>
                       ) : (
-                        <MapPin className="w-5 h-5 text-white" />
+                        <div className="w-5 flex-shrink-0" />
+                      )}
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-transform ${
+                          stop.type === "start"
+                            ? "bg-blue-500"
+                            : stop.type === "end"
+                            ? "bg-red-500"
+                            : "bg-orange-400"
+                        }`}
+                      >
+                        {stop.type === "start" ? (
+                          <CircleDot className="w-5 h-5 text-white" />
+                        ) : stop.type === "end" ? (
+                          <Flag className="w-5 h-5 text-white" />
+                        ) : (
+                          <MapPin className="w-5 h-5 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <input
+                          type="text"
+                          defaultValue={stop.name}
+                          ref={(el) => {
+                            if (el && autocompleteReady) {
+                              attachAutocomplete(el, (place) => {
+                                updateStop(stop.id, place);
+                              });
+                            }
+                          }}
+                          onChange={(e) => updateStop(stop.id, e.target.value)}
+                          placeholder={
+                            stop.type === "start"
+                              ? "Startort eingeben..."
+                              : stop.type === "end"
+                              ? "Zielort eingeben..."
+                              : "Zwischenstopp..."
+                          }
+                          className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        />
+                      </div>
+                      {stop.type === "stop" && (
+                        <button
+                          onClick={() => removeStop(stop.id)}
+                          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
+                          title="Zwischenstopp entfernen"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <input
-                        type="text"
-                        defaultValue={stop.name}
-                        ref={(el) => {
-                          if (el && autocompleteReady) {
-                            attachAutocomplete(el, (place) => {
-                              updateStop(stop.id, place);
-                            });
-                          }
-                        }}
-                        onChange={(e) => updateStop(stop.id, e.target.value)}
-                        placeholder={
-                          stop.type === "start"
-                            ? "Startort eingeben..."
-                            : stop.type === "end"
-                            ? "Zielort eingeben..."
-                            : "Zwischenstopp..."
-                        }
-                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                      />
-                    </div>
-                    {stop.type === "stop" && (
-                      <div className="flex flex-col gap-0.5 flex-shrink-0">
-                        <button
-                          onClick={() => moveStop(stop.id, "up")}
-                          disabled={index <= 1}
-                          className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-30 disabled:hover:text-gray-300 transition-colors"
-                          title="Nach oben"
-                        >
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => moveStop(stop.id, "down")}
-                          disabled={index >= trip.stops.length - 2}
-                          className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-30 disabled:hover:text-gray-300 transition-colors"
-                          title="Nach unten"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                    {stop.type === "stop" && (
-                      <button
-                        onClick={() => removeStop(stop.id)}
-                        className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <button
                 onClick={addStop}
