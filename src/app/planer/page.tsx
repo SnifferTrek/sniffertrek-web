@@ -31,11 +31,11 @@ import {
   Smartphone,
   Shield,
   Globe,
-  GripVertical,
   Zap,
   BedDouble,
   Clock,
   Route,
+  ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -281,54 +281,16 @@ export default function PlanerPage() {
     return result;
   })();
 
-  const [dragId, setDragId] = useState<string | null>(null);
-  const [dragOverId, setDragOverId] = useState<string | null>(null);
-
-  const handleDragStart = (e: React.DragEvent, stopId: string) => {
-    setDragId(stopId);
-    e.dataTransfer.effectAllowed = "move";
-    if (e.currentTarget instanceof HTMLElement) {
-      e.dataTransfer.setDragImage(e.currentTarget, 0, 20);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent, stopId: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (stopId !== dragId) {
-      setDragOverId(stopId);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
-    e.preventDefault();
-    if (!dragId || dragId === targetId) {
-      setDragId(null);
-      setDragOverId(null);
-      return;
-    }
-
+  const moveStop = (id: string, direction: "up" | "down") => {
     const newStops = [...trip.stops];
-    const fromIdx = newStops.findIndex((s) => s.id === dragId);
-    const toIdx = newStops.findIndex((s) => s.id === targetId);
-
-    if (fromIdx < 0 || toIdx < 0) { setDragId(null); setDragOverId(null); return; }
-    if (newStops[fromIdx].type !== "stop") { setDragId(null); setDragOverId(null); return; }
-
-    const startIdx = newStops.findIndex((s) => s.type === "start");
-    const endIdx = newStops.findIndex((s) => s.type === "end");
-    if (toIdx <= startIdx || toIdx >= endIdx) { setDragId(null); setDragOverId(null); return; }
-
-    const [moved] = newStops.splice(fromIdx, 1);
-    newStops.splice(toIdx, 0, moved);
+    const idx = newStops.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= newStops.length) return;
+    if (newStops[targetIdx].type === "start") return;
+    if (newStops[targetIdx].type === "end") return;
+    [newStops[idx], newStops[targetIdx]] = [newStops[targetIdx], newStops[idx]];
     updateTrip({ stops: newStops });
-    setDragId(null);
-    setDragOverId(null);
-  };
-
-  const handleDragEnd = () => {
-    setDragId(null);
-    setDragOverId(null);
   };
 
   const handleOptimizeRoute = () => {
@@ -613,25 +575,29 @@ export default function PlanerPage() {
                 {trip.stops.length > 1 && (
                   <div className="absolute left-[19px] top-[28px] bottom-[28px] w-0.5 bg-gradient-to-b from-blue-400 via-gray-200 to-red-400 z-0" />
                 )}
-                {trip.stops.map((stop) => {
-                  const isDragging = dragId === stop.id;
-                  const isDropTarget = dragOverId === stop.id && stop.type === "stop" && dragId !== stop.id;
-
-                  return (
+                {trip.stops.map((stop, stopIndex) => (
                     <div
                       key={`${trip.id}-${stop.id}`}
-                      className={`relative flex items-center gap-2 z-10 rounded-xl py-1 transition-all ${
-                        isDragging ? "opacity-40 scale-95" : ""
-                      } ${isDropTarget ? "ring-2 ring-blue-400 ring-offset-2 bg-blue-50/50" : ""}`}
-                      draggable={stop.type === "stop"}
-                      onDragStart={(e) => stop.type === "stop" && handleDragStart(e, stop.id)}
-                      onDragOver={(e) => stop.type === "stop" && handleDragOver(e, stop.id)}
-                      onDrop={(e) => handleDrop(e, stop.id)}
-                      onDragEnd={handleDragEnd}
+                      className="relative flex items-center gap-2 z-10 rounded-xl py-1 transition-all"
                     >
                       {stop.type === "stop" ? (
-                        <div className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 transition-colors flex-shrink-0">
-                          <GripVertical className="w-5 h-5" />
+                        <div className="flex flex-col gap-0.5 flex-shrink-0">
+                          <button
+                            onClick={() => moveStop(stop.id, "up")}
+                            disabled={stopIndex <= 1}
+                            className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-20 disabled:hover:text-gray-300 transition-colors"
+                            title="Nach oben"
+                          >
+                            <ChevronUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => moveStop(stop.id, "down")}
+                            disabled={stopIndex >= trip.stops.length - 2}
+                            className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-20 disabled:hover:text-gray-300 transition-colors"
+                            title="Nach unten"
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </button>
                         </div>
                       ) : (
                         <div className="w-5 flex-shrink-0" />
@@ -704,8 +670,7 @@ export default function PlanerPage() {
                         </button>
                       )}
                     </div>
-                  );
-                })}
+                ))}
               </div>
               <button
                 onClick={addStop}
