@@ -83,6 +83,13 @@ export default function GoogleMap({
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
 
+  const onRouteCalculatedRef = useRef(onRouteCalculated);
+  const onStopsReorderedRef = useRef(onStopsReordered);
+  const onErrorRef = useRef(onError);
+  onRouteCalculatedRef.current = onRouteCalculated;
+  onStopsReorderedRef.current = onStopsReordered;
+  onErrorRef.current = onError;
+
   const clearRenderers = useCallback(() => {
     renderers.current.forEach((r) => r.setMap(null));
     renderers.current = [];
@@ -130,7 +137,7 @@ export default function GoogleMap({
     const end = filledStops.find((s) => s.type === "end");
 
     if (!start || !end) {
-      onRouteCalculated?.({ distance: "", duration: "", stops: 0, legs: [] });
+      onRouteCalculatedRef.current?.({ distance: "", duration: "", stops: 0, legs: [] });
       return;
     }
 
@@ -168,7 +175,7 @@ export default function GoogleMap({
         const { distance, duration } = sumLegs(googleLegs);
         const legInfos = extractLegInfos(googleLegs);
 
-        onRouteCalculated?.({
+        onRouteCalculatedRef.current?.({
           distance: formatDistance(distance),
           duration: formatDuration(duration),
           stops: waypointStops.length,
@@ -177,7 +184,7 @@ export default function GoogleMap({
 
         if (shouldOptimize && result.routes[0]?.waypoint_order && waypointStops.length >= 2) {
           const order = result.routes[0].waypoint_order;
-          onStopsReordered?.([
+          onStopsReorderedRef.current?.([
             start.id,
             ...order.map((i: number) => waypointStops[i].id),
             end.id,
@@ -295,7 +302,7 @@ export default function GoogleMap({
           mapInstance.current.fitBounds(bounds);
         }
 
-        onRouteCalculated?.({
+        onRouteCalculatedRef.current?.({
           distance: formatDistance(totalDistance),
           duration: formatDuration(totalDuration),
           stops: waypointStops.length,
@@ -314,11 +321,11 @@ export default function GoogleMap({
         MAX_WAYPOINTS_EXCEEDED: "Zu viele Zwischenstopps für eine Anfrage. Route wird segmentiert...",
       };
       const msg = errorMessages[String(status)] || `Routenberechnung fehlgeschlagen (${status})`;
-      onError?.(msg);
+      onErrorRef.current?.(msg);
     } finally {
       setCalculating(false);
     }
-  }, [loaded, stops, travelMode, optimize, onRouteCalculated, onStopsReordered, onError, clearRenderers]);
+  }, [loaded, stops, travelMode, optimize, clearRenderers]);
 
   useEffect(() => {
     const timer = setTimeout(calculateRoute, 800);

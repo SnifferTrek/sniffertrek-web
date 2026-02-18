@@ -36,6 +36,7 @@ import {
   Clock,
   Route,
   ChevronUp,
+  ArrowDownUp,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -291,6 +292,19 @@ export default function PlanerPage() {
     if (newStops[targetIdx].type === "end") return;
     [newStops[idx], newStops[targetIdx]] = [newStops[targetIdx], newStops[idx]];
     updateTrip({ stops: newStops });
+  };
+
+  const reverseRoute = () => {
+    const start = trip.stops.find((s) => s.type === "start");
+    const end = trip.stops.find((s) => s.type === "end");
+    const waypoints = trip.stops.filter((s) => s.type === "stop");
+    if (!start || !end) return;
+
+    const newStart: RouteStop = { ...start, name: end.name };
+    const newEnd: RouteStop = { ...end, name: start.name };
+    const reversedWaypoints = [...waypoints].reverse();
+
+    updateTrip({ stops: [newStart, ...reversedWaypoints, newEnd] });
   };
 
   const handleOptimizeRoute = () => {
@@ -897,11 +911,21 @@ export default function PlanerPage() {
                     </p>
                   )}
 
+                  {origin && destination && (
+                    <button
+                      onClick={reverseRoute}
+                      className="mt-4 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      <ArrowDownUp className="w-4 h-4" />
+                      Route umkehren
+                    </button>
+                  )}
+
                   {trip.stops.filter((s) => s.type === "stop" && s.name.trim()).length >= 2 && (
                     <button
                       onClick={handleOptimizeRoute}
                       disabled={optimizeRoute}
-                      className="mt-4 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-emerald-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                      className="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-emerald-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
                     >
                       {optimizeRoute ? (
                         <>
