@@ -69,6 +69,20 @@ export async function signInWithGoogle(): Promise<void> {
   });
 }
 
+export async function resetPassword(
+  email: string
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured())
+    return { error: "Supabase nicht konfiguriert" };
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${typeof window !== "undefined" ? window.location.origin : ""}/auth/callback?type=recovery`,
+  });
+
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
 export async function signOut(): Promise<void> {
   if (!isSupabaseConfigured()) return;
   await supabase.auth.signOut();
