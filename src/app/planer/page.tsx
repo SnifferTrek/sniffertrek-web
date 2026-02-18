@@ -32,6 +32,7 @@ import {
   Shield,
   Globe,
   GripVertical,
+  Zap,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -96,6 +97,7 @@ export default function PlanerPage() {
   >("route");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
+  const [optimizeRoute, setOptimizeRoute] = useState(false);
   const [pois, setPois] = useState<POI[]>([]);
   const [poisLoading, setPoisLoading] = useState(false);
   const [poisSearchedFor, setPoisSearchedFor] = useState("");
@@ -244,6 +246,24 @@ export default function PlanerPage() {
     setDragId(null);
     setDragOverId(null);
   };
+
+  const handleOptimizeRoute = () => {
+    const waypointStops = trip.stops.filter((s) => s.type === "stop" && s.name.trim());
+    if (waypointStops.length < 2) return;
+    setOptimizeRoute(true);
+  };
+
+  const handleStopsReordered = useCallback((orderedIds: string[]) => {
+    const stopLookup: Record<string, RouteStop> = {};
+    trip.stops.forEach((s) => { stopLookup[s.id] = s; });
+    const reordered = orderedIds
+      .map((id) => stopLookup[id])
+      .filter((s): s is RouteStop => !!s);
+    if (reordered.length === trip.stops.length) {
+      updateTrip({ stops: reordered });
+    }
+    setOptimizeRoute(false);
+  }, [trip.stops, updateTrip]);
 
   const addToBucketList = (item: Omit<BucketListItem, "id" | "added">) => {
     const newItem: BucketListItem = {
@@ -749,10 +769,12 @@ export default function PlanerPage() {
                   <GoogleMap
                     stops={trip.stops}
                     travelMode={trip.travelMode}
+                    optimize={optimizeRoute}
                     onRouteCalculated={(info) => {
                       setRouteInfo(info);
                       setRouteError(null);
                     }}
+                    onStopsReordered={handleStopsReordered}
                     onError={(msg) => setRouteError(msg)}
                   />
                 </div>
@@ -805,6 +827,26 @@ export default function PlanerPage() {
                     <p className="text-xs text-gray-400 text-center mt-4">
                       Wähle Start und Ziel über die Autocomplete-Vorschläge aus, damit die Route berechnet wird.
                     </p>
+                  )}
+
+                  {trip.stops.filter((s) => s.type === "stop" && s.name.trim()).length >= 2 && (
+                    <button
+                      onClick={handleOptimizeRoute}
+                      disabled={optimizeRoute}
+                      className="mt-4 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-emerald-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                    >
+                      {optimizeRoute ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Wird optimiert...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="w-4 h-4" />
+                          Kürzeste Route berechnen
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
               </div>

@@ -14,7 +14,9 @@ interface RouteInfo {
 interface GoogleMapProps {
   stops: RouteStop[];
   travelMode: string;
+  optimize?: boolean;
   onRouteCalculated?: (info: RouteInfo) => void;
+  onStopsReordered?: (orderedStopIds: string[]) => void;
   onError?: (message: string) => void;
 }
 
@@ -44,7 +46,9 @@ function loadGoogleMapsScript(): Promise<void> {
 export default function GoogleMap({
   stops,
   travelMode,
+  optimize = false,
   onRouteCalculated,
+  onStopsReordered,
   onError,
 }: GoogleMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -130,12 +134,14 @@ export default function GoogleMap({
     setCalculating(true);
     const directionsService = new google.maps.DirectionsService();
 
+    const waypointStops = filledStops.filter((s) => s.type === "stop");
+
     directionsService.route(
       {
         origin: start.name,
         destination: end.name,
         waypoints,
-        optimizeWaypoints: false,
+        optimizeWaypoints: optimize && waypoints.length >= 2,
         travelMode: modeMap[travelMode] || google.maps.TravelMode.DRIVING,
       },
       (
@@ -167,6 +173,16 @@ export default function GoogleMap({
               hours > 0 ? `${hours}h ${minutes}min` : `${minutes}min`,
             stops: waypoints.length,
           });
+
+          if (optimize && result.routes[0]?.waypoint_order && waypointStops.length >= 2) {
+            const order = result.routes[0].waypoint_order;
+            const reorderedIds = [
+              start.id,
+              ...order.map((i: number) => waypointStops[i].id),
+              end.id,
+            ];
+            onStopsReordered?.(reorderedIds);
+          }
         } else {
           const errorMessages: Record<string, string> = {
             NOT_FOUND: "Einer der Orte wurde nicht gefunden. Prüfe die Eingabe.",
@@ -180,7 +196,7 @@ export default function GoogleMap({
         }
       }
     );
-  }, [loaded, stops, travelMode, onRouteCalculated, onError]);
+  }, [loaded, stops, travelMode, optimize, onRouteCalculated, onStopsReordered, onError]);
 
   useEffect(() => {
     const timer = setTimeout(calculateRoute, 800);
