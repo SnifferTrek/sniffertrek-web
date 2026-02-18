@@ -53,6 +53,7 @@ import {
 import { saveTripToCloud, deleteTripFromCloud } from "@/lib/cloudSync";
 import { useAuth } from "@/components/AuthProvider";
 import GoogleMap, { useGoogleAutocomplete } from "@/components/GoogleMap";
+import { POI, searchPOIs } from "@/lib/poiService";
 import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
@@ -73,6 +74,8 @@ import {
   buildViatorLink,
   buildTrainlineLink,
   buildOmioLink,
+  buildAllianzTravelLink,
+  buildWorldNomadsLink,
 } from "@/lib/affiliateLinks";
 
 export default function PlanerPage() {
@@ -88,9 +91,12 @@ export default function PlanerPage() {
   const [showTripList, setShowTripList] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
   const [activeTab, setActiveTab] = useState<
-    "route" | "hotels" | "flights" | "car" | "poi" | "esim" | "train"
+    "route" | "hotels" | "flights" | "car" | "poi" | "esim" | "train" | "insurance" | "timeline"
   >("route");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [pois, setPois] = useState<POI[]>([]);
+  const [poisLoading, setPoisLoading] = useState(false);
+  const [poisSearchedFor, setPoisSearchedFor] = useState("");
 
   // Load active trip or create new one
   useEffect(() => {
@@ -212,8 +218,10 @@ export default function PlanerPage() {
     { id: "flights" as const, label: "Flüge", icon: Plane },
     { id: "car" as const, label: "Mietwagen", icon: Car },
     { id: "train" as const, label: "Züge", icon: Train },
-    { id: "esim" as const, label: "eSIM", icon: Smartphone },
     { id: "poi" as const, label: "Entdecken", icon: Compass },
+    { id: "esim" as const, label: "eSIM", icon: Smartphone },
+    { id: "insurance" as const, label: "Versicherung", icon: Shield },
+    { id: "timeline" as const, label: "Timeline", icon: Calendar },
   ];
 
   const destination = trip.stops.find((s) => s.type === "end")?.name || "";
@@ -227,32 +235,37 @@ export default function PlanerPage() {
     travelers: trip.travelers,
   };
 
-  const samplePOIs = [
-    {
-      name: "Sagrada Família",
-      category: "Sehenswürdigkeit",
-      rating: 4.8,
-      description: "Gaudís berühmte Basilika",
-    },
-    {
-      name: "Park Güell",
-      category: "Park",
-      rating: 4.6,
-      description: "Bunter Mosaikpark von Gaudí",
-    },
-    {
-      name: "La Boqueria",
-      category: "Markt",
-      rating: 4.5,
-      description: "Berühmter Lebensmittelmarkt",
-    },
-    {
-      name: "Casa Batlló",
-      category: "Architektur",
-      rating: 4.7,
-      description: "Meisterwerk des Modernisme",
-    },
-  ];
+  const displayPOIs: { name: string; category: string; rating: number; description: string; photoUrl?: string }[] =
+    pois.length > 0
+      ? pois.map((p) => ({ name: p.name, category: p.category, rating: p.rating, description: p.address, photoUrl: p.photoUrl }))
+      : destination
+      ? []
+      : [
+          { name: "Sagrada Família", category: "Sehenswürdigkeit", rating: 4.8, description: "Gaudís berühmte Basilika" },
+          { name: "Park Güell", category: "Park", rating: 4.6, description: "Bunter Mosaikpark von Gaudí" },
+          { name: "La Boqueria", category: "Markt", rating: 4.5, description: "Berühmter Lebensmittelmarkt" },
+          { name: "Casa Batlló", category: "Architektur", rating: 4.7, description: "Meisterwerk des Modernisme" },
+        ];
+
+  const loadPOIs = useCallback(async (dest: string) => {
+    if (!dest || dest === poisSearchedFor) return;
+    setPoisLoading(true);
+    setPoisSearchedFor(dest);
+    try {
+      const results = await searchPOIs(dest);
+      setPois(results);
+    } catch {
+      setPois([]);
+    } finally {
+      setPoisLoading(false);
+    }
+  }, [poisSearchedFor]);
+
+  useEffect(() => {
+    if (activeTab === "poi" && destination && destination !== poisSearchedFor) {
+      loadPOIs(destination);
+    }
+  }, [activeTab, destination, poisSearchedFor, loadPOIs]);
 
   const isInBucketList = (name: string) =>
     trip.bucketList.some((b) => b.name === name);
@@ -1155,71 +1168,362 @@ export default function PlanerPage() {
                   </div>
                 )}
 
-                {/* Bucket List POIs */}
+                {/* Dynamic POIs */}
                 <div>
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                    Sehenswürdigkeiten
-                  </h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                      {destination ? `Sehenswürdigkeiten in ${destination}` : "Sehenswürdigkeiten"}
+                    </h3>
+                    {destination && !poisLoading && pois.length > 0 && (
+                      <button
+                        onClick={() => { setPoisSearchedFor(""); loadPOIs(destination); }}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                      >
+                        Aktualisieren
+                      </button>
+                    )}
+                  </div>
+
+                  {poisLoading && (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="flex items-center gap-3 text-gray-400">
+                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm">Sehenswürdigkeiten werden geladen...</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {!poisLoading && !destination && (
+                    <div className="text-center py-8">
+                      <MapPin className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                      <p className="text-sm text-gray-400">Gib ein Reiseziel ein, um Sehenswürdigkeiten zu entdecken.</p>
+                    </div>
+                  )}
+
+                  {!poisLoading && destination && displayPOIs.length === 0 && (
+                    <div className="text-center py-8">
+                      <Search className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                      <p className="text-sm text-gray-400">Keine Sehenswürdigkeiten gefunden. Versuche den Tab erneut zu öffnen.</p>
+                    </div>
+                  )}
+
                   <div className="grid sm:grid-cols-2 gap-4">
-                    {samplePOIs.map((poi) => {
+                    {displayPOIs.map((poi) => {
                       const added = isInBucketList(poi.name);
                       return (
                         <div
                           key={poi.name}
-                          className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer group"
+                          className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group overflow-hidden"
                         >
-                          <div className="flex items-start justify-between mb-3">
-                            <div>
-                              <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                                {poi.name}
-                              </h4>
-                              <span className="text-xs text-gray-400">
-                                {poi.category}
-                              </span>
+                          {poi.photoUrl && (
+                            <div className="h-36 w-full overflow-hidden">
+                              <img
+                                src={poi.photoUrl}
+                                alt={poi.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
                             </div>
-                            <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
-                              <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
-                              <span className="text-xs font-medium text-yellow-700">
-                                {poi.rating}
-                              </span>
+                          )}
+                          <div className="p-5">
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                                  {poi.name}
+                                </h4>
+                                <span className="text-xs text-gray-400">
+                                  {poi.category}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
+                                <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
+                                <span className="text-xs font-medium text-yellow-700">
+                                  {poi.rating.toFixed(1)}
+                                </span>
+                              </div>
                             </div>
+                            <p className="text-sm text-gray-500 line-clamp-2">
+                              {poi.description}
+                            </p>
+                            <button
+                              onClick={() =>
+                                added
+                                  ? removeFromBucketList(
+                                      trip.bucketList.find(
+                                        (b) => b.name === poi.name
+                                      )!.id
+                                    )
+                                  : addToBucketList(poi)
+                              }
+                              className={`mt-3 flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                                added
+                                  ? "text-green-600"
+                                  : "text-blue-600 hover:text-blue-700"
+                              }`}
+                            >
+                              {added ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  In Bucket List
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Zur Bucket List
+                                </>
+                              )}
+                            </button>
                           </div>
-                          <p className="text-sm text-gray-500">
-                            {poi.description}
-                          </p>
-                          <button
-                            onClick={() =>
-                              added
-                                ? removeFromBucketList(
-                                    trip.bucketList.find(
-                                      (b) => b.name === poi.name
-                                    )!.id
-                                  )
-                                : addToBucketList(poi)
-                            }
-                            className={`mt-3 flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                              added
-                                ? "text-green-600"
-                                : "text-blue-600 hover:text-blue-700"
-                            }`}
-                          >
-                            {added ? (
-                              <>
-                                <Check className="w-3.5 h-3.5" />
-                                In Bucket List
-                              </>
-                            ) : (
-                              <>
-                                <Plus className="w-3.5 h-3.5" />
-                                Zur Bucket List
-                              </>
-                            )}
-                          </button>
                         </div>
                       );
                     })}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Insurance Tab */}
+            {activeTab === "insurance" && (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-100 rounded-2xl p-5">
+                  <div className="flex items-start gap-3">
+                    <Shield className="w-5 h-5 text-red-500 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-red-800">
+                        Reiseversicherung
+                      </p>
+                      <p className="text-sm text-red-600 mt-1">
+                        Schütze deine Reise mit einer passenden Versicherung.
+                        Reiserücktritt, Krankenversicherung und Gepäckschutz – alles in einem.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    {
+                      name: "Allianz Travel",
+                      desc: "Umfassender Reiseschutz vom Marktführer",
+                      features: ["Reiserücktritt", "Krankenversicherung", "Gepäckschutz"],
+                      color: "text-blue-700",
+                      bg: "bg-blue-50",
+                      link: buildAllianzTravelLink(),
+                    },
+                    {
+                      name: "World Nomads",
+                      desc: "Flexibel für Abenteurer & Backpacker",
+                      features: ["Outdoor-Aktivitäten", "Flexible Laufzeit", "Weltweit"],
+                      color: "text-green-700",
+                      bg: "bg-green-50",
+                      link: buildWorldNomadsLink(),
+                    },
+                    {
+                      name: "ERGO Reiseversicherung",
+                      desc: "Deutsche Qualität, faire Preise",
+                      features: ["Familientarife", "Jahresschutz", "Storno-Schutz"],
+                      color: "text-red-700",
+                      bg: "bg-red-50",
+                      link: "https://www.ergo.de/reiseversicherung",
+                    },
+                  ].map((provider) => (
+                    <a
+                      key={provider.name}
+                      href={provider.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-12 h-12 ${provider.bg} rounded-xl flex items-center justify-center`}>
+                          <Shield className={`w-6 h-6 ${provider.color}`} />
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
+                      <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {provider.features.map((f) => (
+                          <span key={f} className="text-xs bg-gray-50 text-gray-500 px-2 py-0.5 rounded-md">
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
+                        <Search className="w-3 h-3" />
+                        Angebote ansehen
+                      </div>
+                    </a>
+                  ))}
+                </div>
+
+                {trip.travelers > 1 && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
+                    <p className="text-sm text-amber-700">
+                      <strong>Tipp:</strong> Mit {trip.travelers} Reisenden lohnt sich oft ein Familientarif
+                      oder eine Gruppenversicherung.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Timeline Tab */}
+            {activeTab === "timeline" && (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-100 rounded-2xl p-5">
+                  <div className="flex items-start gap-3">
+                    <Calendar className="w-5 h-5 text-blue-500 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">
+                        Deine Reise-Timeline
+                      </p>
+                      <p className="text-sm text-blue-600 mt-1">
+                        Übersicht deiner gesamten Reise – Route, Stopps und Bucket List auf einen Blick.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trip Summary */}
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                  <h3 className="font-semibold text-gray-900 mb-4">Reise-Zusammenfassung</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {trip.stops.filter((s) => s.name.trim()).length}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">Orte</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {routeInfo?.distance || "—"}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">Distanz</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {trip.startDate && trip.endDate
+                          ? Math.ceil(
+                              (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) /
+                                (1000 * 60 * 60 * 24)
+                            )
+                          : "—"}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">Tage</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600">
+                        {trip.bucketList.length}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">Bucket List</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Timeline Steps */}
+                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                  <h3 className="font-semibold text-gray-900 mb-6">Route & Stopps</h3>
+                  <div className="relative">
+                    {trip.stops.filter((s) => s.name.trim()).length > 1 && (
+                      <div className="absolute left-[19px] top-6 bottom-6 w-0.5 bg-gradient-to-b from-blue-400 via-orange-300 to-red-400" />
+                    )}
+                    <div className="space-y-6">
+                      {trip.stops
+                        .filter((s) => s.name.trim())
+                        .map((stop, idx, arr) => (
+                          <div key={stop.id} className="relative flex items-start gap-4">
+                            <div
+                              className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                stop.type === "start"
+                                  ? "bg-blue-500"
+                                  : stop.type === "end"
+                                  ? "bg-red-500"
+                                  : "bg-orange-400"
+                              }`}
+                            >
+                              {stop.type === "start" ? (
+                                <CircleDot className="w-5 h-5 text-white" />
+                              ) : stop.type === "end" ? (
+                                <Flag className="w-5 h-5 text-white" />
+                              ) : (
+                                <MapPin className="w-5 h-5 text-white" />
+                              )}
+                            </div>
+                            <div className="flex-1 pt-1.5">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-medium text-gray-900">{stop.name}</h4>
+                                <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
+                                  {stop.type === "start"
+                                    ? "Start"
+                                    : stop.type === "end"
+                                    ? "Ziel"
+                                    : `Stopp ${idx}`}
+                                </span>
+                              </div>
+                              {idx === 0 && trip.startDate && (
+                                <p className="text-xs text-gray-400 mt-1">
+                                  Abreise: {formatDate(trip.startDate)}
+                                </p>
+                              )}
+                              {idx === arr.length - 1 && trip.endDate && (
+                                <p className="text-xs text-gray-400 mt-1">
+                                  Ankunft: {formatDate(trip.endDate)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+
+                    {trip.stops.filter((s) => s.name.trim()).length === 0 && (
+                      <div className="text-center py-6">
+                        <Navigation className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                        <p className="text-sm text-gray-400">Keine Route geplant. Füge Orte im Route-Tab hinzu.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bucket List in Timeline */}
+                {trip.bucketList.length > 0 && (
+                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                    <h3 className="font-semibold text-gray-900 mb-4">
+                      Bucket List ({trip.bucketList.length})
+                    </h3>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {trip.bucketList.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-3 bg-green-50 rounded-xl px-4 py-3"
+                        >
+                          <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <MapPin className="w-4 h-4 text-green-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-gray-800 truncate">
+                              {item.name}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-gray-400">
+                              <span>{item.category}</span>
+                              <span className="flex items-center gap-0.5">
+                                <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                                {item.rating}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {trip.notes && (
+                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                    <h3 className="font-semibold text-gray-900 mb-3">Notizen</h3>
+                    <p className="text-sm text-gray-600 whitespace-pre-wrap">{trip.notes}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
