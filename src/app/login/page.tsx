@@ -30,8 +30,11 @@ const errorMessages: Record<string, string> = {
   "User already registered": "Diese E-Mail ist bereits registriert. Versuche dich anzumelden.",
   "Password should be at least 6 characters": "Das Passwort muss mindestens 6 Zeichen lang sein.",
   "Unable to validate email address: invalid format": "Ungültiges E-Mail-Format.",
-  "Email rate limit exceeded": "Zu viele Versuche. Bitte warte einen Moment.",
+  "Email rate limit exceeded": "Zu viele Versuche. Bitte warte 5–10 Minuten und versuche es dann erneut.",
+  "rate limit exceeded": "Zu viele Versuche. Bitte warte 5–10 Minuten und versuche es dann erneut.",
+  "over_email_send_rate_limit": "E-Mail-Limit erreicht. Bitte warte einige Minuten.",
   "Signup requires a valid password": "Bitte gib ein gültiges Passwort ein.",
+  "For security purposes": "Aus Sicherheitsgründen: Bitte warte einige Minuten vor dem nächsten Versuch.",
 };
 
 function translateError(msg: string): string {
