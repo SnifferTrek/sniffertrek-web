@@ -33,6 +33,9 @@ import {
   Globe,
   GripVertical,
   Zap,
+  BedDouble,
+  Clock,
+  Route,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -40,6 +43,8 @@ import {
   TravelMode,
   RouteStop,
   BucketListItem,
+  RouteLegInfo,
+  Etappe,
 } from "@/lib/types";
 import {
   createNewTrip,
@@ -88,6 +93,7 @@ export default function PlanerPage() {
     distance: string;
     duration: string;
     stops: number;
+    legs: RouteLegInfo[];
   } | null>(null);
   const [savedTrips, setSavedTrips] = useState<Trip[]>([]);
   const [showTripList, setShowTripList] = useState(false);
@@ -196,6 +202,84 @@ export default function PlanerPage() {
       stops: trip.stops.map((s) => (s.id === id ? { ...s, name } : s)),
     });
   };
+
+  const toggleHotel = (id: string) => {
+    updateTrip({
+      stops: trip.stops.map((s) =>
+        s.id === id ? { ...s, isHotel: !s.isHotel } : s
+      ),
+    });
+  };
+
+  const etappen: Etappe[] = (() => {
+    if (!routeInfo?.legs?.length) return [];
+
+    const hotelStopNames = trip.stops
+      .filter((s) => s.type === "stop" && s.isHotel && s.name.trim())
+      .map((s) => s.name.toLowerCase());
+
+    if (hotelStopNames.length === 0) {
+      const totalKm = routeInfo.legs.reduce((sum, l) => sum + l.distanceMeters, 0);
+      const totalSec = routeInfo.legs.reduce((sum, l) => sum + l.durationSeconds, 0);
+      const startName = trip.stops.find((s) => s.type === "start")?.name || "Start";
+      const endName = trip.stops.find((s) => s.type === "end")?.name || "Ziel";
+      return [{
+        index: 0,
+        label: "Etappe 1",
+        from: startName,
+        to: endName,
+        legs: routeInfo.legs,
+        distanceKm: Math.round(totalKm / 1000),
+        durationFormatted: formatDur(totalSec),
+      }];
+    }
+
+    const result: Etappe[] = [];
+    let currentLegs: RouteLegInfo[] = [];
+    let etappeIdx = 0;
+    const startName = trip.stops.find((s) => s.type === "start")?.name || "Start";
+    let etappeFrom = startName;
+
+    for (const leg of routeInfo.legs) {
+      currentLegs.push(leg);
+      const toNorm = leg.to.toLowerCase();
+      const isHotelLeg = hotelStopNames.some((h) => toNorm.includes(h) || h.includes(toNorm.split(",")[0]));
+
+      if (isHotelLeg) {
+        const km = currentLegs.reduce((s, l) => s + l.distanceMeters, 0);
+        const sec = currentLegs.reduce((s, l) => s + l.durationSeconds, 0);
+        result.push({
+          index: etappeIdx,
+          label: `Etappe ${etappeIdx + 1}`,
+          from: etappeFrom,
+          to: leg.to.split(",")[0],
+          legs: [...currentLegs],
+          distanceKm: Math.round(km / 1000),
+          durationFormatted: formatDur(sec),
+        });
+        etappeFrom = leg.to.split(",")[0];
+        currentLegs = [];
+        etappeIdx++;
+      }
+    }
+
+    if (currentLegs.length > 0) {
+      const km = currentLegs.reduce((s, l) => s + l.distanceMeters, 0);
+      const sec = currentLegs.reduce((s, l) => s + l.durationSeconds, 0);
+      const endName = trip.stops.find((s) => s.type === "end")?.name || "Ziel";
+      result.push({
+        index: etappeIdx,
+        label: `Etappe ${etappeIdx + 1}`,
+        from: etappeFrom,
+        to: endName,
+        legs: [...currentLegs],
+        distanceKm: Math.round(km / 1000),
+        durationFormatted: formatDur(sec),
+      });
+    }
+
+    return result;
+  })();
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
@@ -553,11 +637,13 @@ export default function PlanerPage() {
                         <div className="w-5 flex-shrink-0" />
                       )}
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-transform ${
+                        className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
                           stop.type === "start"
                             ? "bg-blue-500"
                             : stop.type === "end"
                             ? "bg-red-500"
+                            : stop.isHotel
+                            ? "bg-purple-500"
                             : "bg-orange-400"
                         }`}
                       >
@@ -565,6 +651,8 @@ export default function PlanerPage() {
                           <CircleDot className="w-5 h-5 text-white" />
                         ) : stop.type === "end" ? (
                           <Flag className="w-5 h-5 text-white" />
+                        ) : stop.isHotel ? (
+                          <BedDouble className="w-5 h-5 text-white" />
                         ) : (
                           <MapPin className="w-5 h-5 text-white" />
                         )}
@@ -586,11 +674,26 @@ export default function PlanerPage() {
                               ? "Startort eingeben..."
                               : stop.type === "end"
                               ? "Zielort eingeben..."
+                              : stop.isHotel
+                              ? "Hotelort eingeben..."
                               : "Zwischenstopp..."
                           }
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         />
                       </div>
+                      {stop.type === "stop" && (
+                        <button
+                          onClick={() => toggleHotel(stop.id)}
+                          className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
+                            stop.isHotel
+                              ? "text-purple-500 bg-purple-50 hover:bg-purple-100"
+                              : "text-gray-300 hover:text-purple-500 hover:bg-purple-50"
+                          }`}
+                          title={stop.isHotel ? "Hotel entfernen" : "Als Hotel markieren"}
+                        >
+                          <BedDouble className="w-4 h-4" />
+                        </button>
+                      )}
                       {stop.type === "stop" && (
                         <button
                           onClick={() => removeStop(stop.id)}
@@ -849,6 +952,65 @@ export default function PlanerPage() {
                     </button>
                   )}
                 </div>
+
+                {/* Etappen Breakdown */}
+                {etappen.length > 1 && (
+                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-3 mb-4">
+                      <Route className="w-5 h-5 text-purple-500" />
+                      <h3 className="font-semibold text-gray-900">
+                        Tagesetappen ({etappen.length})
+                      </h3>
+                    </div>
+                    <div className="space-y-3">
+                      {etappen.map((etappe) => (
+                        <div
+                          key={etappe.index}
+                          className="relative flex items-stretch gap-3"
+                        >
+                          <div className="flex flex-col items-center">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                              etappe.index === 0
+                                ? "bg-blue-500"
+                                : etappe.index === etappen.length - 1
+                                ? "bg-red-500"
+                                : "bg-purple-500"
+                            }`}>
+                              {etappe.index + 1}
+                            </div>
+                            {etappe.index < etappen.length - 1 && (
+                              <div className="w-0.5 flex-1 bg-gray-200 mt-1" />
+                            )}
+                          </div>
+                          <div className="flex-1 pb-4">
+                            <div className="text-sm font-semibold text-gray-900">
+                              {etappe.label}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {etappe.from} → {etappe.to}
+                            </div>
+                            <div className="flex items-center gap-3 mt-1.5">
+                              <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                                <Navigation className="w-3 h-3" />
+                                {etappe.distanceKm.toLocaleString("de-CH")} km
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded-full">
+                                <Clock className="w-3 h-3" />
+                                {etappe.durationFormatted}
+                              </span>
+                            </div>
+                            {etappe.index < etappen.length - 1 && (
+                              <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">
+                                <BedDouble className="w-3 h-3" />
+                                Übernachtung in {etappe.to}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -1682,4 +1844,10 @@ export default function PlanerPage() {
       </div>
     </div>
   );
+}
+
+function formatDur(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
 }

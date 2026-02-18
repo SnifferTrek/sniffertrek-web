@@ -4,6 +4,24 @@ export interface RouteStop {
   id: string;
   name: string;
   type: "start" | "stop" | "end";
+  isHotel?: boolean;
+}
+
+export interface RouteLegInfo {
+  from: string;
+  to: string;
+  distanceMeters: number;
+  durationSeconds: number;
+}
+
+export interface Etappe {
+  index: number;
+  label: string;
+  from: string;
+  to: string;
+  legs: RouteLegInfo[];
+  distanceKm: number;
+  durationFormatted: string;
 }
 
 export interface PlannedHotel {

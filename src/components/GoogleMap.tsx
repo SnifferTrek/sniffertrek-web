@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { RouteStop } from "@/lib/types";
+import { RouteStop, RouteLegInfo } from "@/lib/types";
 
 const GOOGLE_MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "";
 
@@ -11,6 +11,7 @@ interface RouteInfo {
   distance: string;
   duration: string;
   stops: number;
+  legs: RouteLegInfo[];
 }
 
 interface GoogleMapProps {
@@ -129,7 +130,7 @@ export default function GoogleMap({
     const end = filledStops.find((s) => s.type === "end");
 
     if (!start || !end) {
-      onRouteCalculated?.({ distance: "", duration: "", stops: 0 });
+      onRouteCalculated?.({ distance: "", duration: "", stops: 0, legs: [] });
       return;
     }
 
@@ -163,12 +164,15 @@ export default function GoogleMap({
         renderer.setDirections(result);
         renderers.current.push(renderer);
 
-        const { distance, duration } = sumLegs(result.routes[0]?.legs || []);
+        const googleLegs = result.routes[0]?.legs || [];
+        const { distance, duration } = sumLegs(googleLegs);
+        const legInfos = extractLegInfos(googleLegs);
 
         onRouteCalculated?.({
           distance: formatDistance(distance),
           duration: formatDuration(duration),
           stops: waypointStops.length,
+          legs: legInfos,
         });
 
         if (shouldOptimize && result.routes[0]?.waypoint_order && waypointStops.length >= 2) {
@@ -209,6 +213,7 @@ export default function GoogleMap({
 
         let totalDistance = 0;
         let totalDuration = 0;
+        const allLegInfos: RouteLegInfo[] = [];
         const colors = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"];
 
         for (let s = 0; s < segments.length; s++) {
@@ -235,9 +240,11 @@ export default function GoogleMap({
           renderer.setDirections(result);
           renderers.current.push(renderer);
 
-          const legResult = sumLegs(result.routes[0]?.legs || []);
+          const googleLegs = result.routes[0]?.legs || [];
+          const legResult = sumLegs(googleLegs);
           totalDistance += legResult.distance;
           totalDuration += legResult.duration;
+          allLegInfos.push(...extractLegInfos(googleLegs));
         }
 
         // Place custom markers for all stops
@@ -292,6 +299,7 @@ export default function GoogleMap({
           distance: formatDistance(totalDistance),
           duration: formatDuration(totalDuration),
           stops: waypointStops.length,
+          legs: allLegInfos,
         });
       }
 
@@ -352,6 +360,15 @@ export default function GoogleMap({
       )}
     </div>
   );
+}
+
+function extractLegInfos(legs: google.maps.DirectionsLeg[]): RouteLegInfo[] {
+  return legs.map((leg) => ({
+    from: leg.start_address || "",
+    to: leg.end_address || "",
+    distanceMeters: leg.distance?.value || 0,
+    durationSeconds: leg.duration?.value || 0,
+  }));
 }
 
 function sumLegs(legs: google.maps.DirectionsLeg[]): { distance: number; duration: number } {
