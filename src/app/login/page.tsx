@@ -35,6 +35,9 @@ const errorMessages: Record<string, string> = {
   "over_email_send_rate_limit": "E-Mail-Limit erreicht. Bitte warte einige Minuten.",
   "Signup requires a valid password": "Bitte gib ein gültiges Passwort ein.",
   "For security purposes": "Aus Sicherheitsgründen: Bitte warte einige Minuten vor dem nächsten Versuch.",
+  "Load failed": "Netzwerkfehler. Bitte prüfe deine Internetverbindung, deaktiviere Ad-Blocker und versuche es erneut.",
+  "Failed to fetch": "Netzwerkfehler. Bitte prüfe deine Internetverbindung und versuche es erneut.",
+  "NetworkError": "Netzwerkfehler. Bitte versuche es erneut oder nutze einen anderen Browser.",
 };
 
 function translateError(msg: string): string {
