@@ -28,6 +28,9 @@ import {
   Check,
   BookmarkPlus,
   LogIn,
+  Smartphone,
+  Shield,
+  Globe,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -50,6 +53,27 @@ import {
 import { saveTripToCloud, deleteTripFromCloud } from "@/lib/cloudSync";
 import { useAuth } from "@/components/AuthProvider";
 import GoogleMap, { useGoogleAutocomplete } from "@/components/GoogleMap";
+import {
+  buildBookingHotelLink,
+  buildExpediaHotelLink,
+  buildHotelsComLink,
+  buildAgodaHotelLink,
+  buildHostelworldLink,
+  buildGoogleFlightsLink,
+  buildBookingFlightsLink,
+  buildSkyscannerLink,
+  buildKayakLink,
+  buildBookingCarsLink,
+  buildRentalcarsLink,
+  buildBilligerMietwagenLink,
+  buildAiraloLink,
+  buildHolaflyLink,
+  buildNomadEsimLink,
+  buildGetYourGuideLink,
+  buildViatorLink,
+  buildTrainlineLink,
+  buildOmioLink,
+} from "@/lib/affiliateLinks";
 
 export default function PlanerPage() {
   const { user } = useAuth();
@@ -64,7 +88,7 @@ export default function PlanerPage() {
   const [showTripList, setShowTripList] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
   const [activeTab, setActiveTab] = useState<
-    "route" | "hotels" | "flights" | "car" | "poi"
+    "route" | "hotels" | "flights" | "car" | "poi" | "esim" | "train"
   >("route");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -187,35 +211,21 @@ export default function PlanerPage() {
     { id: "hotels" as const, label: "Hotels", icon: Hotel },
     { id: "flights" as const, label: "Flüge", icon: Plane },
     { id: "car" as const, label: "Mietwagen", icon: Car },
+    { id: "train" as const, label: "Züge", icon: Train },
+    { id: "esim" as const, label: "eSIM", icon: Smartphone },
     { id: "poi" as const, label: "Entdecken", icon: Compass },
   ];
 
-  const sampleHotels = [
-    {
-      name: "Ibis Styles Barcelona Centre",
-      stars: 3,
-      rating: 8.1,
-      price: 89,
-      image: "bg-gradient-to-br from-blue-100 to-blue-200",
-      provider: "Booking.com",
-    },
-    {
-      name: "Catalonia Plaza Mayor",
-      stars: 4,
-      rating: 8.7,
-      price: 142,
-      image: "bg-gradient-to-br from-purple-100 to-purple-200",
-      provider: "Expedia",
-    },
-    {
-      name: "H10 Metropolitan",
-      stars: 4,
-      rating: 9.0,
-      price: 198,
-      image: "bg-gradient-to-br from-amber-100 to-amber-200",
-      provider: "Hotels.com",
-    },
-  ];
+  const destination = trip.stops.find((s) => s.type === "end")?.name || "";
+  const origin = trip.stops.find((s) => s.type === "start")?.name || "";
+
+  const searchParams = {
+    destination,
+    origin,
+    checkIn: trip.startDate,
+    checkOut: trip.endDate,
+    travelers: trip.travelers,
+  };
 
   const samplePOIs = [
     {
@@ -681,72 +691,96 @@ export default function PlanerPage() {
             {/* Hotels Tab */}
             {activeTab === "hotels" && (
               <div className="space-y-6">
-                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
-                  <div className="flex items-start gap-3">
-                    <Sparkles className="w-5 h-5 text-blue-500 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">
-                        Beispiel-Vorschau
-                      </p>
-                      <p className="text-sm text-blue-600 mt-1">
-                        Gib eine Route und Reisedaten ein, um aktuelle
-                        Hotel-Angebote der besten Anbieter zu vergleichen.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {sampleHotels.map((hotel) => (
-                    <div
-                      key={hotel.name}
-                      className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex flex-col sm:flex-row">
-                        <div
-                          className={`${hotel.image} w-full sm:w-48 h-36 sm:h-auto flex items-center justify-center`}
-                        >
-                          <Hotel className="w-10 h-10 text-gray-400/50" />
-                        </div>
-                        <div className="flex-1 p-5">
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <h4 className="font-semibold text-gray-900">
-                                {hotel.name}
-                              </h4>
-                              <div className="flex items-center gap-1 mt-1">
-                                {Array.from({ length: hotel.stars }).map(
-                                  (_, i) => (
-                                    <Star
-                                      key={i}
-                                      className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400"
-                                    />
-                                  )
-                                )}
-                                <span className="text-xs text-gray-400 ml-2">
-                                  {hotel.rating}/10
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-400 mt-2">
-                                via {hotel.provider}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-2xl font-bold text-gray-900">
-                                CHF {hotel.price}
-                              </div>
-                              <div className="text-xs text-gray-400">
-                                pro Nacht
-                              </div>
-                            </div>
-                          </div>
-                          <button className="mt-4 flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium">
-                            Angebot ansehen
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                {!destination && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-blue-500 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-800">Tipp</p>
+                        <p className="text-sm text-blue-600 mt-1">
+                          Gib zuerst ein Reiseziel und Reisedaten ein, damit die
+                          Suchergebnisse bei den Anbietern vorausgefüllt werden.
+                        </p>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    {
+                      name: "Booking.com",
+                      commission: "bis 25%",
+                      color: "from-blue-600 to-blue-700",
+                      bg: "bg-blue-50",
+                      textColor: "text-blue-700",
+                      link: buildBookingHotelLink(searchParams),
+                      desc: "Weltweit grösste Hotel-Plattform",
+                    },
+                    {
+                      name: "Expedia",
+                      commission: "4–6%",
+                      color: "from-yellow-500 to-yellow-600",
+                      bg: "bg-yellow-50",
+                      textColor: "text-yellow-700",
+                      link: buildExpediaHotelLink(searchParams),
+                      desc: "Hotels, Pakete & mehr",
+                    },
+                    {
+                      name: "Hotels.com",
+                      commission: "3–6%",
+                      color: "from-red-500 to-red-600",
+                      bg: "bg-red-50",
+                      textColor: "text-red-700",
+                      link: buildHotelsComLink(searchParams),
+                      desc: "Sammle 10 Nächte, 1 gratis",
+                    },
+                    {
+                      name: "Agoda",
+                      commission: "4–7%",
+                      color: "from-purple-500 to-purple-600",
+                      bg: "bg-purple-50",
+                      textColor: "text-purple-700",
+                      link: buildAgodaHotelLink(searchParams),
+                      desc: "Spezialist für Asien & weltweit",
+                    },
+                    {
+                      name: "Hostelworld",
+                      commission: "20%",
+                      color: "from-orange-500 to-orange-600",
+                      bg: "bg-orange-50",
+                      textColor: "text-orange-700",
+                      link: buildHostelworldLink(searchParams),
+                      desc: "Budget-Unterkünfte & Hostels",
+                    },
+                  ].map((provider) => (
+                    <a
+                      key={provider.name}
+                      href={provider.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-12 h-12 ${provider.bg} rounded-xl flex items-center justify-center`}>
+                          <Hotel className={`w-6 h-6 ${provider.textColor}`} />
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
+                      <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
+                      {destination && (
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
+                          <span className="font-medium">{destination}</span>
+                          {trip.startDate && ` · ${formatDate(trip.startDate)}`}
+                          {trip.endDate && ` – ${formatDate(trip.endDate)}`}
+                        </div>
+                      )}
+                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.textColor} ${provider.bg} px-2.5 py-1 rounded-full`}>
+                        <Search className="w-3 h-3" />
+                        Hotels suchen
+                      </div>
+                    </a>
                   ))}
                 </div>
               </div>
@@ -754,42 +788,297 @@ export default function PlanerPage() {
 
             {/* Flights Tab */}
             {activeTab === "flights" && (
-              <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
-                <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Plane className="w-8 h-8 text-blue-500" />
+              <div className="space-y-6">
+                {(!origin || !destination) && (
+                  <div className="bg-cyan-50 border border-cyan-100 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-cyan-500 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-cyan-800">Tipp</p>
+                        <p className="text-sm text-cyan-600 mt-1">
+                          Gib Start- und Zielort ein, um Flug-Suchergebnisse
+                          vorausgefüllt zu erhalten.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {[
+                    {
+                      name: "Google Flights",
+                      desc: "Umfassender Preisvergleich",
+                      color: "text-blue-700",
+                      bg: "bg-blue-50",
+                      link: buildGoogleFlightsLink(searchParams),
+                    },
+                    {
+                      name: "Booking.com Flights",
+                      desc: "Direktbuchung mit Bestpreis",
+                      color: "text-indigo-700",
+                      bg: "bg-indigo-50",
+                      link: buildBookingFlightsLink(searchParams),
+                    },
+                    {
+                      name: "Skyscanner",
+                      desc: "Vergleicht hunderte Airlines",
+                      color: "text-cyan-700",
+                      bg: "bg-cyan-50",
+                      link: buildSkyscannerLink(searchParams),
+                    },
+                    {
+                      name: "Kayak",
+                      desc: "Flexible Suche & Preisalarm",
+                      color: "text-orange-700",
+                      bg: "bg-orange-50",
+                      link: buildKayakLink(searchParams),
+                    },
+                  ].map((provider) => (
+                    <a
+                      key={provider.name}
+                      href={provider.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-12 h-12 ${provider.bg} rounded-xl flex items-center justify-center`}>
+                          <Plane className={`w-6 h-6 ${provider.color}`} />
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
+                      <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
+                      {origin && destination && (
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
+                          <span className="font-medium">{origin}</span>
+                          <ArrowRight className="w-3 h-3 inline mx-1.5" />
+                          <span className="font-medium">{destination}</span>
+                          {trip.startDate && ` · ${formatDate(trip.startDate)}`}
+                        </div>
+                      )}
+                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
+                        <Search className="w-3 h-3" />
+                        Flüge suchen
+                      </div>
+                    </a>
+                  ))}
                 </div>
-                <h3 className="font-semibold text-gray-900 text-lg mb-2">
-                  Flüge vergleichen
-                </h3>
-                <p className="text-gray-500 text-sm max-w-md mx-auto mb-6">
-                  Gib Reisedaten und Zielort ein, um Flüge von hunderten
-                  Airlines zu vergleichen. Wir durchsuchen Skyscanner, Kayak und
-                  mehr.
-                </p>
-                <button className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors">
-                  <Search className="w-4 h-4" />
-                  Flüge suchen
-                </button>
               </div>
             )}
 
             {/* Car Tab */}
             {activeTab === "car" && (
-              <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
-                <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Car className="w-8 h-8 text-orange-500" />
+              <div className="space-y-6">
+                {!destination && (
+                  <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-orange-500 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-orange-800">Tipp</p>
+                        <p className="text-sm text-orange-600 mt-1">
+                          Gib ein Reiseziel ein, um Mietwagen-Angebote vorausgefüllt zu vergleichen.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    {
+                      name: "Booking.com Cars",
+                      desc: "Mietwagen weltweit vergleichen",
+                      color: "text-blue-700",
+                      bg: "bg-blue-50",
+                      link: buildBookingCarsLink(searchParams),
+                    },
+                    {
+                      name: "Rentalcars.com",
+                      desc: "Über 900 Anbieter vergleichen",
+                      color: "text-green-700",
+                      bg: "bg-green-50",
+                      link: buildRentalcarsLink(searchParams),
+                    },
+                    {
+                      name: "billiger-mietwagen.de",
+                      desc: "Deutscher Preisvergleich",
+                      color: "text-orange-700",
+                      bg: "bg-orange-50",
+                      link: buildBilligerMietwagenLink(searchParams),
+                    },
+                  ].map((provider) => (
+                    <a
+                      key={provider.name}
+                      href={provider.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-12 h-12 ${provider.bg} rounded-xl flex items-center justify-center`}>
+                          <Car className={`w-6 h-6 ${provider.color}`} />
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
+                      <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
+                      {destination && (
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
+                          <span className="font-medium">{destination}</span>
+                          {trip.startDate && ` · ab ${formatDate(trip.startDate)}`}
+                        </div>
+                      )}
+                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
+                        <Search className="w-3 h-3" />
+                        Mietwagen suchen
+                      </div>
+                    </a>
+                  ))}
                 </div>
-                <h3 className="font-semibold text-gray-900 text-lg mb-2">
-                  Mietwagen finden
-                </h3>
-                <p className="text-gray-500 text-sm max-w-md mx-auto mb-6">
-                  Vergleiche Mietwagen von Europcar, Hertz, Sixt und mehr. Von
-                  Kleinwagen bis Luxusklasse – zum besten Preis.
-                </p>
-                <button className="inline-flex items-center gap-2 bg-orange-50 text-orange-700 px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors">
-                  <Search className="w-4 h-4" />
-                  Mietwagen suchen
-                </button>
+              </div>
+            )}
+
+            {/* Train Tab */}
+            {activeTab === "train" && (
+              <div className="space-y-6">
+                {(!origin || !destination) && (
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5">
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-5 h-5 text-indigo-500 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-indigo-800">Tipp</p>
+                        <p className="text-sm text-indigo-600 mt-1">
+                          Gib Start- und Zielort ein, um Zugverbindungen vorausgefüllt zu suchen.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {[
+                    {
+                      name: "Trainline",
+                      desc: "Europaweit Züge & Busse buchen",
+                      color: "text-teal-700",
+                      bg: "bg-teal-50",
+                      link: buildTrainlineLink(searchParams),
+                    },
+                    {
+                      name: "Omio",
+                      desc: "Zug, Bus & Flug vergleichen",
+                      color: "text-indigo-700",
+                      bg: "bg-indigo-50",
+                      link: buildOmioLink(searchParams),
+                    },
+                  ].map((provider) => (
+                    <a
+                      key={provider.name}
+                      href={provider.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-12 h-12 ${provider.bg} rounded-xl flex items-center justify-center`}>
+                          <Train className={`w-6 h-6 ${provider.color}`} />
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
+                      <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
+                      {origin && destination && (
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
+                          <span className="font-medium">{origin}</span>
+                          <ArrowRight className="w-3 h-3 inline mx-1.5" />
+                          <span className="font-medium">{destination}</span>
+                          {trip.startDate && ` · ${formatDate(trip.startDate)}`}
+                        </div>
+                      )}
+                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
+                        <Search className="w-3 h-3" />
+                        Züge suchen
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* eSIM Tab */}
+            {activeTab === "esim" && (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-r from-pink-50 to-purple-50 border border-pink-100 rounded-2xl p-5">
+                  <div className="flex items-start gap-3">
+                    <Globe className="w-5 h-5 text-pink-500 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-pink-800">
+                        eSIM – Internet im Ausland
+                      </p>
+                      <p className="text-sm text-pink-600 mt-1">
+                        Bleibe weltweit verbunden ohne teure Roaming-Kosten.
+                        Kaufe eine eSIM vor der Abreise und aktiviere sie am Zielort.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-3 gap-4">
+                  {[
+                    {
+                      name: "Airalo",
+                      desc: "200+ Länder & Regionen abgedeckt",
+                      commission: "10–20%",
+                      color: "text-blue-700",
+                      bg: "bg-blue-50",
+                      link: buildAiraloLink(destination),
+                    },
+                    {
+                      name: "Holafly",
+                      desc: "Unbegrenzte Daten in 100+ Ländern",
+                      commission: "10–15%",
+                      color: "text-green-700",
+                      bg: "bg-green-50",
+                      link: buildHolaflyLink(destination),
+                    },
+                    {
+                      name: "Nomad eSIM",
+                      desc: "Günstige Datentarife weltweit",
+                      commission: "10–20%",
+                      color: "text-purple-700",
+                      bg: "bg-purple-50",
+                      link: buildNomadEsimLink(destination),
+                    },
+                  ].map((provider) => (
+                    <a
+                      key={provider.name}
+                      href={provider.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className={`w-12 h-12 ${provider.bg} rounded-xl flex items-center justify-center`}>
+                          <Smartphone className={`w-6 h-6 ${provider.color}`} />
+                        </div>
+                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                      </div>
+                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
+                      <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
+                      {destination && (
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
+                          Ziel: <span className="font-medium">{destination}</span>
+                        </div>
+                      )}
+                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
+                        <Search className="w-3 h-3" />
+                        eSIM finden
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -811,64 +1100,125 @@ export default function PlanerPage() {
                   </div>
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-4">
-                  {samplePOIs.map((poi) => {
-                    const added = isInBucketList(poi.name);
-                    return (
-                      <div
-                        key={poi.name}
-                        className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer group"
+                {/* Aktivitäten-Anbieter */}
+                {destination && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                      Touren & Aktivitäten buchen
+                    </h3>
+                    <div className="grid sm:grid-cols-2 gap-4 mb-6">
+                      <a
+                        href={buildGetYourGuideLink(destination)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
                       >
                         <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                              {poi.name}
-                            </h4>
-                            <span className="text-xs text-gray-400">
-                              {poi.category}
-                            </span>
+                          <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
+                            <MapPin className="w-6 h-6 text-orange-600" />
                           </div>
-                          <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
-                            <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
-                            <span className="text-xs font-medium text-yellow-700">
-                              {poi.rating}
-                            </span>
-                          </div>
+                          <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
                         </div>
-                        <p className="text-sm text-gray-500">
-                          {poi.description}
-                        </p>
-                        <button
-                          onClick={() =>
-                            added
-                              ? removeFromBucketList(
-                                  trip.bucketList.find(
-                                    (b) => b.name === poi.name
-                                  )!.id
-                                )
-                              : addToBucketList(poi)
-                          }
-                          className={`mt-3 flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                            added
-                              ? "text-green-600"
-                              : "text-blue-600 hover:text-blue-700"
-                          }`}
+                        <h4 className="font-semibold text-gray-900 mb-1">GetYourGuide</h4>
+                        <p className="text-xs text-gray-400 mb-3">Touren, Tickets & Aktivitäten</p>
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
+                          Aktivitäten in <span className="font-medium">{destination}</span>
+                        </div>
+                        <div className="inline-flex items-center gap-1 text-xs font-medium text-orange-700 bg-orange-50 px-2.5 py-1 rounded-full">
+                          <Search className="w-3 h-3" />
+                          Aktivitäten entdecken
+                        </div>
+                      </a>
+                      <a
+                        href={buildViatorLink(destination)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
+                            <Compass className="w-6 h-6 text-green-600" />
+                          </div>
+                          <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                        </div>
+                        <h4 className="font-semibold text-gray-900 mb-1">Viator</h4>
+                        <p className="text-xs text-gray-400 mb-3">Erlebnisse & Touren von TripAdvisor</p>
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
+                          Erlebnisse in <span className="font-medium">{destination}</span>
+                        </div>
+                        <div className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2.5 py-1 rounded-full">
+                          <Search className="w-3 h-3" />
+                          Touren entdecken
+                        </div>
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bucket List POIs */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                    Sehenswürdigkeiten
+                  </h3>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    {samplePOIs.map((poi) => {
+                      const added = isInBucketList(poi.name);
+                      return (
+                        <div
+                          key={poi.name}
+                          className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow cursor-pointer group"
                         >
-                          {added ? (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              In Bucket List
-                            </>
-                          ) : (
-                            <>
-                              <Plus className="w-3.5 h-3.5" />
-                              Zur Bucket List
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                                {poi.name}
+                              </h4>
+                              <span className="text-xs text-gray-400">
+                                {poi.category}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
+                              <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
+                              <span className="text-xs font-medium text-yellow-700">
+                                {poi.rating}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-500">
+                            {poi.description}
+                          </p>
+                          <button
+                            onClick={() =>
+                              added
+                                ? removeFromBucketList(
+                                    trip.bucketList.find(
+                                      (b) => b.name === poi.name
+                                    )!.id
+                                  )
+                                : addToBucketList(poi)
+                            }
+                            className={`mt-3 flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                              added
+                                ? "text-green-600"
+                                : "text-blue-600 hover:text-blue-700"
+                            }`}
+                          >
+                            {added ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                In Bucket List
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-3.5 h-3.5" />
+                                Zur Bucket List
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}

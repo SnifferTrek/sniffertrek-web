@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Globe, Map, Menu, X, LogIn, User, LogOut } from "lucide-react";
+import { Globe, Map, Menu, X, LogIn, User, LogOut, Settings } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "./AuthProvider";
 
@@ -35,6 +35,9 @@ export default function Header() {
             </Link>
             <Link href="/meine-reisen" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
               Meine Reisen
+            </Link>
+            <Link href="/admin/partner" className="text-sm text-gray-400 hover:text-gray-600 transition-colors" title="Partner-Verwaltung">
+              <Settings className="w-4 h-4" />
             </Link>
             <Link
               href="/planer"
