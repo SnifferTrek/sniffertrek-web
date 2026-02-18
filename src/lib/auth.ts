@@ -83,6 +83,16 @@ export async function resetPassword(
   return { error: null };
 }
 
+export async function updatePassword(
+  newPassword: string
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
 export async function signOut(): Promise<void> {
   if (!isSupabaseConfigured()) return;
   await supabase.auth.signOut();
