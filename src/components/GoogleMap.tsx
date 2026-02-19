@@ -418,7 +418,7 @@ export function useGoogleAutocomplete() {
       inputElement.dataset.autocompleteAttached = "true";
 
       const autocomplete = new google.maps.places.Autocomplete(inputElement, {
-        types: ["(cities)"],
+        types: ["geocode"],
         fields: ["formatted_address", "name", "geometry"],
       });
 
