@@ -120,20 +120,13 @@ export default function HotelDatePicker({ checkIn, checkOut, nights, onSelect }:
       <button
         type="button"
         onClick={handleOpen}
-        className="w-full flex items-center rounded-lg border border-gray-200 hover:border-blue-300 bg-white transition-colors cursor-pointer"
+        className="w-full flex items-center gap-2 rounded-lg border border-gray-200 hover:border-blue-300 bg-white transition-colors cursor-pointer px-3 py-1.5"
       >
-        <div className="flex-1 px-3 py-1.5 text-left">
-          <span className="block text-[9px] text-gray-400 uppercase tracking-wider font-semibold leading-none mb-0.5">Check-in</span>
-          <span className="block text-xs font-medium text-gray-900">{fmtFull(checkIn)}</span>
-        </div>
-        <div className="px-2 text-[11px] text-gray-500 font-medium shrink-0">
-          {nights} {nights === 1 ? "Nacht" : "Nächte"}
-        </div>
-        <div className="flex-1 px-3 py-1.5 text-left">
-          <span className="block text-[9px] text-gray-400 uppercase tracking-wider font-semibold leading-none mb-0.5">Check-out</span>
-          <span className="block text-xs font-medium text-gray-900">{fmtFull(checkOut)}</span>
-        </div>
-        <Calendar className="w-4 h-4 text-gray-400 mr-2.5 shrink-0" />
+        <Calendar className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+        <span className="text-xs font-medium text-gray-900">{fmtFull(checkIn)}</span>
+        <span className="text-[10px] text-gray-400">–</span>
+        <span className="text-xs font-medium text-gray-900">{fmtFull(checkOut)}</span>
+        <span className="text-[10px] text-gray-400 ml-auto shrink-0">{nights} {nights === 1 ? "Nacht" : "Nächte"}</span>
       </button>
 
       {open && (
