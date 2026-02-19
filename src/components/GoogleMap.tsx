@@ -175,6 +175,7 @@ export default function GoogleMap({
 
   const stopLocation = useCallback((s: RouteStop): string | google.maps.LatLng => {
     if (s.lat != null && s.lng != null) return new google.maps.LatLng(s.lat, s.lng);
+    if (s.bookingAddress) return s.bookingAddress;
     return s.name;
   }, []);
 
