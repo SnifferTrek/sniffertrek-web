@@ -1036,98 +1036,154 @@ export default function PlanerPage() {
             {/* Hotels Tab */}
             {activeTab === "hotels" && (
               <div className="space-y-6">
-                {!destination && (
-                  <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
-                    <div className="flex items-start gap-3">
-                      <Sparkles className="w-5 h-5 text-blue-500 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-blue-800">Tipp</p>
-                        <p className="text-sm text-blue-600 mt-1">
-                          Gib zuerst ein Reiseziel und Reisedaten ein, damit die
-                          Suchergebnisse bei den Anbietern vorausgefüllt werden.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {(() => {
+                  const hotelStops = trip.stops.filter(
+                    (s) => s.type === "stop" && s.isHotel && s.name.trim()
+                  );
+                  const allStopsWithHotelOption = trip.stops.filter(
+                    (s) => s.type === "stop" && s.name.trim()
+                  );
 
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {[
-                    {
-                      name: "Booking.com",
-                      commission: "bis 25%",
-                      color: "from-blue-600 to-blue-700",
-                      bg: "bg-blue-50",
-                      textColor: "text-blue-700",
-                      link: buildBookingHotelLink(searchParams),
-                      desc: "Weltweit grösste Hotel-Plattform",
-                    },
-                    {
-                      name: "Expedia",
-                      commission: "4–6%",
-                      color: "from-yellow-500 to-yellow-600",
-                      bg: "bg-yellow-50",
-                      textColor: "text-yellow-700",
-                      link: buildExpediaHotelLink(searchParams),
-                      desc: "Hotels, Pakete & mehr",
-                    },
-                    {
-                      name: "Hotels.com",
-                      commission: "3–6%",
-                      color: "from-red-500 to-red-600",
-                      bg: "bg-red-50",
-                      textColor: "text-red-700",
-                      link: buildHotelsComLink(searchParams),
-                      desc: "Sammle 10 Nächte, 1 gratis",
-                    },
-                    {
-                      name: "Agoda",
-                      commission: "4–7%",
-                      color: "from-purple-500 to-purple-600",
-                      bg: "bg-purple-50",
-                      textColor: "text-purple-700",
-                      link: buildAgodaHotelLink(searchParams),
-                      desc: "Spezialist für Asien & weltweit",
-                    },
-                    {
-                      name: "Hostelworld",
-                      commission: "20%",
-                      color: "from-orange-500 to-orange-600",
-                      bg: "bg-orange-50",
-                      textColor: "text-orange-700",
-                      link: buildHostelworldLink(searchParams),
-                      desc: "Budget-Unterkünfte & Hostels",
-                    },
-                  ].map((provider) => (
-                    <a
-                      key={provider.name}
-                      href={provider.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className={`w-12 h-12 ${provider.bg} rounded-xl flex items-center justify-center`}>
-                          <Hotel className={`w-6 h-6 ${provider.textColor}`} />
+                  if (allStopsWithHotelOption.length === 0) {
+                    return (
+                      <div className="bg-purple-50 border border-purple-100 rounded-2xl p-6">
+                        <div className="flex items-start gap-3">
+                          <BedDouble className="w-6 h-6 text-purple-500 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-semibold text-purple-800">Noch keine Hotelstopps</p>
+                            <p className="text-sm text-purple-600 mt-1">
+                              Füge im <strong>Route</strong>-Tab Zwischenstopps hinzu und markiere sie mit dem
+                              <BedDouble className="w-3.5 h-3.5 inline mx-1 text-purple-500" />
+                              Hotel-Symbol als Übernachtungsort.
+                            </p>
+                          </div>
                         </div>
-                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
                       </div>
-                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
-                      <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
-                      {destination && (
-                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
-                          <span className="font-medium">{destination}</span>
-                          {trip.startDate && ` · ${formatDate(trip.startDate)}`}
-                          {trip.endDate && ` – ${formatDate(trip.endDate)}`}
+                    );
+                  }
+
+                  return (
+                    <>
+                      {hotelStops.length === 0 && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
+                          <div className="flex items-start gap-3">
+                            <BedDouble className="w-5 h-5 text-amber-500 mt-0.5" />
+                            <p className="text-sm text-amber-700">
+                              Markiere Zwischenstopps im <strong>Route</strong>-Tab mit dem
+                              <BedDouble className="w-3.5 h-3.5 inline mx-1 text-purple-500" />
+                              Symbol als Hotelstopps, damit sie hier erscheinen.
+                            </p>
+                          </div>
                         </div>
                       )}
-                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.textColor} ${provider.bg} px-2.5 py-1 rounded-full`}>
-                        <Search className="w-3 h-3" />
-                        Hotels suchen
-                      </div>
-                    </a>
-                  ))}
-                </div>
+
+                      {hotelStops.length > 0 && (
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                          <div className="flex items-center gap-3 mb-5">
+                            <BedDouble className="w-5 h-5 text-purple-500" />
+                            <h3 className="font-semibold text-gray-900">
+                              Übernachtungen ({hotelStops.length})
+                            </h3>
+                          </div>
+                          <div className="space-y-4">
+                            {hotelStops.map((stop, idx) => {
+                              const stopSearchParams = {
+                                destination: stop.name,
+                                checkIn: trip.startDate || "",
+                                checkOut: trip.endDate || "",
+                                guests: trip.travelers,
+                              };
+                              return (
+                                <div
+                                  key={stop.id}
+                                  className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-5 border border-purple-100"
+                                >
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
+                                      {idx + 1}
+                                    </div>
+                                    <div>
+                                      <h4 className="font-semibold text-gray-900">{stop.name}</h4>
+                                      <p className="text-xs text-gray-500">Übernachtungsstopp</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <a
+                                      href={buildBookingHotelLink(stopSearchParams)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-white px-3 py-2 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
+                                    >
+                                      <Hotel className="w-3.5 h-3.5" />
+                                      Booking.com
+                                      <ExternalLink className="w-3 h-3 text-blue-400" />
+                                    </a>
+                                    <a
+                                      href={buildExpediaHotelLink(stopSearchParams)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 bg-white px-3 py-2 rounded-lg border border-yellow-200 hover:bg-yellow-50 transition-colors"
+                                    >
+                                      <Hotel className="w-3.5 h-3.5" />
+                                      Expedia
+                                      <ExternalLink className="w-3 h-3 text-yellow-400" />
+                                    </a>
+                                    <a
+                                      href={buildHotelsComLink(stopSearchParams)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 bg-white px-3 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
+                                    >
+                                      <Hotel className="w-3.5 h-3.5" />
+                                      Hotels.com
+                                      <ExternalLink className="w-3 h-3 text-red-400" />
+                                    </a>
+                                    <a
+                                      href={buildAgodaHotelLink(stopSearchParams)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-white px-3 py-2 rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors"
+                                    >
+                                      <Hotel className="w-3.5 h-3.5" />
+                                      Agoda
+                                      <ExternalLink className="w-3 h-3 text-purple-400" />
+                                    </a>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Quick-add hotel stops */}
+                      {allStopsWithHotelOption.filter((s) => !s.isHotel).length > 0 && (
+                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                          <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                            Weitere Stopps als Hotel markieren
+                          </h4>
+                          <div className="space-y-2">
+                            {allStopsWithHotelOption
+                              .filter((s) => !s.isHotel)
+                              .map((stop) => (
+                                <button
+                                  key={stop.id}
+                                  onClick={() => toggleHotel(stop.id)}
+                                  className="w-full flex items-center gap-3 px-4 py-3 bg-gray-50 hover:bg-purple-50 rounded-xl transition-colors text-left group"
+                                >
+                                  <MapPin className="w-4 h-4 text-gray-400 group-hover:text-purple-500" />
+                                  <span className="text-sm text-gray-700 group-hover:text-purple-700 font-medium">
+                                    {stop.name}
+                                  </span>
+                                  <BedDouble className="w-4 h-4 text-gray-300 group-hover:text-purple-500 ml-auto" />
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
 
