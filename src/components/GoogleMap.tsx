@@ -115,17 +115,15 @@ export default function GoogleMap({
         const map = new google.maps.Map(mapRef.current, {
           center: { lat: 47.3769, lng: 8.5417 },
           zoom: 6,
-          mapTypeControl: false,
+          mapTypeControl: true,
+          mapTypeControlOptions: {
+            style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+            position: google.maps.ControlPosition.TOP_RIGHT,
+            mapTypeIds: ["roadmap", "satellite", "hybrid"],
+          },
           streetViewControl: false,
           fullscreenControl: true,
           zoomControl: true,
-          styles: [
-            {
-              featureType: "poi",
-              elementType: "labels",
-              stylers: [{ visibility: "off" }],
-            },
-          ],
         });
 
         map.addListener("click", (e: google.maps.MapMouseEvent) => {
