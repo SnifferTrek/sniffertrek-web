@@ -1194,6 +1194,16 @@ export default function PlanerPage() {
 
                                   <div className="flex flex-wrap gap-2">
                                     <a
+                                      href={buildHotelsComLink(stopSearchParams)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 bg-white px-3 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
+                                    >
+                                      <Hotel className="w-3.5 h-3.5" />
+                                      Hotels.com
+                                      <ExternalLink className="w-3 h-3 text-red-400" />
+                                    </a>
+                                    <a
                                       href={buildBookingHotelLink(stopSearchParams)}
                                       target="_blank"
                                       rel="noopener noreferrer"
@@ -1212,16 +1222,6 @@ export default function PlanerPage() {
                                       <Hotel className="w-3.5 h-3.5" />
                                       Expedia
                                       <ExternalLink className="w-3 h-3 text-yellow-400" />
-                                    </a>
-                                    <a
-                                      href={buildHotelsComLink(stopSearchParams)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 bg-white px-3 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
-                                    >
-                                      <Hotel className="w-3.5 h-3.5" />
-                                      Hotels.com
-                                      <ExternalLink className="w-3 h-3 text-red-400" />
                                     </a>
                                     <a
                                       href={buildAgodaHotelLink(stopSearchParams)}

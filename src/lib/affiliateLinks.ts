@@ -54,14 +54,14 @@ export function buildExpediaHotelLink(params: SearchParams): string {
 
 export function buildHotelsComLink(params: SearchParams): string {
   const partner = getPartnerConfig("hotels-com");
-  const base = "https://www.hotels.com/search.do";
+  const base = "https://www.hotels.com/Hotel-Search";
   const query = new URLSearchParams();
-  if (params.destination) query.set("q-destination", params.destination);
-  if (params.checkIn) query.set("q-check-in", params.checkIn);
-  if (params.checkOut) query.set("q-check-out", params.checkOut);
-  if (params.travelers) query.set("q-room-0-adults", String(params.travelers));
-  if (params.rooms) query.set("q-rooms", String(params.rooms));
-  if (partner?.affiliateId) query.set("rffrid", `aff.hcom.${partner.affiliateId}`);
+  if (params.destination) query.set("destination", params.destination);
+  if (params.checkIn) query.set("startDate", params.checkIn);
+  if (params.checkOut) query.set("endDate", params.checkOut);
+  if (params.travelers) query.set("adults", String(params.travelers));
+  if (params.rooms) query.set("rooms", String(params.rooms));
+  if (partner?.affiliateId) query.set("AFFCID", partner.affiliateId);
   return `${base}?${query.toString()}`;
 }
 
