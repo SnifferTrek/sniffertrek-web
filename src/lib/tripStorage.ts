@@ -90,13 +90,11 @@ export function clearActiveTripId(): void {
 }
 
 export function getTripDisplayName(trip: Trip): string {
+  if (trip.name && trip.name !== "Neue Reise") return trip.name;
   const start = trip.stops.find((s) => s.type === "start")?.name;
   const end = trip.stops.find((s) => s.type === "end")?.name;
-
-  if (start && end) {
-    return `${start} → ${end}`;
-  }
-  return trip.name;
+  if (start && end) return `${start} → ${end}`;
+  return trip.name || "Neue Reise";
 }
 
 export function formatDate(dateStr: string): string {
