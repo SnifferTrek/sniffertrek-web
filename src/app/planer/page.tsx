@@ -1181,62 +1181,84 @@ export default function PlanerPage() {
                                   </div>
 
                                   {/* Date range bar */}
-                                  <div className="mb-4">
-                                    <div className="flex items-center gap-0 rounded-xl overflow-hidden border border-blue-200 bg-white">
-                                      <div className="flex-1 relative">
-                                        <label className="absolute top-1 left-2.5 text-[9px] text-blue-500 uppercase tracking-wider font-semibold">Check-in</label>
-                                        <input
-                                          type="date"
-                                          value={checkIn}
-                                          onChange={(e) => handleCheckInChange(stop.id, idx, e.target.value)}
-                                          className="w-full pt-4 pb-1.5 px-2.5 text-xs bg-transparent focus:bg-blue-50 focus:outline-none cursor-pointer"
-                                        />
-                                      </div>
-                                      <div className="flex items-center gap-1 px-2 py-1 bg-blue-500 text-white shrink-0">
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          max={90}
-                                          value={nights}
-                                          onChange={(e) => handleNightsChange(stop.id, parseInt(e.target.value) || 1)}
-                                          className="w-8 text-center text-xs font-bold bg-transparent text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        />
-                                        <span className="text-[10px] font-medium whitespace-nowrap">{nights === 1 ? "Nacht" : "Nächte"}</span>
-                                      </div>
-                                      <div className="flex-1 relative">
-                                        <label className="absolute top-1 left-2.5 text-[9px] text-blue-500 uppercase tracking-wider font-semibold">Check-out</label>
-                                        <input
-                                          type="date"
-                                          value={checkOut}
-                                          onChange={(e) => handleCheckOutChange(stop.id, idx, e.target.value)}
-                                          className="w-full pt-4 pb-1.5 px-2.5 text-xs bg-transparent focus:bg-blue-50 focus:outline-none cursor-pointer"
-                                        />
-                                      </div>
+                                  <div className="flex items-stretch rounded-lg overflow-hidden border border-blue-200 mb-3">
+                                    <button
+                                      type="button"
+                                      className="flex-1 relative text-left px-3 py-2 bg-white hover:bg-blue-50 transition-colors cursor-pointer"
+                                      onClick={() => {
+                                        const el = document.getElementById(`ci-${stop.id}`) as HTMLInputElement;
+                                        el?.showPicker?.();
+                                        el?.focus();
+                                      }}
+                                    >
+                                      <span className="block text-[9px] text-blue-500 uppercase tracking-wider font-semibold leading-none mb-0.5">Check-in</span>
+                                      <span className="block text-xs font-medium text-gray-900">{checkIn ? formatDateShort(checkIn) : "Datum wählen"}</span>
+                                      <input
+                                        id={`ci-${stop.id}`}
+                                        type="date"
+                                        value={checkIn}
+                                        onChange={(e) => handleCheckInChange(stop.id, idx, e.target.value)}
+                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                        tabIndex={-1}
+                                      />
+                                    </button>
+                                    <div className="flex items-center gap-1 px-2.5 bg-blue-500 text-white shrink-0">
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        max={90}
+                                        value={nights}
+                                        onChange={(e) => handleNightsChange(stop.id, parseInt(e.target.value) || 1)}
+                                        className="w-7 text-center text-xs font-bold bg-transparent text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                      />
+                                      <span className="text-[10px] font-medium whitespace-nowrap">{nights === 1 ? "N." : "N."}</span>
                                     </div>
+                                    <button
+                                      type="button"
+                                      className="flex-1 relative text-left px-3 py-2 bg-white hover:bg-blue-50 transition-colors cursor-pointer"
+                                      onClick={() => {
+                                        const el = document.getElementById(`co-${stop.id}`) as HTMLInputElement;
+                                        el?.showPicker?.();
+                                        el?.focus();
+                                      }}
+                                    >
+                                      <span className="block text-[9px] text-blue-500 uppercase tracking-wider font-semibold leading-none mb-0.5">Check-out</span>
+                                      <span className="block text-xs font-medium text-gray-900">{checkOut ? formatDateShort(checkOut) : "–"}</span>
+                                      <input
+                                        id={`co-${stop.id}`}
+                                        type="date"
+                                        value={checkOut}
+                                        onChange={(e) => handleCheckOutChange(stop.id, idx, e.target.value)}
+                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                        tabIndex={-1}
+                                      />
+                                    </button>
                                   </div>
 
-                                  {/* Guests & Rooms */}
-                                  <div className="grid grid-cols-2 gap-2 mb-4">
-                                    <div>
-                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Gäste</label>
+                                  {/* Guests & Rooms - compact inline */}
+                                  <div className="flex items-center gap-3 mb-3 text-xs text-gray-600">
+                                    <label className="flex items-center gap-1.5">
+                                      <Users className="w-3 h-3 text-gray-400" />
                                       <input
                                         type="number"
                                         min={1}
                                         value={guests}
                                         onChange={(e) => updateStopField(stop.id, { hotelGuests: parseInt(e.target.value) || 1 })}
-                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                                        className="w-10 px-1 py-0.5 text-xs text-center bg-white border border-gray-200 rounded focus:ring-1 focus:ring-purple-300 focus:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                       />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Zimmer</label>
+                                      <span className="text-gray-500">Gäste</span>
+                                    </label>
+                                    <label className="flex items-center gap-1.5">
+                                      <BedDouble className="w-3 h-3 text-gray-400" />
                                       <input
                                         type="number"
                                         min={1}
                                         value={rooms}
                                         onChange={(e) => updateStopField(stop.id, { hotelRooms: parseInt(e.target.value) || 1 })}
-                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                                        className="w-10 px-1 py-0.5 text-xs text-center bg-white border border-gray-200 rounded focus:ring-1 focus:ring-purple-300 focus:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                       />
-                                    </div>
+                                      <span className="text-gray-500">Zimmer</span>
+                                    </label>
                                   </div>
 
                                   <div className="flex flex-wrap gap-2">
