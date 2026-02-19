@@ -1058,7 +1058,8 @@ export default function PlanerPage() {
                   }
 
                   function getHotelDates(stop: RouteStop, idx: number): { checkIn: string; checkOut: string; nights: number } {
-                    let checkIn = stop.hotelCheckIn || "";
+                    const hasExplicitDates = !!(stop.hotelCheckIn && stop.hotelNights);
+                    let checkIn = hasExplicitDates ? stop.hotelCheckIn! : "";
                     if (!checkIn) {
                       if (idx === 0) {
                         checkIn = trip.startDate || "";
