@@ -701,7 +701,7 @@ export default function PlanerPage() {
                         />
                         )}
                       </div>
-                      {stop.type === "stop" && (
+                      {stop.type === "stop" && !stop.bookingConfirmation && (
                         <button
                           onClick={() => toggleHotel(stop.id)}
                           className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
@@ -714,7 +714,7 @@ export default function PlanerPage() {
                           <BedDouble className="w-4 h-4" />
                         </button>
                       )}
-                      {stop.type === "stop" && (
+                      {stop.type === "stop" && !stop.bookingConfirmation && (
                         <button
                           onClick={() => removeStop(stop.id)}
                           className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
