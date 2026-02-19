@@ -248,20 +248,27 @@ export default function GoogleMap({
           const legs = result.routes[0].legs;
           const points: { pos: google.maps.LatLng; label: string; color: string }[] = [];
 
-          if (legs[0]?.start_location) {
+          if (start.lat != null && start.lng != null) {
+            points.push({ pos: new google.maps.LatLng(start.lat, start.lng), label: "A", color: "#3b82f6" });
+          } else if (legs[0]?.start_location) {
             points.push({ pos: legs[0].start_location, label: "A", color: "#3b82f6" });
           }
           waypointStops.forEach((ws, idx) => {
             const leg = legs[idx];
-            if (leg?.end_location) {
+            const pos = (ws.lat != null && ws.lng != null)
+              ? new google.maps.LatLng(ws.lat, ws.lng)
+              : leg?.end_location;
+            if (pos) {
               points.push({
-                pos: leg.end_location,
+                pos,
                 label: String(idx + 1),
                 color: ws.isHotel && ws.bookingConfirmation ? "#22c55e" : ws.isHotel ? "#a855f7" : "#f97316",
               });
             }
           });
-          if (legs[legs.length - 1]?.end_location) {
+          if (end.lat != null && end.lng != null) {
+            points.push({ pos: new google.maps.LatLng(end.lat, end.lng), label: "B", color: "#ef4444" });
+          } else if (legs[legs.length - 1]?.end_location) {
             points.push({ pos: legs[legs.length - 1].end_location, label: "B", color: "#ef4444" });
           }
 
