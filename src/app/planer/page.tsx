@@ -426,13 +426,19 @@ export default function PlanerPage() {
               <div className="flex items-center gap-3 mb-1">
                 <Map className="w-6 h-6 text-white/80" />
                 <h1 className="text-2xl font-bold text-white">
-                  {getTripDisplayName(trip)}
+                  {trip.name || "Neue Reise"}
                 </h1>
               </div>
               <p className="text-blue-100 text-sm">
-                {trip.startDate && trip.endDate
-                  ? `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)} · ${trip.travelers} ${trip.travelers === 1 ? "Person" : "Personen"}`
-                  : "Plane deine Route, vergleiche Angebote und buche direkt."}
+                {(() => {
+                  const start = trip.stops.find((s) => s.type === "start")?.name;
+                  const end = trip.stops.find((s) => s.type === "end")?.name;
+                  const dateStr = trip.startDate && trip.endDate
+                    ? `${formatDate(trip.startDate)} – ${formatDate(trip.endDate)}`
+                    : "";
+                  const routeStr = start && end ? `${start} → ${end}` : "";
+                  return [routeStr, dateStr].filter(Boolean).join(" · ") || "Plane deine Route, vergleiche Angebote und buche direkt.";
+                })()}
               </p>
             </div>
 
@@ -846,9 +852,9 @@ export default function PlanerPage() {
                   onClick={() => {
                     tabsRef.current?.scrollBy({ left: 200, behavior: "smooth" });
                   }}
-                  className="absolute right-0 top-0 bottom-0 w-10 flex items-center justify-center bg-gradient-to-l from-white via-white/90 to-transparent rounded-r-2xl"
+                  className="absolute -right-1 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all"
                 >
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <ChevronRight className="w-4 h-4 text-gray-600" />
                 </button>
               )}
             </div>
