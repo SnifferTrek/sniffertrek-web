@@ -34,6 +34,9 @@ export interface Etappe {
   legs: RouteLegInfo[];
   distanceKm: number;
   durationFormatted: string;
+  hotelBooked?: boolean;
+  hotelName?: string;
+  hotelAddress?: string;
 }
 
 export interface PlannedHotel {
