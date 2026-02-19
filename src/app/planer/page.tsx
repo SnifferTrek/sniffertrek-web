@@ -22,7 +22,6 @@ import {
   Compass,
   Map,
   Sparkles,
-  Save,
   FolderOpen,
   Trash2,
   Check,
@@ -438,25 +437,19 @@ export default function PlanerPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Save Status */}
+              {/* Auto-Save Status */}
               {saveStatus === "saved" && (
-                <span className="inline-flex items-center gap-1.5 text-sm text-green-100 bg-green-500/20 px-3 py-1.5 rounded-lg">
-                  <Check className="w-4 h-4" />
+                <span className="inline-flex items-center gap-1.5 text-xs text-green-100 bg-green-500/20 px-3 py-1.5 rounded-lg">
+                  <Check className="w-3.5 h-3.5" />
                   Gespeichert
                 </span>
               )}
               {hasUnsavedChanges && saveStatus === "idle" && (
-                <span className="text-xs text-blue-200">Ungespeichert</span>
+                <span className="inline-flex items-center gap-1.5 text-xs text-blue-200">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-300 animate-pulse" />
+                  Wird gespeichert…
+                </span>
               )}
-
-              {/* Save Button */}
-              <button
-                onClick={handleSave}
-                className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all border border-white/20"
-              >
-                <Save className="w-4 h-4" />
-                Speichern
-              </button>
 
               {/* Trip List Toggle */}
               <button
