@@ -1244,96 +1244,90 @@ export default function PlanerPage() {
                                   </div>
 
                                   {/* Booking details section */}
-                                  {stop.bookingConfirmation ? (
-                                    <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3">
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <Check className="w-3.5 h-3.5 text-green-600" />
-                                        <span className="text-xs font-semibold text-green-800">Buchungsdetails</span>
+                                  <details className="mt-3 group" open={!!stop.bookingConfirmation}>
+                                    <summary className={`text-[11px] cursor-pointer transition-colors list-none flex items-center gap-1.5 ${stop.bookingConfirmation ? "text-green-600 font-semibold" : "text-gray-400 hover:text-green-600"}`}>
+                                      {stop.bookingConfirmation ? (
+                                        <>
+                                          <Check className="w-3 h-3" />
+                                          Buchung: {stop.bookingHotelName || stop.bookingConfirmation}
+                                          {stop.bookingPrice && <span className="ml-1 text-gray-500 font-normal">· {stop.bookingPrice}</span>}
+                                          {stop.bookingLink && (
+                                            <a href={stop.bookingLink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-auto text-blue-500 hover:text-blue-700">
+                                              <ExternalLink className="w-3 h-3" />
+                                            </a>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Plus className="w-3 h-3" />
+                                          Buchung eintragen
+                                        </>
+                                      )}
+                                    </summary>
+                                    <div className="mt-2 bg-white border border-gray-200 rounded-lg p-3 space-y-2">
+                                      <input
+                                        type="text"
+                                        placeholder="Hotelname"
+                                        value={stop.bookingHotelName || ""}
+                                        onChange={(e) => updateStopField(stop.id, { bookingHotelName: e.target.value })}
+                                        className="w-full px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
+                                      />
+                                      <input
+                                        type="text"
+                                        placeholder="Adresse"
+                                        value={stop.bookingAddress || ""}
+                                        onChange={(e) => updateStopField(stop.id, { bookingAddress: e.target.value })}
+                                        className="w-full px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
+                                      />
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                          type="text"
+                                          placeholder="Buchungsnr."
+                                          value={stop.bookingConfirmation || ""}
+                                          onChange={(e) => updateStopField(stop.id, { bookingConfirmation: e.target.value })}
+                                          className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
+                                        />
+                                        <input
+                                          type="text"
+                                          placeholder="Preis (z.B. CHF 120)"
+                                          value={stop.bookingPrice || ""}
+                                          onChange={(e) => updateStopField(stop.id, { bookingPrice: e.target.value })}
+                                          className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
+                                        />
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                          type="text"
+                                          placeholder="Buchungs-Link (URL)"
+                                          value={stop.bookingLink || ""}
+                                          onChange={(e) => updateStopField(stop.id, { bookingLink: e.target.value })}
+                                          className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
+                                        />
+                                        <select
+                                          value={stop.bookingProvider || ""}
+                                          onChange={(e) => updateStopField(stop.id, { bookingProvider: e.target.value })}
+                                          className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
+                                        >
+                                          <option value="">Anbieter</option>
+                                          <option value="Hotels.com">Hotels.com</option>
+                                          <option value="Booking.com">Booking.com</option>
+                                          <option value="Expedia">Expedia</option>
+                                          <option value="Agoda">Agoda</option>
+                                          <option value="trivago">trivago</option>
+                                          <option value="Andere">Andere</option>
+                                        </select>
+                                      </div>
+                                      {stop.bookingConfirmation && (
                                         <button
                                           type="button"
                                           onClick={() => updateStopField(stop.id, { bookingHotelName: "", bookingAddress: "", bookingConfirmation: "", bookingPrice: "", bookingLink: "", bookingProvider: "" })}
-                                          className="ml-auto text-[10px] text-gray-400 hover:text-red-500"
+                                          className="text-[10px] text-gray-400 hover:text-red-500 transition-colors"
                                         >
-                                          Löschen
+                                          Buchung löschen
                                         </button>
-                                      </div>
-                                      <div className="space-y-1 text-xs text-gray-700">
-                                        {stop.bookingHotelName && <p className="font-medium">{stop.bookingHotelName}</p>}
-                                        {stop.bookingAddress && <p className="text-gray-500">{stop.bookingAddress}</p>}
-                                        <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-gray-500">
-                                          {stop.bookingProvider && <span>via {stop.bookingProvider}</span>}
-                                          {stop.bookingPrice && <span className="font-medium text-gray-700">{stop.bookingPrice}</span>}
-                                          {stop.bookingConfirmation && <span>Nr. {stop.bookingConfirmation}</span>}
-                                        </div>
-                                        {stop.bookingLink && (
-                                          <a href={stop.bookingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:underline mt-1">
-                                            Buchung öffnen <ExternalLink className="w-3 h-3" />
-                                          </a>
-                                        )}
-                                      </div>
+                                      )}
                                     </div>
-                                  ) : (
-                                    <details className="mt-3 group">
-                                      <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-green-600 transition-colors list-none flex items-center gap-1.5">
-                                        <Plus className="w-3 h-3" />
-                                        Buchung eintragen
-                                      </summary>
-                                      <div className="mt-2 bg-white border border-gray-200 rounded-lg p-3 space-y-2">
-                                        <input
-                                          type="text"
-                                          placeholder="Hotelname"
-                                          value={stop.bookingHotelName || ""}
-                                          onChange={(e) => updateStopField(stop.id, { bookingHotelName: e.target.value })}
-                                          className="w-full px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
-                                        />
-                                        <input
-                                          type="text"
-                                          placeholder="Adresse"
-                                          value={stop.bookingAddress || ""}
-                                          onChange={(e) => updateStopField(stop.id, { bookingAddress: e.target.value })}
-                                          className="w-full px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
-                                        />
-                                        <div className="grid grid-cols-2 gap-2">
-                                          <input
-                                            type="text"
-                                            placeholder="Buchungsnr."
-                                            value={stop.bookingConfirmation || ""}
-                                            onChange={(e) => updateStopField(stop.id, { bookingConfirmation: e.target.value })}
-                                            className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
-                                          />
-                                          <input
-                                            type="text"
-                                            placeholder="Preis (z.B. CHF 120)"
-                                            value={stop.bookingPrice || ""}
-                                            onChange={(e) => updateStopField(stop.id, { bookingPrice: e.target.value })}
-                                            className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
-                                          />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                          <input
-                                            type="text"
-                                            placeholder="Buchungs-Link (URL)"
-                                            value={stop.bookingLink || ""}
-                                            onChange={(e) => updateStopField(stop.id, { bookingLink: e.target.value })}
-                                            className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
-                                          />
-                                          <select
-                                            value={stop.bookingProvider || ""}
-                                            onChange={(e) => updateStopField(stop.id, { bookingProvider: e.target.value })}
-                                            className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
-                                          >
-                                            <option value="">Anbieter</option>
-                                            <option value="Hotels.com">Hotels.com</option>
-                                            <option value="Booking.com">Booking.com</option>
-                                            <option value="Expedia">Expedia</option>
-                                            <option value="Agoda">Agoda</option>
-                                            <option value="trivago">trivago</option>
-                                            <option value="Andere">Andere</option>
-                                          </select>
-                                        </div>
-                                      </div>
-                                    </details>
-                                  )}
+                                  </details>
                                 </div>
                               );
                             })}
