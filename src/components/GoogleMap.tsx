@@ -205,7 +205,7 @@ export default function GoogleMap({
               points.push({
                 pos: leg.end_location,
                 label: String(idx + 1),
-                color: ws.isHotel ? "#a855f7" : "#f97316",
+                color: ws.isHotel && ws.bookingConfirmation ? "#22c55e" : ws.isHotel ? "#a855f7" : "#f97316",
               });
             }
           });
@@ -303,7 +303,7 @@ export default function GoogleMap({
             ...waypointStops.map((s, idx) => ({
               name: s.name,
               label: String(idx + 1),
-              color: s.isHotel ? "#a855f7" : "#f97316",
+              color: s.isHotel && s.bookingConfirmation ? "#22c55e" : s.isHotel ? "#a855f7" : "#f97316",
             })),
             { name: end.name, label: "B", color: "#ef4444" },
           ];
