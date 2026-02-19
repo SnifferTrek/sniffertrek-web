@@ -120,6 +120,31 @@ export async function searchPOIs(
   });
 }
 
+export async function searchPOIsAlongRoute(
+  stopNames: string[],
+  types: string[] = ["tourist_attraction", "museum", "park", "point_of_interest"]
+): Promise<POI[]> {
+  if (!window.google?.maps?.places || stopNames.length === 0) return [];
+
+  const uniqueNames = [...new Set(stopNames.filter((n) => n.trim()))];
+  const batches = uniqueNames.slice(0, 8);
+
+  const allPois: POI[] = [];
+  for (const name of batches) {
+    const pois = await searchPOIs(name, types);
+    allPois.push(...pois);
+  }
+
+  const uniqueMap = new Map<string, POI>();
+  for (const poi of allPois) {
+    if (!uniqueMap.has(poi.id)) uniqueMap.set(poi.id, poi);
+  }
+
+  return Array.from(uniqueMap.values())
+    .sort((a, b) => b.totalRatings * b.rating - a.totalRatings * a.rating)
+    .slice(0, 40);
+}
+
 export function getPoiCategoryIcon(category: string): string {
   const iconMap: Record<string, string> = {
     "Sehenswürdigkeit": "landmark",

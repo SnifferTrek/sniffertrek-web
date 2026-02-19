@@ -63,7 +63,7 @@ import { saveTripToCloud, deleteTripFromCloud } from "@/lib/cloudSync";
 import { useAuth } from "@/components/AuthProvider";
 import GoogleMap, { useGoogleAutocomplete } from "@/components/GoogleMap";
 import HotelDatePicker from "@/components/HotelDatePicker";
-import { POI, searchPOIs } from "@/lib/poiService";
+import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
 import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
@@ -397,10 +397,10 @@ export default function PlanerPage() {
   const tabs = [
     { id: "route" as const, label: "Route", icon: Navigation },
     { id: "hotels" as const, label: "Hotels", icon: Hotel },
+    { id: "poi" as const, label: "Entdecken", icon: Compass },
     { id: "flights" as const, label: "Flüge", icon: Plane },
     { id: "car" as const, label: "Mietwagen", icon: Car },
     { id: "train" as const, label: "Züge", icon: Train },
-    { id: "poi" as const, label: "Entdecken", icon: Compass },
     { id: "esim" as const, label: "eSIM", icon: Smartphone },
     { id: "insurance" as const, label: "Versicherung", icon: Shield },
     { id: "timeline" as const, label: "Timeline", icon: Calendar },
@@ -429,25 +429,36 @@ export default function PlanerPage() {
           { name: "Casa Batlló", category: "Architektur", rating: 4.7, description: "Meisterwerk des Modernisme" },
         ];
 
-  const loadPOIs = useCallback(async (dest: string) => {
-    if (!dest || dest === poisSearchedFor) return;
+  const [poiScope, setPoiScope] = useState<"route" | "destination">("route");
+
+  const loadPOIs = useCallback(async (scope: "route" | "destination") => {
+    const routeStopNames = trip.stops.filter((s) => s.name.trim()).map((s) => s.name);
+    const key = scope === "route" ? `route:${routeStopNames.join(",")}` : `dest:${destination}`;
+    if (key === poisSearchedFor) return;
     setPoisLoading(true);
-    setPoisSearchedFor(dest);
+    setPoisSearchedFor(key);
     try {
-      const results = await searchPOIs(dest);
-      setPois(results);
+      if (scope === "route" && routeStopNames.length >= 2) {
+        const results = await searchPOIsAlongRoute(routeStopNames);
+        setPois(results);
+      } else if (destination) {
+        const results = await searchPOIs(destination);
+        setPois(results);
+      } else {
+        setPois([]);
+      }
     } catch {
       setPois([]);
     } finally {
       setPoisLoading(false);
     }
-  }, [poisSearchedFor]);
+  }, [poisSearchedFor, trip.stops, destination]);
 
   useEffect(() => {
-    if (activeTab === "poi" && destination && destination !== poisSearchedFor) {
-      loadPOIs(destination);
+    if (activeTab === "poi") {
+      loadPOIs(poiScope);
     }
-  }, [activeTab, destination, poisSearchedFor, loadPOIs]);
+  }, [activeTab, poiScope, loadPOIs]);
 
   const isInBucketList = (name: string) =>
     trip.bucketList.some((b) => b.name === name);
@@ -1749,14 +1760,39 @@ export default function PlanerPage() {
                 <div className="bg-green-50 border border-green-100 rounded-2xl p-5">
                   <div className="flex items-start gap-3">
                     <Compass className="w-5 h-5 text-green-500 mt-0.5" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-green-800">
                         Sehenswürdigkeiten entdecken
                       </p>
-                      <p className="text-sm text-green-600 mt-1">
-                        Entdecke die besten Sehenswürdigkeiten entlang deiner
-                        Route und füge sie zu deiner Bucket List hinzu.
+                      <p className="text-sm text-green-600 mt-1 mb-3">
+                        Entdecke die besten Sehenswürdigkeiten entlang deiner Route.
                       </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => { setPoiScope("route"); setPoisSearchedFor(""); }}
+                          className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+                            poiScope === "route"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "bg-white text-green-700 border border-green-200 hover:bg-green-100"
+                          }`}
+                        >
+                          <Route className="w-3 h-3 inline mr-1" />
+                          Entlang der Route
+                        </button>
+                        {destination && (
+                          <button
+                            onClick={() => { setPoiScope("destination"); setPoisSearchedFor(""); }}
+                            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
+                              poiScope === "destination"
+                                ? "bg-green-600 text-white shadow-sm"
+                                : "bg-white text-green-700 border border-green-200 hover:bg-green-100"
+                            }`}
+                          >
+                            <MapPin className="w-3 h-3 inline mr-1" />
+                            Nur {destination}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1820,11 +1856,12 @@ export default function PlanerPage() {
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                      {destination ? `Sehenswürdigkeiten in ${destination}` : "Sehenswürdigkeiten"}
+                      {poiScope === "route" ? "Entlang der Route" : destination ? `In ${destination}` : "Sehenswürdigkeiten"}
+                      {pois.length > 0 && ` (${pois.length})`}
                     </h3>
-                    {destination && !poisLoading && pois.length > 0 && (
+                    {!poisLoading && pois.length > 0 && (
                       <button
-                        onClick={() => { setPoisSearchedFor(""); loadPOIs(destination); }}
+                        onClick={() => { setPoisSearchedFor(""); loadPOIs(poiScope); }}
                         className="text-xs text-blue-600 hover:text-blue-700 font-medium"
                       >
                         Aktualisieren
