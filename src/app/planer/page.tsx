@@ -61,6 +61,7 @@ import {
 import { saveTripToCloud, deleteTripFromCloud } from "@/lib/cloudSync";
 import { useAuth } from "@/components/AuthProvider";
 import GoogleMap, { useGoogleAutocomplete } from "@/components/GoogleMap";
+import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs } from "@/lib/poiService";
 import {
   buildBookingHotelLink,
@@ -1050,20 +1051,10 @@ export default function PlanerPage() {
                     (s) => s.type === "stop" && s.name.trim()
                   );
 
-                  function addDays(dateStr: string, days: number): string {
-                    const d = new Date(dateStr);
-                    d.setDate(d.getDate() + days);
-                    return d.toISOString().split("T")[0];
-                  }
-
-                  function diffDays(from: string, to: string): number {
-                    return Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000));
-                  }
-
-                  function formatDateShort(dateStr: string): string {
-                    if (!dateStr) return "–";
-                    const d = new Date(dateStr);
-                    return d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+                  function addDaysLocal(dateStr: string, days: number): string {
+                    const [y, m, d] = dateStr.split("-").map(Number);
+                    const dt = new Date(y, m - 1, d + days);
+                    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
                   }
 
                   function getHotelDates(stop: RouteStop, idx: number): { checkIn: string; checkOut: string; nights: number } {
@@ -1077,26 +1068,12 @@ export default function PlanerPage() {
                       }
                     }
                     const nights = stop.hotelNights || 2;
-                    const checkOut = checkIn ? addDays(checkIn, nights) : "";
+                    const checkOut = checkIn ? addDaysLocal(checkIn, nights) : "";
                     return { checkIn, checkOut, nights };
                   }
 
-                  function handleCheckInChange(stopId: string, idx: number, newCheckIn: string) {
-                    const stop = hotelStops[idx];
-                    const nights = stop.hotelNights || 2;
-                    updateStopField(stopId, { hotelCheckIn: newCheckIn, hotelNights: nights });
-                  }
-
-                  function handleCheckOutChange(stopId: string, idx: number, newCheckOut: string) {
-                    const { checkIn } = getHotelDates(hotelStops[idx], idx);
-                    if (checkIn && newCheckOut) {
-                      const nights = diffDays(checkIn, newCheckOut);
-                      updateStopField(stopId, { hotelNights: nights });
-                    }
-                  }
-
-                  function handleNightsChange(stopId: string, newNights: number) {
-                    updateStopField(stopId, { hotelNights: Math.max(1, newNights) });
+                  function handleDateSelect(stopId: string, newCheckIn: string, newNights: number) {
+                    updateStopField(stopId, { hotelCheckIn: newCheckIn, hotelNights: newNights });
                   }
 
                   if (allStopsWithHotelOption.length === 0) {
@@ -1180,59 +1157,14 @@ export default function PlanerPage() {
                                     </div>
                                   </div>
 
-                                  {/* Date range bar */}
-                                  <div className="flex items-stretch rounded-lg overflow-hidden border border-blue-200 mb-3">
-                                    <button
-                                      type="button"
-                                      className="flex-1 relative text-left px-3 py-2 bg-white hover:bg-blue-50 transition-colors cursor-pointer"
-                                      onClick={() => {
-                                        const el = document.getElementById(`ci-${stop.id}`) as HTMLInputElement;
-                                        el?.showPicker?.();
-                                        el?.focus();
-                                      }}
-                                    >
-                                      <span className="block text-[9px] text-blue-500 uppercase tracking-wider font-semibold leading-none mb-0.5">Check-in</span>
-                                      <span className="block text-xs font-medium text-gray-900">{checkIn ? formatDateShort(checkIn) : "Datum wählen"}</span>
-                                      <input
-                                        id={`ci-${stop.id}`}
-                                        type="date"
-                                        value={checkIn}
-                                        onChange={(e) => handleCheckInChange(stop.id, idx, e.target.value)}
-                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                        tabIndex={-1}
-                                      />
-                                    </button>
-                                    <div className="flex items-center gap-1 px-2.5 bg-blue-500 text-white shrink-0">
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        max={90}
-                                        value={nights}
-                                        onChange={(e) => handleNightsChange(stop.id, parseInt(e.target.value) || 1)}
-                                        className="w-7 text-center text-xs font-bold bg-transparent text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                      />
-                                      <span className="text-[10px] font-medium whitespace-nowrap">{nights === 1 ? "N." : "N."}</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      className="flex-1 relative text-left px-3 py-2 bg-white hover:bg-blue-50 transition-colors cursor-pointer"
-                                      onClick={() => {
-                                        const el = document.getElementById(`co-${stop.id}`) as HTMLInputElement;
-                                        el?.showPicker?.();
-                                        el?.focus();
-                                      }}
-                                    >
-                                      <span className="block text-[9px] text-blue-500 uppercase tracking-wider font-semibold leading-none mb-0.5">Check-out</span>
-                                      <span className="block text-xs font-medium text-gray-900">{checkOut ? formatDateShort(checkOut) : "–"}</span>
-                                      <input
-                                        id={`co-${stop.id}`}
-                                        type="date"
-                                        value={checkOut}
-                                        onChange={(e) => handleCheckOutChange(stop.id, idx, e.target.value)}
-                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                        tabIndex={-1}
-                                      />
-                                    </button>
+                                  {/* Date range picker */}
+                                  <div className="mb-3">
+                                    <HotelDatePicker
+                                      checkIn={checkIn}
+                                      checkOut={checkOut}
+                                      nights={nights}
+                                      onSelect={(ci, n) => handleDateSelect(stop.id, ci, n)}
+                                    />
                                   </div>
 
                                   {/* Guests & Rooms - compact inline */}
