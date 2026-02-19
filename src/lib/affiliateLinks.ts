@@ -5,6 +5,7 @@ interface SearchParams {
   checkIn?: string;
   checkOut?: string;
   travelers?: number;
+  rooms?: number;
   origin?: string;
 }
 
@@ -33,6 +34,7 @@ export function buildBookingHotelLink(params: SearchParams): string {
   if (params.checkIn) query.set("checkin", formatBookingDate(params.checkIn));
   if (params.checkOut) query.set("checkout", formatBookingDate(params.checkOut));
   if (params.travelers) query.set("group_adults", String(params.travelers));
+  if (params.rooms) query.set("no_rooms", String(params.rooms));
   if (partner?.affiliateId) query.set("aid", partner.affiliateId);
   return `${base}?${query.toString()}`;
 }
@@ -45,6 +47,7 @@ export function buildExpediaHotelLink(params: SearchParams): string {
   if (params.checkIn) query.set("startDate", params.checkIn);
   if (params.checkOut) query.set("endDate", params.checkOut);
   if (params.travelers) query.set("adults", String(params.travelers));
+  if (params.rooms) query.set("rooms", String(params.rooms));
   if (partner?.affiliateId) query.set("affcid", partner.affiliateId);
   return `${base}?${query.toString()}`;
 }
@@ -57,6 +60,7 @@ export function buildHotelsComLink(params: SearchParams): string {
   if (params.checkIn) query.set("q-check-in", params.checkIn);
   if (params.checkOut) query.set("q-check-out", params.checkOut);
   if (params.travelers) query.set("q-room-0-adults", String(params.travelers));
+  if (params.rooms) query.set("q-rooms", String(params.rooms));
   if (partner?.affiliateId) query.set("rffrid", `aff.hcom.${partner.affiliateId}`);
   return `${base}?${query.toString()}`;
 }
@@ -69,6 +73,7 @@ export function buildAgodaHotelLink(params: SearchParams): string {
   if (params.checkIn) query.set("checkIn", params.checkIn);
   if (params.checkOut) query.set("checkOut", params.checkOut);
   if (params.travelers) query.set("adults", String(params.travelers));
+  if (params.rooms) query.set("rooms", String(params.rooms));
   if (partner?.affiliateId) query.set("cid", partner.affiliateId);
   return `${base}?${query.toString()}`;
 }

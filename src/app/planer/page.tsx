@@ -1050,6 +1050,55 @@ export default function PlanerPage() {
                     (s) => s.type === "stop" && s.name.trim()
                   );
 
+                  function addDays(dateStr: string, days: number): string {
+                    const d = new Date(dateStr);
+                    d.setDate(d.getDate() + days);
+                    return d.toISOString().split("T")[0];
+                  }
+
+                  function diffDays(from: string, to: string): number {
+                    return Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000));
+                  }
+
+                  function formatDateShort(dateStr: string): string {
+                    if (!dateStr) return "–";
+                    const d = new Date(dateStr);
+                    return d.toLocaleDateString("de-CH", { day: "2-digit", month: "2-digit", year: "numeric" });
+                  }
+
+                  function getHotelDates(stop: RouteStop, idx: number): { checkIn: string; checkOut: string; nights: number } {
+                    let checkIn = stop.hotelCheckIn || "";
+                    if (!checkIn) {
+                      if (idx === 0) {
+                        checkIn = trip.startDate || "";
+                      } else {
+                        const prev = getHotelDates(hotelStops[idx - 1], idx - 1);
+                        checkIn = prev.checkOut;
+                      }
+                    }
+                    const nights = stop.hotelNights || 2;
+                    const checkOut = checkIn ? addDays(checkIn, nights) : "";
+                    return { checkIn, checkOut, nights };
+                  }
+
+                  function handleCheckInChange(stopId: string, idx: number, newCheckIn: string) {
+                    const stop = hotelStops[idx];
+                    const nights = stop.hotelNights || 2;
+                    updateStopField(stopId, { hotelCheckIn: newCheckIn, hotelNights: nights });
+                  }
+
+                  function handleCheckOutChange(stopId: string, idx: number, newCheckOut: string) {
+                    const { checkIn } = getHotelDates(hotelStops[idx], idx);
+                    if (checkIn && newCheckOut) {
+                      const nights = diffDays(checkIn, newCheckOut);
+                      updateStopField(stopId, { hotelNights: nights });
+                    }
+                  }
+
+                  function handleNightsChange(stopId: string, newNights: number) {
+                    updateStopField(stopId, { hotelNights: Math.max(1, newNights) });
+                  }
+
                   if (allStopsWithHotelOption.length === 0) {
                     return (
                       <div className="bg-purple-50 border border-purple-100 rounded-2xl p-6">
@@ -1083,6 +1132,17 @@ export default function PlanerPage() {
                         </div>
                       )}
 
+                      {hotelStops.length > 0 && !trip.startDate && (
+                        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                          <div className="flex items-start gap-3">
+                            <Calendar className="w-5 h-5 text-blue-500 mt-0.5" />
+                            <p className="text-sm text-blue-700">
+                              Setze ein <strong>Reise-Startdatum</strong> oben, damit die Hotel-Daten automatisch berechnet werden.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       {hotelStops.length > 0 && (
                         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                           <div className="flex items-center gap-3 mb-5">
@@ -1093,16 +1153,15 @@ export default function PlanerPage() {
                           </div>
                           <div className="space-y-5">
                             {hotelStops.map((stop, idx) => {
-                              const checkIn = stop.hotelCheckIn || trip.startDate || "";
-                              const checkOut = stop.hotelCheckOut || trip.endDate || "";
+                              const { checkIn, checkOut, nights } = getHotelDates(stop, idx);
                               const guests = stop.hotelGuests || trip.travelers || 2;
                               const rooms = stop.hotelRooms || 1;
-                              const nights = stop.hotelNights || (checkIn && checkOut ? Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)) : 1);
                               const stopSearchParams = {
                                 destination: stop.name,
                                 checkIn,
                                 checkOut,
-                                guests,
+                                travelers: guests,
+                                rooms,
                               };
                               return (
                                 <div
@@ -1117,40 +1176,47 @@ export default function PlanerPage() {
                                       <h4 className="font-semibold text-gray-900">{stop.name}</h4>
                                       <p className="text-xs text-gray-500">
                                         {nights} {nights === 1 ? "Nacht" : "Nächte"} · {guests} {guests === 1 ? "Gast" : "Gäste"} · {rooms} {rooms === 1 ? "Zimmer" : "Zimmer"}
-                                        {stop.hotelCategory && ` · ${stop.hotelCategory}★`}
                                       </p>
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
-                                    <div>
-                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Check-in</label>
-                                      <input
-                                        type="date"
-                                        value={checkIn}
-                                        onChange={(e) => updateStopField(stop.id, { hotelCheckIn: e.target.value })}
-                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
-                                      />
+                                  {/* Date range bar */}
+                                  <div className="mb-4">
+                                    <div className="flex items-center gap-0 rounded-xl overflow-hidden border border-blue-200 bg-white">
+                                      <div className="flex-1 relative">
+                                        <label className="absolute top-1 left-2.5 text-[9px] text-blue-500 uppercase tracking-wider font-semibold">Check-in</label>
+                                        <input
+                                          type="date"
+                                          value={checkIn}
+                                          onChange={(e) => handleCheckInChange(stop.id, idx, e.target.value)}
+                                          className="w-full pt-4 pb-1.5 px-2.5 text-xs bg-transparent focus:bg-blue-50 focus:outline-none cursor-pointer"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1 px-2 py-1 bg-blue-500 text-white shrink-0">
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          max={90}
+                                          value={nights}
+                                          onChange={(e) => handleNightsChange(stop.id, parseInt(e.target.value) || 1)}
+                                          className="w-8 text-center text-xs font-bold bg-transparent text-white focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        />
+                                        <span className="text-[10px] font-medium whitespace-nowrap">{nights === 1 ? "Nacht" : "Nächte"}</span>
+                                      </div>
+                                      <div className="flex-1 relative">
+                                        <label className="absolute top-1 left-2.5 text-[9px] text-blue-500 uppercase tracking-wider font-semibold">Check-out</label>
+                                        <input
+                                          type="date"
+                                          value={checkOut}
+                                          onChange={(e) => handleCheckOutChange(stop.id, idx, e.target.value)}
+                                          className="w-full pt-4 pb-1.5 px-2.5 text-xs bg-transparent focus:bg-blue-50 focus:outline-none cursor-pointer"
+                                        />
+                                      </div>
                                     </div>
-                                    <div>
-                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Check-out</label>
-                                      <input
-                                        type="date"
-                                        value={checkOut}
-                                        onChange={(e) => updateStopField(stop.id, { hotelCheckOut: e.target.value })}
-                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Nächte</label>
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        value={nights}
-                                        onChange={(e) => updateStopField(stop.id, { hotelNights: parseInt(e.target.value) || 1 })}
-                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
-                                      />
-                                    </div>
+                                  </div>
+
+                                  {/* Guests & Rooms */}
+                                  <div className="grid grid-cols-2 gap-2 mb-4">
                                     <div>
                                       <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Gäste</label>
                                       <input
@@ -1170,21 +1236,6 @@ export default function PlanerPage() {
                                         onChange={(e) => updateStopField(stop.id, { hotelRooms: parseInt(e.target.value) || 1 })}
                                         className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
                                       />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Kategorie</label>
-                                      <select
-                                        value={stop.hotelCategory || ""}
-                                        onChange={(e) => updateStopField(stop.id, { hotelCategory: e.target.value as RouteStop["hotelCategory"] })}
-                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
-                                      >
-                                        <option value="">Alle</option>
-                                        <option value="1">1★</option>
-                                        <option value="2">2★★</option>
-                                        <option value="3">3★★★</option>
-                                        <option value="4">4★★★★</option>
-                                        <option value="5">5★★★★★</option>
-                                      </select>
                                     </div>
                                   </div>
 

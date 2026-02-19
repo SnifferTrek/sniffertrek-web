@@ -1,18 +1,14 @@
 export type TravelMode = "auto" | "zug" | "flug";
 
-export type HotelCategory = "" | "1" | "2" | "3" | "4" | "5";
-
 export interface RouteStop {
   id: string;
   name: string;
   type: "start" | "stop" | "end";
   isHotel?: boolean;
   hotelCheckIn?: string;
-  hotelCheckOut?: string;
   hotelNights?: number;
   hotelGuests?: number;
   hotelRooms?: number;
-  hotelCategory?: HotelCategory;
 }
 
 export interface RouteLegInfo {
