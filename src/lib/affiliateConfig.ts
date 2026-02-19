@@ -139,6 +139,18 @@ export const defaultPartners: AffiliatePartner[] = [
     baseUrl: "https://www.agoda.com/search",
   },
   {
+    id: "trivago",
+    module: "Hotels",
+    provider: "trivago",
+    api: "Affiliate-Link (Travelpayouts/Awin)",
+    commission: "40% Click-out Revenue",
+    registrationLink: "https://www.travelpayouts.com/en/offers/trivago-affiliate-program/",
+    status: "open",
+    statusNote: "Anmeldung bei Travelpayouts oder Awin",
+    affiliateId: "",
+    baseUrl: "https://www.trivago.de",
+  },
+  {
     id: "airbnb",
     module: "Hotels",
     provider: "Airbnb",

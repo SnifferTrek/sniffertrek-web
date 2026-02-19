@@ -68,6 +68,7 @@ import {
   buildExpediaHotelLink,
   buildHotelsComLink,
   buildAgodaHotelLink,
+  buildTrivagoLink,
   buildHostelworldLink,
   buildGoogleFlightsLink,
   buildBookingFlightsLink,
@@ -1232,6 +1233,16 @@ export default function PlanerPage() {
                                       <Hotel className="w-3.5 h-3.5" />
                                       Agoda
                                       <ExternalLink className="w-3 h-3 text-purple-400" />
+                                    </a>
+                                    <a
+                                      href={buildTrivagoLink(stopSearchParams)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700 bg-white px-3 py-2 rounded-lg border border-teal-200 hover:bg-teal-50 transition-colors"
+                                    >
+                                      <Search className="w-3.5 h-3.5" />
+                                      trivago
+                                      <ExternalLink className="w-3 h-3 text-teal-400" />
                                     </a>
                                   </div>
                                 </div>

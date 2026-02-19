@@ -88,6 +88,19 @@ export function buildHostelworldLink(params: SearchParams): string {
   return `${base}?${query.toString()}`;
 }
 
+export function buildTrivagoLink(params: SearchParams): string {
+  const base = "https://www.trivago.de/de/srl";
+  const query = new URLSearchParams();
+  if (params.destination) query.set("q", params.destination);
+  if (params.checkIn && params.checkOut) {
+    const dr = params.checkIn.replace(/-/g, "") + "-" + params.checkOut.replace(/-/g, "");
+    query.set("dr", dr);
+  }
+  if (params.travelers) query.set("ga", String(params.travelers));
+  if (params.rooms) query.set("gr", String(params.rooms));
+  return `${base}?${query.toString()}`;
+}
+
 // --- FLIGHTS ---
 
 export function buildGoogleFlightsLink(params: SearchParams): string {
