@@ -405,8 +405,8 @@ export default function PlanerPage() {
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
       {/* Page Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-cyan-500 py-8 px-4">
-        <div className="max-w-7xl mx-auto">
+      <div className="bg-gradient-to-r from-blue-600 to-cyan-500 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <div className="flex items-center gap-3 mb-1">
@@ -525,7 +525,7 @@ export default function PlanerPage() {
               <BookmarkPlus className="w-5 h-5 text-amber-500" />
               <p className="text-sm text-amber-800">
                 <strong>Tipp:</strong> Erstelle ein kostenloses Konto, um deine
-                Reisen auf allen Geräten zu synchronisieren.
+                Reisen dauerhaft zu speichern und auf allen Geräten zu synchronisieren.
               </p>
             </div>
             <Link

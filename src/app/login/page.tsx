@@ -131,9 +131,9 @@ export default function LoginPage() {
           </h1>
           <p className="text-gray-500 text-sm mt-2">
             {mode === "login"
-              ? "Melde dich an, um deine Reisen zu synchronisieren."
+              ? "Melde dich an, um deine Reisen zu speichern und zu synchronisieren."
               : mode === "register"
-              ? "Erstelle ein kostenloses Konto für SnifferTrek."
+              ? "Speichere deine Reisen und synchronisiere sie auf allen Geräten."
               : "Gib deine E-Mail ein und wir senden dir einen Link."}
           </p>
         </div>
@@ -323,8 +323,8 @@ export default function LoginPage() {
         {/* Benefits */}
         <div className="mt-8 grid grid-cols-2 gap-3">
           {[
-            "Reisen synchronisieren",
-            "Auf allen Geräten",
+            "Reisen speichern",
+            "Auf allen Geräten synchronisieren",
             "100% kostenlos",
             "Kein Spam",
           ].map((benefit) => (
