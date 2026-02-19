@@ -9,6 +9,12 @@ export interface RouteStop {
   hotelNights?: number;
   hotelGuests?: number;
   hotelRooms?: number;
+  bookingHotelName?: string;
+  bookingAddress?: string;
+  bookingConfirmation?: string;
+  bookingPrice?: string;
+  bookingLink?: string;
+  bookingProvider?: string;
 }
 
 export interface RouteLegInfo {
