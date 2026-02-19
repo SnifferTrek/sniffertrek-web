@@ -9,7 +9,7 @@ import {
 } from "react";
 import { AuthUser, getCurrentUser, onAuthStateChange, signOut } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { loadTripsFromCloud, syncTripsToCloud } from "@/lib/cloudSync";
+import { loadTripsFromCloud, syncTripsToCloud, verifySyncBeforeLogout } from "@/lib/cloudSync";
 import { getAllTrips, saveTrip, clearAllTrips } from "@/lib/tripStorage";
 
 interface AuthContextType {
@@ -81,8 +81,13 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, [configured]);
 
   const logout = async () => {
+    if (user) {
+      const { syncSuccess } = await verifySyncBeforeLogout(user.id);
+      if (syncSuccess) {
+        clearAllTrips();
+      }
+    }
     await signOut();
-    clearAllTrips();
     setUser(null);
   };
 

@@ -96,6 +96,19 @@ export async function deleteTripFromCloud(tripId: string): Promise<boolean> {
   return !error;
 }
 
+export async function verifySyncBeforeLogout(userId: string): Promise<{ syncSuccess: boolean }> {
+  if (!isSupabaseConfigured()) return { syncSuccess: false };
+
+  const localTrips = getAllTrips();
+  if (localTrips.length === 0) return { syncSuccess: true };
+
+  await syncTripsToCloud(userId);
+
+  const cloudTrips = await loadTripsFromCloud(userId);
+  const allSynced = localTrips.every((lt) => cloudTrips.some((ct) => ct.id === lt.id));
+  return { syncSuccess: allSynced };
+}
+
 export async function mergeCloudAndLocal(userId: string): Promise<void> {
   const cloudTrips = await loadTripsFromCloud(userId);
   const localTrips = getAllTrips();
