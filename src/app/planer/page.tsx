@@ -644,6 +644,8 @@ export default function PlanerPage() {
                             ? "bg-blue-500"
                             : stop.type === "end"
                             ? "bg-red-500"
+                            : stop.isHotel && stop.bookingConfirmation
+                            ? "bg-green-500"
                             : stop.isHotel
                             ? "bg-purple-500"
                             : "bg-orange-400"
@@ -653,6 +655,8 @@ export default function PlanerPage() {
                           <CircleDot className="w-5 h-5 text-white" />
                         ) : stop.type === "end" ? (
                           <Flag className="w-5 h-5 text-white" />
+                        ) : stop.isHotel && stop.bookingConfirmation ? (
+                          <Check className="w-5 h-5 text-white" />
                         ) : stop.isHotel ? (
                           <BedDouble className="w-5 h-5 text-white" />
                         ) : (
@@ -660,6 +664,19 @@ export default function PlanerPage() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
+                        {stop.isHotel && stop.bookingConfirmation ? (
+                          <div className="px-4 py-2 bg-green-50 border border-green-200 rounded-xl">
+                            <p className="text-sm font-medium text-green-900 truncate">
+                              {stop.bookingHotelName || stop.name}
+                            </p>
+                            {stop.bookingAddress && (
+                              <p className="text-[11px] text-green-700 truncate">{stop.bookingAddress}</p>
+                            )}
+                            <p className="text-[10px] text-green-500 mt-0.5">
+                              {stop.name}{stop.bookingPrice ? ` · ${stop.bookingPrice}` : ""}
+                            </p>
+                          </div>
+                        ) : (
                         <input
                           type="text"
                           defaultValue={stop.name}
@@ -682,6 +699,7 @@ export default function PlanerPage() {
                           }
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         />
+                        )}
                       </div>
                       {stop.type === "stop" && (
                         <button
