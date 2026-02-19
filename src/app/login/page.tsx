@@ -25,7 +25,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 const errorMessages: Record<string, string> = {
-  "Invalid login credentials": "E-Mail oder Passwort ist falsch.",
+  "Invalid login credentials": "E-Mail oder Passwort ist falsch. Falls du noch kein Konto hast, registriere dich zuerst.",
   "Email not confirmed": "Bitte bestätige zuerst deine E-Mail-Adresse. Prüfe deinen Posteingang.",
   "User already registered": "Diese E-Mail ist bereits registriert. Versuche dich anzumelden.",
   "Password should be at least 6 characters": "Das Passwort muss mindestens 6 Zeichen lang sein.",
@@ -255,7 +255,18 @@ export default function LoginPage() {
             {error && (
               <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <div>
+                  <span>{error}</span>
+                  {error.includes("registriere dich") && mode === "login" && (
+                    <button
+                      type="button"
+                      onClick={() => switchMode("register")}
+                      className="block mt-2 text-blue-600 hover:text-blue-800 font-semibold text-sm"
+                    >
+                      Jetzt Konto erstellen →
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
