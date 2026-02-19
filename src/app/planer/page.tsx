@@ -36,6 +36,7 @@ import {
   Route,
   ChevronUp,
   ChevronRight,
+  ChevronLeft,
   ArrowDownUp,
 } from "lucide-react";
 import Link from "next/link";
@@ -111,18 +112,24 @@ export default function PlanerPage() {
   const [poisLoading, setPoisLoading] = useState(false);
   const [poisSearchedFor, setPoisSearchedFor] = useState("");
   const tabsRef = useRef<HTMLDivElement>(null);
-  const [showTabScroll, setShowTabScroll] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
 
   const checkTabScroll = useCallback(() => {
     const el = tabsRef.current;
     if (!el) return;
-    setShowTabScroll(el.scrollWidth > el.clientWidth && el.scrollLeft + el.clientWidth < el.scrollWidth - 8);
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
   }, []);
 
   useEffect(() => {
     checkTabScroll();
+    const delayed = setTimeout(checkTabScroll, 300);
     window.addEventListener("resize", checkTabScroll);
-    return () => window.removeEventListener("resize", checkTabScroll);
+    return () => {
+      clearTimeout(delayed);
+      window.removeEventListener("resize", checkTabScroll);
+    };
   }, [checkTabScroll]);
 
   // Load active trip or create new one
@@ -202,6 +209,18 @@ export default function PlanerPage() {
     const newStop: RouteStop = {
       id: `stop-${Date.now()}`,
       name: "",
+      type: "stop",
+    };
+    const endIdx = trip.stops.findIndex((s) => s.type === "end");
+    const newStops = [...trip.stops];
+    newStops.splice(endIdx, 0, newStop);
+    updateTrip({ stops: newStops });
+  };
+
+  const addStopFromMap = (placeName: string) => {
+    const newStop: RouteStop = {
+      id: `stop-${Date.now()}`,
+      name: placeName,
       type: "stop",
     };
     const endIdx = trip.stops.findIndex((s) => s.type === "end");
@@ -847,15 +866,32 @@ export default function PlanerPage() {
           <div className="min-w-0">
             {/* Tabs */}
             <div className="relative mb-6">
+              {canScrollLeft && (
+                <button
+                  onClick={() => {
+                    tabsRef.current?.scrollBy({ left: -200, behavior: "smooth" });
+                  }}
+                  className="absolute -left-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all"
+                >
+                  <ChevronLeft className="w-4 h-4 text-gray-600" />
+                </button>
+              )}
               <div
                 ref={tabsRef}
                 onScroll={checkTabScroll}
-                className="flex gap-1 bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-thin"
+                className="flex gap-1 bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto"
+                style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
               >
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      const el = tabsRef.current;
+                      const btn = el?.querySelector(`[data-tab="${tab.id}"]`) as HTMLElement | null;
+                      if (el && btn) btn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+                    }}
+                    data-tab={tab.id}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                       activeTab === tab.id
                         ? "bg-blue-50 text-blue-700 shadow-sm"
@@ -867,12 +903,12 @@ export default function PlanerPage() {
                   </button>
                 ))}
               </div>
-              {showTabScroll && (
+              {canScrollRight && (
                 <button
                   onClick={() => {
                     tabsRef.current?.scrollBy({ left: 200, behavior: "smooth" });
                   }}
-                  className="absolute -right-1 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all"
+                  className="absolute -right-1 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:bg-gray-50 transition-all"
                 >
                   <ChevronRight className="w-4 h-4 text-gray-600" />
                 </button>
@@ -897,7 +933,7 @@ export default function PlanerPage() {
                   </div>
                 )}
 
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
                   <GoogleMap
                     stops={trip.stops}
                     travelMode={trip.travelMode}
@@ -908,6 +944,7 @@ export default function PlanerPage() {
                     }}
                     onStopsReordered={handleStopsReordered}
                     onError={(msg) => setRouteError(msg)}
+                    onMapClick={addStopFromMap}
                   />
                 </div>
 

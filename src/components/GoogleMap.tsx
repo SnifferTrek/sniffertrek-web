@@ -21,6 +21,7 @@ interface GoogleMapProps {
   onRouteCalculated?: (info: RouteInfo) => void;
   onStopsReordered?: (orderedStopIds: string[]) => void;
   onError?: (message: string) => void;
+  onMapClick?: (placeName: string) => void;
 }
 
 let loadPromise: Promise<void> | null = null;
@@ -75,6 +76,7 @@ export default function GoogleMap({
   onRouteCalculated,
   onStopsReordered,
   onError,
+  onMapClick,
 }: GoogleMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -82,13 +84,18 @@ export default function GoogleMap({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
+  const [addMode, setAddMode] = useState(false);
 
   const onRouteCalculatedRef = useRef(onRouteCalculated);
   const onStopsReorderedRef = useRef(onStopsReordered);
   const onErrorRef = useRef(onError);
+  const onMapClickRef = useRef(onMapClick);
+  const addModeRef = useRef(addMode);
   onRouteCalculatedRef.current = onRouteCalculated;
   onStopsReorderedRef.current = onStopsReordered;
   onErrorRef.current = onError;
+  onMapClickRef.current = onMapClick;
+  addModeRef.current = addMode;
 
   const clearRenderers = useCallback(() => {
     renderers.current.forEach((r) => r.setMap(null));
@@ -116,6 +123,21 @@ export default function GoogleMap({
               stylers: [{ visibility: "off" }],
             },
           ],
+        });
+
+        map.addListener("click", (e: google.maps.MapMouseEvent) => {
+          if (!addModeRef.current || !e.latLng || !onMapClickRef.current) return;
+          const geocoder = new google.maps.Geocoder();
+          geocoder.geocode({ location: e.latLng }, (results, status) => {
+            if (status === "OK" && results && results[0]) {
+              const name =
+                results[0].address_components?.find((c) =>
+                  c.types.includes("locality")
+                )?.long_name || results[0].formatted_address;
+              onMapClickRef.current?.(name);
+              setAddMode(false);
+            }
+          });
         });
 
         mapInstance.current = map;
@@ -397,11 +419,36 @@ export default function GoogleMap({
 
   return (
     <div className="relative">
-      <div ref={mapRef} className="h-[400px] w-full rounded-2xl" />
+      {onMapClick && (
+        <div className="flex justify-end mb-2">
+          <button
+            type="button"
+            onClick={() => setAddMode((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+              addMode
+                ? "bg-orange-500 text-white shadow-lg ring-2 ring-orange-300"
+                : "bg-white text-gray-600 hover:bg-gray-50 border border-gray-200 shadow-sm"
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+            {addMode ? "Abbrechen" : "+ Stopp auf Karte"}
+          </button>
+        </div>
+      )}
+      <div
+        ref={mapRef}
+        className={`h-[400px] w-full rounded-2xl ${addMode ? "ring-2 ring-orange-400" : ""}`}
+        style={addMode ? { cursor: "crosshair" } : undefined}
+      />
       {calculating && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
           <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-xs text-gray-600 font-medium">Route wird berechnet...</span>
+        </div>
+      )}
+      {addMode && (
+        <div className="mt-2 text-center">
+          <span className="text-xs text-orange-600 font-medium">Klicke auf die Karte um einen Zwischenstopp hinzuzufügen</span>
         </div>
       )}
     </div>
