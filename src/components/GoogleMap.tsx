@@ -21,7 +21,7 @@ interface GoogleMapProps {
   onRouteCalculated?: (info: RouteInfo) => void;
   onStopsReordered?: (orderedStopIds: string[]) => void;
   onError?: (message: string) => void;
-  onMapClick?: (placeName: string, lat: number, lng: number) => void;
+  onMapClick?: (placeName: string, lat: number, lng: number, insertAtIndex?: number) => void;
 }
 
 let loadPromise: Promise<void> | null = null;
@@ -82,6 +82,7 @@ export default function GoogleMap({
   const mapInstance = useRef<google.maps.Map | null>(null);
   const renderers = useRef<google.maps.DirectionsRenderer[]>([]);
   const markers = useRef<google.maps.Marker[]>([]);
+  const legEndpoints = useRef<{ start: google.maps.LatLng; end: google.maps.LatLng; afterStopIndex: number }[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
@@ -103,6 +104,7 @@ export default function GoogleMap({
     renderers.current = [];
     markers.current.forEach((m) => m.setMap(null));
     markers.current = [];
+    legEndpoints.current = [];
   }, []);
 
   useEffect(() => {
@@ -130,6 +132,20 @@ export default function GoogleMap({
           if (!addModeRef.current || !e.latLng || !onMapClickRef.current) return;
           const clickLat = e.latLng.lat();
           const clickLng = e.latLng.lng();
+          const clickPt = e.latLng;
+
+          let bestInsertIdx: number | undefined;
+          if (legEndpoints.current.length > 0) {
+            let minDist = Infinity;
+            for (const leg of legEndpoints.current) {
+              const d = distToSegment(clickPt, leg.start, leg.end);
+              if (d < minDist) {
+                minDist = d;
+                bestInsertIdx = leg.afterStopIndex + 1;
+              }
+            }
+          }
+
           const geocoder = new google.maps.Geocoder();
           geocoder.geocode({ location: e.latLng }, (results, status) => {
             if (status === "OK" && results && results[0]) {
@@ -142,7 +158,7 @@ export default function GoogleMap({
               const name = locality
                 ? (subloc ? `${subloc}, ${locality}` : locality)
                 : results[0].formatted_address;
-              onMapClickRef.current?.(name, clickLat, clickLng);
+              onMapClickRef.current?.(name, clickLat, clickLng, bestInsertIdx);
               setAddMode(false);
             }
           });
@@ -263,6 +279,19 @@ export default function GoogleMap({
               },
             });
             markers.current.push(marker);
+          }
+
+          const orderedStops = [start, ...waypointStops, end];
+          for (let li = 0; li < legs.length; li++) {
+            if (legs[li]?.start_location && legs[li]?.end_location) {
+              const stopObj = orderedStops[li];
+              const idx = stops.indexOf(stopObj);
+              legEndpoints.current.push({
+                start: legs[li].start_location,
+                end: legs[li].end_location,
+                afterStopIndex: idx >= 0 ? idx : li,
+              });
+            }
           }
         }
       } else {
@@ -470,6 +499,20 @@ export default function GoogleMap({
       )}
     </div>
   );
+}
+
+function distToSegment(p: google.maps.LatLng, a: google.maps.LatLng, b: google.maps.LatLng): number {
+  const compute = google.maps.geometry.spherical.computeDistanceBetween;
+  const ab = compute(a, b);
+  if (ab < 1) return compute(p, a);
+  const ap = compute(a, p);
+  const bp = compute(b, p);
+  const s = (ap + bp + ab) / 2;
+  const area = Math.sqrt(Math.max(0, s * (s - ap) * (s - bp) * (s - ab)));
+  const dist = (2 * area) / ab;
+  if (ap * ap > bp * bp + ab * ab) return bp;
+  if (bp * bp > ap * ap + ab * ab) return ap;
+  return dist;
 }
 
 function extractLegInfos(legs: google.maps.DirectionsLeg[]): RouteLegInfo[] {

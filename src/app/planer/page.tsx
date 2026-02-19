@@ -217,7 +217,7 @@ export default function PlanerPage() {
     updateTrip({ stops: newStops });
   };
 
-  const addStopFromMap = (placeName: string, lat: number, lng: number) => {
+  const addStopFromMap = (placeName: string, lat: number, lng: number, insertAtIndex?: number) => {
     const newStop: RouteStop = {
       id: `stop-${Date.now()}`,
       name: placeName,
@@ -225,9 +225,13 @@ export default function PlanerPage() {
       lat,
       lng,
     };
-    const endIdx = trip.stops.findIndex((s) => s.type === "end");
     const newStops = [...trip.stops];
-    newStops.splice(endIdx, 0, newStop);
+    if (insertAtIndex != null && insertAtIndex >= 0 && insertAtIndex <= newStops.length) {
+      newStops.splice(insertAtIndex, 0, newStop);
+    } else {
+      const endIdx = newStops.findIndex((s) => s.type === "end");
+      newStops.splice(endIdx, 0, newStop);
+    }
     updateTrip({ stops: newStops });
   };
 
