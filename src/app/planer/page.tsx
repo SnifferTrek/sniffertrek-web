@@ -217,11 +217,13 @@ export default function PlanerPage() {
     updateTrip({ stops: newStops });
   };
 
-  const addStopFromMap = (placeName: string) => {
+  const addStopFromMap = (placeName: string, lat: number, lng: number) => {
     const newStop: RouteStop = {
       id: `stop-${Date.now()}`,
       name: placeName,
       type: "stop",
+      lat,
+      lng,
     };
     const endIdx = trip.stops.findIndex((s) => s.type === "end");
     const newStops = [...trip.stops];

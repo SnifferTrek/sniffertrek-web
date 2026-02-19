@@ -21,7 +21,7 @@ interface GoogleMapProps {
   onRouteCalculated?: (info: RouteInfo) => void;
   onStopsReordered?: (orderedStopIds: string[]) => void;
   onError?: (message: string) => void;
-  onMapClick?: (placeName: string) => void;
+  onMapClick?: (placeName: string, lat: number, lng: number) => void;
 }
 
 let loadPromise: Promise<void> | null = null;
@@ -49,8 +49,8 @@ function loadGoogleMapsScript(): Promise<void> {
 
 function routeSegment(
   service: google.maps.DirectionsService,
-  origin: string,
-  destination: string,
+  origin: string | google.maps.LatLng,
+  destination: string | google.maps.LatLng,
   waypoints: google.maps.DirectionsWaypoint[],
   mode: google.maps.TravelMode,
   optimizeWaypoints: boolean
@@ -128,14 +128,21 @@ export default function GoogleMap({
 
         map.addListener("click", (e: google.maps.MapMouseEvent) => {
           if (!addModeRef.current || !e.latLng || !onMapClickRef.current) return;
+          const clickLat = e.latLng.lat();
+          const clickLng = e.latLng.lng();
           const geocoder = new google.maps.Geocoder();
           geocoder.geocode({ location: e.latLng }, (results, status) => {
             if (status === "OK" && results && results[0]) {
-              const name =
-                results[0].address_components?.find((c) =>
-                  c.types.includes("locality")
-                )?.long_name || results[0].formatted_address;
-              onMapClickRef.current?.(name);
+              const locality = results[0].address_components?.find((c) =>
+                c.types.includes("locality")
+              )?.long_name;
+              const subloc = results[0].address_components?.find((c) =>
+                c.types.includes("sublocality") || c.types.includes("neighborhood")
+              )?.long_name;
+              const name = locality
+                ? (subloc ? `${subloc}, ${locality}` : locality)
+                : results[0].formatted_address;
+              onMapClickRef.current?.(name, clickLat, clickLng);
               setAddMode(false);
             }
           });
@@ -148,6 +155,11 @@ export default function GoogleMap({
         console.error("Google Maps load error:", err);
         setError("Karte konnte nicht geladen werden. Prüfe die Google Maps API-Konfiguration.");
       });
+  }, []);
+
+  const stopLocation = useCallback((s: RouteStop): string | google.maps.LatLng => {
+    if (s.lat != null && s.lng != null) return new google.maps.LatLng(s.lat, s.lng);
+    return s.name;
   }, []);
 
   const calculateRoute = useCallback(async () => {
@@ -179,12 +191,12 @@ export default function GoogleMap({
     try {
       if (waypointStops.length <= MAX_WAYPOINTS) {
         const waypoints = waypointStops.map((s) => ({
-          location: s.name,
+          location: stopLocation(s),
           stopover: true,
         }));
 
         const shouldOptimize = optimize && waypoints.length >= 2;
-        const result = await routeSegment(service, start.name, end.name, waypoints, mode, shouldOptimize);
+        const result = await routeSegment(service, stopLocation(start), stopLocation(end), waypoints, mode, shouldOptimize);
 
         const renderer = new google.maps.DirectionsRenderer({
           map: mapInstance.current,
@@ -255,27 +267,29 @@ export default function GoogleMap({
         }
       } else {
         // Split into segments of MAX_WAYPOINTS
-        const allPoints = [start.name, ...waypointStops.map((s) => s.name), end.name];
-        const segments: { origin: string; destination: string; waypoints: string[] }[] = [];
+        type Loc = string | google.maps.LatLng;
+        const allStops = [start, ...waypointStops, end];
+        const allLocs: Loc[] = allStops.map((s) => stopLocation(s));
+        const segments: { origin: Loc; destination: Loc; waypoints: Loc[] }[] = [];
 
         let i = 0;
-        while (i < allPoints.length - 1) {
-          const segOrigin = allPoints[i];
-          const remaining = allPoints.length - 1 - i;
+        while (i < allLocs.length - 1) {
+          const segOrigin = allLocs[i];
+          const remaining = allLocs.length - 1 - i;
 
           if (remaining <= MAX_WAYPOINTS + 1) {
             segments.push({
               origin: segOrigin,
-              destination: allPoints[allPoints.length - 1],
-              waypoints: allPoints.slice(i + 1, allPoints.length - 1),
+              destination: allLocs[allLocs.length - 1],
+              waypoints: allLocs.slice(i + 1, allLocs.length - 1),
             });
             break;
           } else {
             const batchEnd = i + MAX_WAYPOINTS + 1;
             segments.push({
               origin: segOrigin,
-              destination: allPoints[batchEnd],
-              waypoints: allPoints.slice(i + 1, batchEnd),
+              destination: allLocs[batchEnd],
+              waypoints: allLocs.slice(i + 1, batchEnd),
             });
             i = batchEnd;
           }
@@ -288,7 +302,7 @@ export default function GoogleMap({
 
         for (let s = 0; s < segments.length; s++) {
           const seg = segments[s];
-          const waypoints = seg.waypoints.map((name) => ({ location: name, stopover: true }));
+          const waypoints = seg.waypoints.map((loc) => ({ location: loc, stopover: true }));
 
           const result = await routeSegment(service, seg.origin, seg.destination, waypoints, mode, false);
 
@@ -389,7 +403,7 @@ export default function GoogleMap({
     } finally {
       setCalculating(false);
     }
-  }, [loaded, stops, travelMode, optimize, clearRenderers]);
+  }, [loaded, stops, travelMode, optimize, clearRenderers, stopLocation]);
 
   useEffect(() => {
     const timer = setTimeout(calculateRoute, 800);

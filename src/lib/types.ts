@@ -4,6 +4,8 @@ export interface RouteStop {
   id: string;
   name: string;
   type: "start" | "stop" | "end";
+  lat?: number;
+  lng?: number;
   isHotel?: boolean;
   hotelCheckIn?: string;
   hotelNights?: number;
