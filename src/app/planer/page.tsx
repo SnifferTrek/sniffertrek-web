@@ -218,6 +218,12 @@ export default function PlanerPage() {
     });
   };
 
+  const updateStopField = (id: string, fields: Partial<RouteStop>) => {
+    updateTrip({
+      stops: trip.stops.map((s) => (s.id === id ? { ...s, ...fields } : s)),
+    });
+  };
+
   const toggleHotel = (id: string) => {
     updateTrip({
       stops: trip.stops.map((s) =>
@@ -1085,28 +1091,103 @@ export default function PlanerPage() {
                               Übernachtungen ({hotelStops.length})
                             </h3>
                           </div>
-                          <div className="space-y-4">
+                          <div className="space-y-5">
                             {hotelStops.map((stop, idx) => {
+                              const checkIn = stop.hotelCheckIn || trip.startDate || "";
+                              const checkOut = stop.hotelCheckOut || trip.endDate || "";
+                              const guests = stop.hotelGuests || trip.travelers || 2;
+                              const rooms = stop.hotelRooms || 1;
+                              const nights = stop.hotelNights || (checkIn && checkOut ? Math.max(1, Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000)) : 1);
                               const stopSearchParams = {
                                 destination: stop.name,
-                                checkIn: trip.startDate || "",
-                                checkOut: trip.endDate || "",
-                                guests: trip.travelers,
+                                checkIn,
+                                checkOut,
+                                guests,
                               };
                               return (
                                 <div
                                   key={stop.id}
                                   className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-5 border border-purple-100"
                                 >
-                                  <div className="flex items-center gap-3 mb-3">
+                                  <div className="flex items-center gap-3 mb-4">
                                     <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
                                       {idx + 1}
                                     </div>
-                                    <div>
+                                    <div className="flex-1">
                                       <h4 className="font-semibold text-gray-900">{stop.name}</h4>
-                                      <p className="text-xs text-gray-500">Übernachtungsstopp</p>
+                                      <p className="text-xs text-gray-500">
+                                        {nights} {nights === 1 ? "Nacht" : "Nächte"} · {guests} {guests === 1 ? "Gast" : "Gäste"} · {rooms} {rooms === 1 ? "Zimmer" : "Zimmer"}
+                                        {stop.hotelCategory && ` · ${stop.hotelCategory}★`}
+                                      </p>
                                     </div>
                                   </div>
+
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+                                    <div>
+                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Check-in</label>
+                                      <input
+                                        type="date"
+                                        value={checkIn}
+                                        onChange={(e) => updateStopField(stop.id, { hotelCheckIn: e.target.value })}
+                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Check-out</label>
+                                      <input
+                                        type="date"
+                                        value={checkOut}
+                                        onChange={(e) => updateStopField(stop.id, { hotelCheckOut: e.target.value })}
+                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Nächte</label>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={nights}
+                                        onChange={(e) => updateStopField(stop.id, { hotelNights: parseInt(e.target.value) || 1 })}
+                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Gäste</label>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={guests}
+                                        onChange={(e) => updateStopField(stop.id, { hotelGuests: parseInt(e.target.value) || 1 })}
+                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Zimmer</label>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={rooms}
+                                        onChange={(e) => updateStopField(stop.id, { hotelRooms: parseInt(e.target.value) || 1 })}
+                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Kategorie</label>
+                                      <select
+                                        value={stop.hotelCategory || ""}
+                                        onChange={(e) => updateStopField(stop.id, { hotelCategory: e.target.value as RouteStop["hotelCategory"] })}
+                                        className="w-full mt-0.5 px-2 py-1.5 text-xs bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-300 focus:border-transparent"
+                                      >
+                                        <option value="">Alle</option>
+                                        <option value="1">1★</option>
+                                        <option value="2">2★★</option>
+                                        <option value="3">3★★★</option>
+                                        <option value="4">4★★★★</option>
+                                        <option value="5">5★★★★★</option>
+                                      </select>
+                                    </div>
+                                  </div>
+
                                   <div className="flex flex-wrap gap-2">
                                     <a
                                       href={buildBookingHotelLink(stopSearchParams)}

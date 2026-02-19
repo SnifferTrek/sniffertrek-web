@@ -165,7 +165,7 @@ export default function GoogleMap({
 
         const renderer = new google.maps.DirectionsRenderer({
           map: mapInstance.current,
-          suppressMarkers: false,
+          suppressMarkers: true,
           polylineOptions: { strokeColor: "#3b82f6", strokeWeight: 5, strokeOpacity: 0.8 },
         });
         renderer.setDirections(result);
@@ -189,6 +189,45 @@ export default function GoogleMap({
             ...order.map((i: number) => waypointStops[i].id),
             end.id,
           ]);
+        }
+
+        // Place custom colored markers
+        if (mapInstance.current && result.routes[0]?.legs) {
+          const legs = result.routes[0].legs;
+          const points: { pos: google.maps.LatLng; label: string; color: string }[] = [];
+
+          if (legs[0]?.start_location) {
+            points.push({ pos: legs[0].start_location, label: "A", color: "#3b82f6" });
+          }
+          waypointStops.forEach((ws, idx) => {
+            const leg = legs[idx];
+            if (leg?.end_location) {
+              points.push({
+                pos: leg.end_location,
+                label: String(idx + 1),
+                color: ws.isHotel ? "#a855f7" : "#f97316",
+              });
+            }
+          });
+          if (legs[legs.length - 1]?.end_location) {
+            points.push({ pos: legs[legs.length - 1].end_location, label: "B", color: "#ef4444" });
+          }
+
+          for (const pt of points) {
+            new google.maps.Marker({
+              map: mapInstance.current!,
+              position: pt.pos,
+              label: { text: pt.label, color: "white", fontWeight: "bold", fontSize: "12px" },
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 14,
+                fillColor: pt.color,
+                fillOpacity: 1,
+                strokeColor: "white",
+                strokeWeight: 2,
+              },
+            });
+          }
         }
       } else {
         // Split into segments of MAX_WAYPOINTS
@@ -264,7 +303,7 @@ export default function GoogleMap({
             ...waypointStops.map((s, idx) => ({
               name: s.name,
               label: String(idx + 1),
-              color: "#f97316",
+              color: s.isHotel ? "#a855f7" : "#f97316",
             })),
             { name: end.name, label: "B", color: "#ef4444" },
           ];
