@@ -792,12 +792,6 @@ export default function PlanerPage() {
               />
             </div>
 
-            {/* Search Button */}
-            <button className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white py-3.5 rounded-2xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]">
-              <Search className="w-5 h-5" />
-              Angebote suchen
-            </button>
-
             {/* Bucket List Summary */}
             {trip.bucketList.length > 0 && (
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
