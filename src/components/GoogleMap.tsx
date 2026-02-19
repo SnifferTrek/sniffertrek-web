@@ -243,44 +243,41 @@ export default function GoogleMap({
           ]);
         }
 
-        // Place custom colored markers
+        // Place custom colored markers at exact stop positions
         if (mapInstance.current && result.routes[0]?.legs) {
           const legs = result.routes[0].legs;
-          const points: { pos: google.maps.LatLng; label: string; color: string }[] = [];
+          const orderedStops = [start, ...waypointStops, end];
 
-          if (start.lat != null && start.lng != null) {
-            points.push({ pos: new google.maps.LatLng(start.lat, start.lng), label: "A", color: "#3b82f6" });
-          } else if (legs[0]?.start_location) {
-            points.push({ pos: legs[0].start_location, label: "A", color: "#3b82f6" });
-          }
-          waypointStops.forEach((ws, idx) => {
-            const leg = legs[idx];
-            const pos = (ws.lat != null && ws.lng != null)
-              ? new google.maps.LatLng(ws.lat, ws.lng)
-              : leg?.end_location;
-            if (pos) {
-              points.push({
-                pos,
-                label: String(idx + 1),
-                color: ws.isHotel && ws.bookingConfirmation ? "#22c55e" : ws.isHotel ? "#a855f7" : "#f97316",
-              });
+          for (let i = 0; i < orderedStops.length; i++) {
+            const s = orderedStops[i];
+            const loc = stopLocation(s);
+            let pos: google.maps.LatLng | undefined;
+
+            if (loc instanceof google.maps.LatLng) {
+              pos = loc;
+            } else {
+              if (i === 0) pos = legs[0]?.start_location;
+              else if (i < orderedStops.length - 1) pos = legs[i - 1]?.end_location;
+              else pos = legs[legs.length - 1]?.end_location;
             }
-          });
-          if (end.lat != null && end.lng != null) {
-            points.push({ pos: new google.maps.LatLng(end.lat, end.lng), label: "B", color: "#ef4444" });
-          } else if (legs[legs.length - 1]?.end_location) {
-            points.push({ pos: legs[legs.length - 1].end_location, label: "B", color: "#ef4444" });
-          }
 
-          for (const pt of points) {
+            if (!pos) continue;
+
+            const label = i === 0 ? "A" : i === orderedStops.length - 1 ? "B" : String(i);
+            const color = i === 0 ? "#3b82f6"
+              : i === orderedStops.length - 1 ? "#ef4444"
+              : s.isHotel && s.bookingConfirmation ? "#22c55e"
+              : s.isHotel ? "#a855f7"
+              : "#f97316";
+
             const marker = new google.maps.Marker({
               map: mapInstance.current!,
-              position: pt.pos,
-              label: { text: pt.label, color: "white", fontWeight: "bold", fontSize: "12px" },
+              position: pos,
+              label: { text: label, color: "white", fontWeight: "bold", fontSize: "12px" },
               icon: {
                 path: google.maps.SymbolPath.CIRCLE,
                 scale: 14,
-                fillColor: pt.color,
+                fillColor: color,
                 fillOpacity: 1,
                 strokeColor: "white",
                 strokeWeight: 2,
@@ -289,7 +286,6 @@ export default function GoogleMap({
             markers.current.push(marker);
           }
 
-          const orderedStops = [start, ...waypointStops, end];
           for (let li = 0; li < legs.length; li++) {
             if (legs[li]?.start_location && legs[li]?.end_location) {
               const stopObj = orderedStops[li];
