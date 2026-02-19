@@ -81,6 +81,7 @@ export default function GoogleMap({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
   const renderers = useRef<google.maps.DirectionsRenderer[]>([]);
+  const markers = useRef<google.maps.Marker[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
@@ -100,6 +101,8 @@ export default function GoogleMap({
   const clearRenderers = useCallback(() => {
     renderers.current.forEach((r) => r.setMap(null));
     renderers.current = [];
+    markers.current.forEach((m) => m.setMap(null));
+    markers.current = [];
   }, []);
 
   useEffect(() => {
@@ -236,7 +239,7 @@ export default function GoogleMap({
           }
 
           for (const pt of points) {
-            new google.maps.Marker({
+            const marker = new google.maps.Marker({
               map: mapInstance.current!,
               position: pt.pos,
               label: { text: pt.label, color: "white", fontWeight: "bold", fontSize: "12px" },
@@ -249,6 +252,7 @@ export default function GoogleMap({
                 strokeWeight: 2,
               },
             });
+            markers.current.push(marker);
           }
         }
       } else {
@@ -342,7 +346,7 @@ export default function GoogleMap({
               const loc = geoResult[0].geometry.location;
               bounds.extend(loc);
 
-              new google.maps.Marker({
+              const marker = new google.maps.Marker({
                 map: mapInstance.current!,
                 position: loc,
                 label: { text: pt.label, color: "white", fontWeight: "bold", fontSize: "12px" },
@@ -355,6 +359,7 @@ export default function GoogleMap({
                   strokeWeight: 2,
                 },
               });
+              markers.current.push(marker);
             } catch {
               // Skip if geocoding fails for one stop
             }
