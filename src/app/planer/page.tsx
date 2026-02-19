@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   MapPin,
   Hotel,
@@ -36,6 +36,7 @@ import {
   Clock,
   Route,
   ChevronUp,
+  ChevronRight,
   ArrowDownUp,
 } from "lucide-react";
 import Link from "next/link";
@@ -108,6 +109,20 @@ export default function PlanerPage() {
   const [pois, setPois] = useState<POI[]>([]);
   const [poisLoading, setPoisLoading] = useState(false);
   const [poisSearchedFor, setPoisSearchedFor] = useState("");
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [showTabScroll, setShowTabScroll] = useState(false);
+
+  const checkTabScroll = useCallback(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    setShowTabScroll(el.scrollWidth > el.clientWidth && el.scrollLeft + el.clientWidth < el.scrollWidth - 8);
+  }, []);
+
+  useEffect(() => {
+    checkTabScroll();
+    window.addEventListener("resize", checkTabScroll);
+    return () => window.removeEventListener("resize", checkTabScroll);
+  }, [checkTabScroll]);
 
   // Load active trip or create new one
   useEffect(() => {
@@ -812,21 +827,37 @@ export default function PlanerPage() {
           {/* Right Panel */}
           <div className="min-w-0">
             {/* Tabs */}
-            <div className="flex gap-1 bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100 mb-6 overflow-x-auto scrollbar-thin">
-              {tabs.map((tab) => (
+            <div className="relative mb-6">
+              <div
+                ref={tabsRef}
+                onScroll={checkTabScroll}
+                className="flex gap-1 bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto scrollbar-thin"
+              >
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                      activeTab === tab.id
+                        ? "bg-blue-50 text-blue-700 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <tab.icon className="w-4 h-4" />
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              {showTabScroll && (
                 <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? "bg-blue-50 text-blue-700 shadow-sm"
-                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                  }`}
+                  onClick={() => {
+                    tabsRef.current?.scrollBy({ left: 200, behavior: "smooth" });
+                  }}
+                  className="absolute right-0 top-0 bottom-0 w-10 flex items-center justify-center bg-gradient-to-l from-white via-white/90 to-transparent rounded-r-2xl"
                 >
-                  <tab.icon className="w-4 h-4" />
-                  {tab.label}
+                  <ChevronRight className="w-5 h-5 text-gray-400" />
                 </button>
-              ))}
+              )}
             </div>
 
             {/* Route Tab */}
