@@ -68,6 +68,12 @@ export function deleteTrip(id: string): void {
   }
 }
 
+export function clearAllTrips(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(ACTIVE_TRIP_KEY);
+}
+
 export function getActiveTripId(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(ACTIVE_TRIP_KEY);

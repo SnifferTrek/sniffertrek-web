@@ -9,7 +9,8 @@ import {
 } from "react";
 import { AuthUser, getCurrentUser, onAuthStateChange, signOut } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { mergeCloudAndLocal } from "@/lib/cloudSync";
+import { loadTripsFromCloud, syncTripsToCloud } from "@/lib/cloudSync";
+import { getAllTrips, saveTrip, clearAllTrips } from "@/lib/tripStorage";
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -40,18 +41,39 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    async function handleUserLogin(u: AuthUser) {
+      const localTrips = getAllTrips();
+      const cloudTrips = await loadTripsFromCloud(u.id);
+
+      if (cloudTrips.length > 0) {
+        clearAllTrips();
+        for (const trip of cloudTrips) {
+          saveTrip(trip);
+        }
+        if (localTrips.length > 0 && localTrips.some((lt) => !cloudTrips.find((ct) => ct.id === lt.id))) {
+          const orphanTrips = localTrips.filter((lt) => !cloudTrips.find((ct) => ct.id === lt.id));
+          for (const trip of orphanTrips) {
+            saveTrip(trip);
+          }
+          await syncTripsToCloud(u.id);
+        }
+      } else if (localTrips.length > 0) {
+        await syncTripsToCloud(u.id);
+      }
+    }
+
     getCurrentUser().then((u) => {
       setUser(u);
       setLoading(false);
       if (u) {
-        mergeCloudAndLocal(u.id);
+        handleUserLogin(u);
       }
     });
 
     const unsubscribe = onAuthStateChange((u) => {
       setUser(u);
       if (u) {
-        mergeCloudAndLocal(u.id);
+        handleUserLogin(u);
       }
     });
 
@@ -60,6 +82,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await signOut();
+    clearAllTrips();
     setUser(null);
   };
 
