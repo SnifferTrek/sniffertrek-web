@@ -1128,6 +1128,7 @@ export default function PlanerPage() {
                     onStopsReordered={handleStopsReordered}
                     onError={(msg) => { setRouteError(msg); setOptimizeRoute(false); }}
                     onMapClick={addStopFromMap}
+                    onRemoveStop={removeStop}
                   />
                 </div>
 

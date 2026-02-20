@@ -22,6 +22,7 @@ interface GoogleMapProps {
   onStopsReordered?: (orderedStopIds: string[]) => void;
   onError?: (message: string) => void;
   onMapClick?: (placeName: string, lat: number, lng: number, insertAtIndex?: number) => void;
+  onRemoveStop?: (stopId: string) => void;
 }
 
 let loadPromise: Promise<void> | null = null;
@@ -77,6 +78,7 @@ export default function GoogleMap({
   onStopsReordered,
   onError,
   onMapClick,
+  onRemoveStop,
 }: GoogleMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -93,11 +95,13 @@ export default function GoogleMap({
   const onStopsReorderedRef = useRef(onStopsReordered);
   const onErrorRef = useRef(onError);
   const onMapClickRef = useRef(onMapClick);
+  const onRemoveStopRef = useRef(onRemoveStop);
   const addModeRef = useRef(addMode);
   onRouteCalculatedRef.current = onRouteCalculated;
   onStopsReorderedRef.current = onStopsReordered;
   onErrorRef.current = onError;
   onMapClickRef.current = onMapClick;
+  onRemoveStopRef.current = onRemoveStop;
   addModeRef.current = addMode;
 
   const clearRenderers = useCallback(() => {
@@ -391,12 +395,25 @@ export default function GoogleMap({
             },
           });
           const hotelInfo = s.isHotel && s.bookingHotelName ? `<br><span style="color:#16a34a;font-size:11px">${s.bookingHotelName}</span>` : "";
+          const canRemove = s.type === "stop" && !(s.isHotel && s.bookingConfirmation);
+          const removeBtn = canRemove
+            ? `<button id="remove-stop-${s.id}" style="margin-top:6px;padding:3px 10px;font-size:11px;font-family:system-ui;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;cursor:pointer">Stopp entfernen</button>`
+            : "";
           const infoWindow = new google.maps.InfoWindow({
-            content: `<div style="font-family:system-ui;padding:2px"><strong>${s.name}</strong>${hotelInfo}</div>`,
+            content: `<div style="font-family:system-ui;padding:2px"><strong>${s.name}</strong>${hotelInfo}${removeBtn}</div>`,
           });
           marker.addListener("click", () => {
             infoWindow.open(mapInstance.current!, marker);
           });
+          if (canRemove) {
+            infoWindow.addListener("domready", () => {
+              const btn = document.getElementById(`remove-stop-${s.id}`);
+              btn?.addEventListener("click", () => {
+                infoWindow.close();
+                onRemoveStopRef.current?.(s.id);
+              });
+            });
+          }
           markers.current.push(marker);
         }
 
