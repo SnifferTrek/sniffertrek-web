@@ -245,6 +245,53 @@ export default function PlanerPage() {
     });
   };
 
+  const updateStopWithCoords = (id: string, name: string, lat: number, lng: number) => {
+    const stopIdx = trip.stops.findIndex((s) => s.id === id);
+    if (stopIdx < 0) return;
+    const stop = trip.stops[stopIdx];
+    if (stop.type !== "stop") {
+      updateTrip({ stops: trip.stops.map((s) => (s.id === id ? { ...s, name, lat, lng } : s)) });
+      return;
+    }
+
+    const newStops = trip.stops.filter((s) => s.id !== id);
+    const updatedStop: RouteStop = { ...stop, name, lat, lng };
+
+    const filledStops = newStops.filter((s) => s.name.trim());
+    if (filledStops.length < 2) {
+      const endIdx = newStops.findIndex((s) => s.type === "end");
+      newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, updatedStop);
+      updateTrip({ stops: newStops });
+      return;
+    }
+
+    let bestIdx = newStops.findIndex((s) => s.type === "end");
+    let minDetour = Infinity;
+
+    for (let i = 0; i < newStops.length - 1; i++) {
+      const a = newStops[i];
+      const b = newStops[i + 1];
+      if (!a.name.trim() || !b.name.trim()) continue;
+      const aLat = a.lat ?? 0, aLng = a.lng ?? 0;
+      const bLat = b.lat ?? 0, bLng = b.lng ?? 0;
+      if (aLat === 0 && aLng === 0) continue;
+      if (bLat === 0 && bLng === 0) continue;
+
+      const ab = haversine(aLat, aLng, bLat, bLng);
+      const ac = haversine(aLat, aLng, lat, lng);
+      const cb = haversine(lat, lng, bLat, bLng);
+      const detour = ac + cb - ab;
+
+      if (detour < minDetour) {
+        minDetour = detour;
+        bestIdx = i + 1;
+      }
+    }
+
+    newStops.splice(bestIdx, 0, updatedStop);
+    updateTrip({ stops: newStops });
+  };
+
   const updateStopField = (id: string, fields: Partial<RouteStop>) => {
     updateTrip({
       stops: trip.stops.map((s) => (s.id === id ? { ...s, ...fields } : s)),
@@ -725,8 +772,14 @@ export default function PlanerPage() {
                           defaultValue={stop.name}
                           ref={(el) => {
                             if (el && autocompleteReady) {
-                              attachAutocomplete(el, (place) => {
-                                updateStop(stop.id, place);
+                              attachAutocomplete(el, (place, lat, lng) => {
+                                if (lat != null && lng != null && stop.type === "stop") {
+                                  updateStopWithCoords(stop.id, place, lat, lng);
+                                } else if (lat != null && lng != null) {
+                                  updateStopField(stop.id, { name: place, lat, lng });
+                                } else {
+                                  updateStop(stop.id, place);
+                                }
                               });
                             }
                           }}
@@ -1023,35 +1076,52 @@ export default function PlanerPage() {
                     </p>
                   )}
 
-                  {origin && destination && (
-                    <button
-                      onClick={reverseRoute}
-                      className="mt-4 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      <ArrowDownUp className="w-4 h-4" />
-                      Route umkehren
-                    </button>
-                  )}
+                  {(() => {
+                    const waypointCount = trip.stops.filter((s) => s.type === "stop" && s.name.trim()).length;
+                    const tooMany = waypointCount >= 20;
+                    return (
+                      <>
+                        {origin && destination && !tooMany && (
+                          <button
+                            onClick={reverseRoute}
+                            className="mt-4 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                          >
+                            <ArrowDownUp className="w-4 h-4" />
+                            Route umkehren
+                          </button>
+                        )}
 
-                  {trip.stops.filter((s) => s.type === "stop" && s.name.trim()).length >= 2 && (
-                    <button
-                      onClick={handleOptimizeRoute}
-                      disabled={optimizeRoute}
-                      className="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-emerald-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-                    >
-                      {optimizeRoute ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Wird optimiert...
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="w-4 h-4" />
-                          Kürzeste Route berechnen
-                        </>
-                      )}
-                    </button>
-                  )}
+                        {waypointCount >= 2 && !tooMany && (
+                          <button
+                            onClick={handleOptimizeRoute}
+                            disabled={optimizeRoute}
+                            className="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-emerald-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                          >
+                            {optimizeRoute ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Wird optimiert...
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="w-4 h-4" />
+                                Kürzeste Route berechnen
+                              </>
+                            )}
+                          </button>
+                        )}
+
+                        {tooMany && (
+                          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                            <p className="text-xs text-amber-700">
+                              <strong>{waypointCount} Zwischenstopps</strong> — Route umkehren und optimieren sind bei 20+ Stopps deaktiviert.
+                              Verwende die Pfeile oder «+ Stopp auf Karte», um die Route anzupassen.
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Etappen Breakdown */}
@@ -2221,6 +2291,14 @@ export default function PlanerPage() {
       </div>
     </div>
   );
+}
+
+function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function formatDur(seconds: number): string {

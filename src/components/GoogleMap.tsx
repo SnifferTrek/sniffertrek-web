@@ -83,6 +83,7 @@ export default function GoogleMap({
   const renderers = useRef<google.maps.DirectionsRenderer[]>([]);
   const markers = useRef<google.maps.Marker[]>([]);
   const legEndpoints = useRef<{ start: google.maps.LatLng; end: google.maps.LatLng; afterStopIndex: number }[]>([]);
+  const segmentCache = useRef<Map<string, { result: google.maps.DirectionsResult; legs: RouteLegInfo[]; distance: number; duration: number }>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
@@ -179,6 +180,14 @@ export default function GoogleMap({
     return s.name;
   }, []);
 
+  const segmentKey = useCallback((segStops: RouteStop[], tMode: string): string => {
+    return tMode + ":" + segStops.map((s) => {
+      if (s.lat != null && s.lng != null) return `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`;
+      if (s.bookingAddress) return s.bookingAddress;
+      return s.name;
+    }).join("|");
+  }, []);
+
   const calculateRoute = useCallback(async () => {
     if (!loaded || !mapInstance.current) return;
 
@@ -202,223 +211,175 @@ export default function GoogleMap({
     };
     const mode = modeMap[travelMode] || google.maps.TravelMode.DRIVING;
 
+    // Split route into etappen (segments) at hotel stops
+    const etappenStops: RouteStop[][] = [];
+    let currentEtappe: RouteStop[] = [start];
+    for (const ws of waypointStops) {
+      currentEtappe.push(ws);
+      if (ws.isHotel) {
+        etappenStops.push(currentEtappe);
+        currentEtappe = [ws];
+      }
+    }
+    currentEtappe.push(end);
+    etappenStops.push(currentEtappe);
+
     setCalculating(true);
     const service = new google.maps.DirectionsService();
+    const colors = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"];
 
     try {
-      if (waypointStops.length <= MAX_WAYPOINTS) {
-        const waypoints = waypointStops.map((s) => ({
-          location: stopLocation(s),
-          stopover: true,
-        }));
+      let totalDistance = 0;
+      let totalDuration = 0;
+      const allLegInfos: RouteLegInfo[] = [];
+      const allLegs: google.maps.DirectionsLeg[] = [];
+      const usedCacheKeys = new Set<string>();
+      let apiCalls = 0;
 
-        const shouldOptimize = optimize && waypoints.length >= 2;
-        const result = await routeSegment(service, stopLocation(start), stopLocation(end), waypoints, mode, shouldOptimize);
+      for (let e = 0; e < etappenStops.length; e++) {
+        const seg = etappenStops[e];
+        const key = segmentKey(seg, travelMode);
+        usedCacheKeys.add(key);
+        const cached = segmentCache.current.get(key);
+
+        let result: google.maps.DirectionsResult;
+        let segLegs: RouteLegInfo[];
+        let segDistance: number;
+        let segDuration: number;
+
+        if (cached) {
+          result = cached.result;
+          segLegs = cached.legs;
+          segDistance = cached.distance;
+          segDuration = cached.duration;
+        } else {
+          const segOrigin = stopLocation(seg[0]);
+          const segDest = stopLocation(seg[seg.length - 1]);
+          const segWaypoints = seg.slice(1, -1).map((s) => ({ location: stopLocation(s), stopover: true }));
+          const shouldOptimize = optimize && segWaypoints.length >= 2 && segWaypoints.length <= MAX_WAYPOINTS;
+
+          result = await routeSegment(service, segOrigin, segDest, segWaypoints, mode, shouldOptimize);
+          apiCalls++;
+
+          if (shouldOptimize && result.routes[0]?.waypoint_order && seg.length > 3) {
+            const order = result.routes[0].waypoint_order;
+            const innerStops = seg.slice(1, -1);
+            const reorderedInner = order.map((i: number) => innerStops[i]);
+            const reorderedSeg = [seg[0], ...reorderedInner, seg[seg.length - 1]];
+            etappenStops[e] = reorderedSeg;
+          }
+
+          const googleLegs = result.routes[0]?.legs || [];
+          segLegs = extractLegInfos(googleLegs);
+          const sums = sumLegs(googleLegs);
+          segDistance = sums.distance;
+          segDuration = sums.duration;
+
+          segmentCache.current.set(key, { result, legs: segLegs, distance: segDistance, duration: segDuration });
+        }
 
         const renderer = new google.maps.DirectionsRenderer({
           map: mapInstance.current,
           suppressMarkers: true,
-          polylineOptions: { strokeColor: "#3b82f6", strokeWeight: 5, strokeOpacity: 0.8 },
+          polylineOptions: { strokeColor: colors[e % colors.length], strokeWeight: 5, strokeOpacity: 0.8 },
+          preserveViewport: e > 0,
         });
         renderer.setDirections(result);
         renderers.current.push(renderer);
 
         const googleLegs = result.routes[0]?.legs || [];
-        const { distance, duration } = sumLegs(googleLegs);
-        const legInfos = extractLegInfos(googleLegs);
+        allLegs.push(...googleLegs);
+        allLegInfos.push(...segLegs);
+        totalDistance += segDistance;
+        totalDuration += segDuration;
+      }
 
-        onRouteCalculatedRef.current?.({
-          distance: formatDistance(distance),
-          duration: formatDuration(duration),
-          stops: waypointStops.length,
-          legs: legInfos,
-        });
-
-        if (shouldOptimize && result.routes[0]?.waypoint_order && waypointStops.length >= 2) {
-          const order = result.routes[0].waypoint_order;
-          onStopsReorderedRef.current?.([
-            start.id,
-            ...order.map((i: number) => waypointStops[i].id),
-            end.id,
-          ]);
-        }
-
-        // Place custom colored markers at exact stop positions
-        if (mapInstance.current && result.routes[0]?.legs) {
-          const legs = result.routes[0].legs;
-          const orderedStops = [start, ...waypointStops, end];
-
-          for (let i = 0; i < orderedStops.length; i++) {
-            const s = orderedStops[i];
-            const loc = stopLocation(s);
-            let pos: google.maps.LatLng | undefined;
-
-            if (loc instanceof google.maps.LatLng) {
-              pos = loc;
-            } else {
-              if (i === 0) pos = legs[0]?.start_location;
-              else if (i < orderedStops.length - 1) pos = legs[i - 1]?.end_location;
-              else pos = legs[legs.length - 1]?.end_location;
-            }
-
-            if (!pos) continue;
-
-            const label = i === 0 ? "A" : i === orderedStops.length - 1 ? "B" : String(i);
-            const color = i === 0 ? "#3b82f6"
-              : i === orderedStops.length - 1 ? "#ef4444"
-              : s.isHotel && s.bookingConfirmation ? "#22c55e"
-              : s.isHotel ? "#a855f7"
-              : "#f97316";
-
-            const marker = new google.maps.Marker({
-              map: mapInstance.current!,
-              position: pos,
-              label: { text: label, color: "white", fontWeight: "bold", fontSize: "12px" },
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 14,
-                fillColor: color,
-                fillOpacity: 1,
-                strokeColor: "white",
-                strokeWeight: 2,
-              },
-            });
-            markers.current.push(marker);
-          }
-
-          for (let li = 0; li < legs.length; li++) {
-            if (legs[li]?.start_location && legs[li]?.end_location) {
-              const stopObj = orderedStops[li];
-              const idx = stops.indexOf(stopObj);
-              legEndpoints.current.push({
-                start: legs[li].start_location,
-                end: legs[li].end_location,
-                afterStopIndex: idx >= 0 ? idx : li,
-              });
+      // Reorder stops if optimization changed order
+      if (optimize) {
+        const reorderedIds = [start.id];
+        for (const seg of etappenStops) {
+          for (let i = 1; i < seg.length; i++) {
+            if (seg[i].id !== reorderedIds[reorderedIds.length - 1]) {
+              reorderedIds.push(seg[i].id);
             }
           }
         }
-      } else {
-        // Split into segments of MAX_WAYPOINTS
-        type Loc = string | google.maps.LatLng;
-        const allStops = [start, ...waypointStops, end];
-        const allLocs: Loc[] = allStops.map((s) => stopLocation(s));
-        const segments: { origin: Loc; destination: Loc; waypoints: Loc[] }[] = [];
+        if (reorderedIds.length === filledStops.length) {
+          onStopsReorderedRef.current?.(reorderedIds);
+        }
+      }
 
-        let i = 0;
-        while (i < allLocs.length - 1) {
-          const segOrigin = allLocs[i];
-          const remaining = allLocs.length - 1 - i;
+      // Clean stale cache entries
+      for (const k of segmentCache.current.keys()) {
+        if (!usedCacheKeys.has(k)) segmentCache.current.delete(k);
+      }
 
-          if (remaining <= MAX_WAYPOINTS + 1) {
-            segments.push({
-              origin: segOrigin,
-              destination: allLocs[allLocs.length - 1],
-              waypoints: allLocs.slice(i + 1, allLocs.length - 1),
-            });
-            break;
+      console.log(`Route: ${etappenStops.length} Etappen, ${apiCalls} API-Aufrufe, ${segmentCache.current.size - apiCalls} aus Cache`);
+
+      onRouteCalculatedRef.current?.({
+        distance: formatDistance(totalDistance),
+        duration: formatDuration(totalDuration),
+        stops: waypointStops.length,
+        legs: allLegInfos,
+      });
+
+      // Place markers
+      if (mapInstance.current) {
+        const allOrderedStops = [start, ...waypointStops, end];
+        let legIdx = 0;
+
+        for (let i = 0; i < allOrderedStops.length; i++) {
+          const s = allOrderedStops[i];
+          const loc = stopLocation(s);
+          let pos: google.maps.LatLng | undefined;
+
+          if (loc instanceof google.maps.LatLng) {
+            pos = loc;
           } else {
-            const batchEnd = i + MAX_WAYPOINTS + 1;
-            segments.push({
-              origin: segOrigin,
-              destination: allLocs[batchEnd],
-              waypoints: allLocs.slice(i + 1, batchEnd),
-            });
-            i = batchEnd;
-          }
-        }
-
-        let totalDistance = 0;
-        let totalDuration = 0;
-        const allLegInfos: RouteLegInfo[] = [];
-        const colors = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"];
-
-        for (let s = 0; s < segments.length; s++) {
-          const seg = segments[s];
-          const waypoints = seg.waypoints.map((loc) => ({ location: loc, stopover: true }));
-
-          const result = await routeSegment(service, seg.origin, seg.destination, waypoints, mode, false);
-
-          const renderer = new google.maps.DirectionsRenderer({
-            map: mapInstance.current,
-            suppressMarkers: s === 0,
-            polylineOptions: {
-              strokeColor: colors[s % colors.length],
-              strokeWeight: 5,
-              strokeOpacity: 0.8,
-            },
-            preserveViewport: s > 0,
-          });
-
-          if (s > 0) {
-            renderer.setOptions({ suppressMarkers: true });
-          }
-
-          renderer.setDirections(result);
-          renderers.current.push(renderer);
-
-          const googleLegs = result.routes[0]?.legs || [];
-          const legResult = sumLegs(googleLegs);
-          totalDistance += legResult.distance;
-          totalDuration += legResult.duration;
-          allLegInfos.push(...extractLegInfos(googleLegs));
-        }
-
-        // Place custom markers for all stops
-        if (mapInstance.current) {
-          const bounds = new google.maps.LatLngBounds();
-          const geocoder = new google.maps.Geocoder();
-
-          const markerPoints = [
-            { name: start.name, label: "A", color: "#3b82f6" },
-            ...waypointStops.map((s, idx) => ({
-              name: s.name,
-              label: String(idx + 1),
-              color: s.isHotel && s.bookingConfirmation ? "#22c55e" : s.isHotel ? "#a855f7" : "#f97316",
-            })),
-            { name: end.name, label: "B", color: "#ef4444" },
-          ];
-
-          for (const pt of markerPoints) {
-            try {
-              const geoResult = await new Promise<google.maps.GeocoderResult[]>((resolve, reject) => {
-                geocoder.geocode({ address: pt.name }, (results, status) => {
-                  if (status === "OK" && results) resolve(results);
-                  else reject(status);
-                });
-              });
-
-              const loc = geoResult[0].geometry.location;
-              bounds.extend(loc);
-
-              const marker = new google.maps.Marker({
-                map: mapInstance.current!,
-                position: loc,
-                label: { text: pt.label, color: "white", fontWeight: "bold", fontSize: "12px" },
-                icon: {
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: 14,
-                  fillColor: pt.color,
-                  fillOpacity: 1,
-                  strokeColor: "white",
-                  strokeWeight: 2,
-                },
-              });
-              markers.current.push(marker);
-            } catch {
-              // Skip if geocoding fails for one stop
+            if (i === 0) pos = allLegs[0]?.start_location;
+            else if (i < allOrderedStops.length - 1) {
+              pos = allLegs[legIdx]?.end_location;
+              legIdx++;
+            } else {
+              pos = allLegs[allLegs.length - 1]?.end_location;
             }
           }
+          if (!pos) continue;
 
-          mapInstance.current.fitBounds(bounds);
+          const label = i === 0 ? "A" : i === allOrderedStops.length - 1 ? "B" : String(i);
+          const color = i === 0 ? "#3b82f6"
+            : i === allOrderedStops.length - 1 ? "#ef4444"
+            : s.isHotel && s.bookingConfirmation ? "#22c55e"
+            : s.isHotel ? "#a855f7"
+            : "#f97316";
+
+          const marker = new google.maps.Marker({
+            map: mapInstance.current!,
+            position: pos,
+            label: { text: label, color: "white", fontWeight: "bold", fontSize: "12px" },
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 14,
+              fillColor: color,
+              fillOpacity: 1,
+              strokeColor: "white",
+              strokeWeight: 2,
+            },
+          });
+          markers.current.push(marker);
         }
 
-        onRouteCalculatedRef.current?.({
-          distance: formatDistance(totalDistance),
-          duration: formatDuration(totalDuration),
-          stops: waypointStops.length,
-          legs: allLegInfos,
-        });
+        // Store leg endpoints for click-to-add
+        for (let li = 0; li < allLegs.length && li < allOrderedStops.length - 1; li++) {
+          if (allLegs[li]?.start_location && allLegs[li]?.end_location) {
+            const idx = stops.indexOf(allOrderedStops[li]);
+            legEndpoints.current.push({
+              start: allLegs[li].start_location,
+              end: allLegs[li].end_location,
+              afterStopIndex: idx >= 0 ? idx : li,
+            });
+          }
+        }
       }
 
       setError(null);
@@ -429,14 +390,14 @@ export default function GoogleMap({
         OVER_QUERY_LIMIT: "Zu viele Anfragen. Bitte warte einen Moment.",
         REQUEST_DENIED: "Directions API nicht aktiviert. Bitte in Google Cloud Console aktivieren.",
         INVALID_REQUEST: "Ungültige Routenanfrage.",
-        MAX_WAYPOINTS_EXCEEDED: "Zu viele Zwischenstopps für eine Anfrage. Route wird segmentiert...",
+        MAX_WAYPOINTS_EXCEEDED: "Zu viele Zwischenstopps für eine Anfrage.",
       };
       const msg = errorMessages[String(status)] || `Routenberechnung fehlgeschlagen (${status})`;
       onErrorRef.current?.(msg);
     } finally {
       setCalculating(false);
     }
-  }, [loaded, stops, travelMode, optimize, clearRenderers, stopLocation]);
+  }, [loaded, stops, travelMode, optimize, clearRenderers, stopLocation, segmentKey]);
 
   useEffect(() => {
     const timer = setTimeout(calculateRoute, 800);
@@ -561,7 +522,7 @@ export function useGoogleAutocomplete() {
   }, []);
 
   const attachAutocomplete = useCallback(
-    (inputElement: HTMLInputElement, onSelect: (place: string) => void) => {
+    (inputElement: HTMLInputElement, onSelect: (place: string, lat?: number, lng?: number) => void) => {
       if (!ready || !inputElement) return;
 
       if (inputElement.dataset.autocompleteAttached) return;
@@ -574,10 +535,12 @@ export function useGoogleAutocomplete() {
 
       autocomplete.addListener("place_changed", () => {
         const place = autocomplete.getPlace();
+        const lat = place?.geometry?.location?.lat();
+        const lng = place?.geometry?.location?.lng();
         if (place?.name) {
-          onSelect(place.name);
+          onSelect(place.name, lat, lng);
         } else if (place?.formatted_address) {
-          onSelect(place.formatted_address);
+          onSelect(place.formatted_address, lat, lng);
         }
       });
 
