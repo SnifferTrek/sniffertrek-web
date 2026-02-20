@@ -29,14 +29,10 @@ import {
 
 const modeIcons: Record<TravelMode, typeof Car> = {
   auto: Car,
-  zug: Train,
-  flug: Plane,
 };
 
 const modeLabels: Record<TravelMode, string> = {
   auto: "Auto",
-  zug: "Zug",
-  flug: "Flug",
 };
 
 export default function MeineReisenPage() {

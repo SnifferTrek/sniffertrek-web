@@ -54,8 +54,7 @@ export async function POST(request: NextRequest) {
         ? interests.map((i) => interestLabels[i] || i).join(", ")
         : "allgemeine Sehenswürdigkeiten und Geheimtipps";
 
-    const modeText =
-      travelMode === "auto" ? "mit dem Auto" : travelMode === "zug" ? "mit dem Zug" : "per Flug";
+    const modeText = "mit dem Auto";
 
     const etappeDescriptions = targetEtappes
       .map((e, i) => {
