@@ -40,7 +40,6 @@ import {
   ArrowDownUp,
 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import {
   Trip,
   TravelMode,
@@ -125,7 +124,6 @@ export default function PlanerPage() {
   const [landmarkContinent, setLandmarkContinent] = useState("");
   const [landmarkUnescoOnly, setLandmarkUnescoOnly] = useState(false);
   const [landmarksLoaded, setLandmarksLoaded] = useState(false);
-  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -1790,22 +1788,18 @@ export default function PlanerPage() {
                                 key={lm.id}
                                 className="flex items-start gap-3 rounded-xl px-3 py-3 hover:bg-gray-50 transition-colors border border-gray-50"
                               >
-                                <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 relative">
-                                  {lm.imageURL && !failedImages.has(lm.id) ? (
-                                    <Image
-                                      src={lm.imageURL.replace("/800px-", "/200px-")}
-                                      alt={lm.name}
-                                      fill
-                                      sizes="56px"
-                                      className="object-cover"
-                                      loading="lazy"
-                                      onError={() => setFailedImages((prev) => new Set(prev).add(lm.id))}
-                                    />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                      <MapPin className="w-5 h-5 text-gray-300" />
-                                    </div>
-                                  )}
+                                {lm.imageURL ? (
+                                  <img
+                                    src={lm.imageURL}
+                                    alt={lm.name}
+                                    className="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-gray-100"
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden"); }}
+                                  />
+                                ) : null}
+                                <div className={`w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0 ${lm.imageURL ? "hidden" : ""}`}>
+                                  <MapPin className="w-5 h-5 text-gray-300" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5">
