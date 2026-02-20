@@ -13,6 +13,16 @@ const interestLabels: Record<string, string> = {
   shopping: "Shopping & Märkte (Outlets, Flohmärkte, lokale Handwerkskunst)",
 };
 
+interface EtappeInput {
+  from: string;
+  to: string;
+  fromLat?: number;
+  fromLng?: number;
+  toLat?: number;
+  toLng?: number;
+  viaStops: { name: string; lat?: number; lng?: number }[];
+}
+
 export async function POST(request: NextRequest) {
   if (!OPENAI_API_KEY) {
     return NextResponse.json(
@@ -23,16 +33,20 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { etappes, interests, travelMode, language } = body as {
-      etappes: { from: string; to: string; viaStops: string[] }[];
+    const { etappes, interests, travelMode, language, etappeIndex } = body as {
+      etappes: EtappeInput[];
       interests: string[];
       travelMode: string;
       language?: string;
+      etappeIndex?: number;
     };
 
     if (!etappes || etappes.length === 0) {
       return NextResponse.json({ error: "No etappes provided" }, { status: 400 });
     }
+
+    const targetEtappes = etappeIndex != null ? [etappes[etappeIndex]] : etappes;
+    const targetOffset = etappeIndex ?? 0;
 
     const lang = language || "de";
     const interestText =
@@ -43,17 +57,27 @@ export async function POST(request: NextRequest) {
     const modeText =
       travelMode === "auto" ? "mit dem Auto" : travelMode === "zug" ? "mit dem Zug" : "per Flug";
 
-    const etappeDescriptions = etappes
+    const etappeDescriptions = targetEtappes
       .map((e, i) => {
-        const via = e.viaStops.length > 0 ? ` (über ${e.viaStops.join(", ")})` : "";
-        return `Etappe ${i + 1}: ${e.from} → ${e.to}${via}`;
+        const coords = (lat?: number, lng?: number) =>
+          lat != null && lng != null ? ` [${lat.toFixed(3)}, ${lng.toFixed(3)}]` : "";
+        const fromCoords = coords(e.fromLat, e.fromLng);
+        const toCoords = coords(e.toLat, e.toLng);
+        const viaList = e.viaStops
+          .map((v) => `${v.name}${coords(v.lat, v.lng)}`)
+          .join(", ");
+        const via = viaList ? ` (über ${viaList})` : "";
+        return `Etappe ${targetOffset + i + 1}: ${e.from}${fromCoords} → ${e.to}${toCoords}${via}`;
       })
       .join("\n");
 
     const systemPrompt = `Du bist ein erfahrener Reiseberater und Lokalexperte. Du gibst personalisierte Empfehlungen für Reisende ${modeText}.
 Antworte ausschliesslich mit validem JSON – kein Markdown, keine Erklärungen ausserhalb des JSON.`;
 
-    const userPrompt = `Empfehle für jede Etappe 3-5 besondere Orte ENTLANG oder NAHE der Strecke (max. 30 Min. Abstecher).
+    const numSuggestions = targetEtappes.length === 1 ? "5-8" : "3-5";
+
+    const userPrompt = `Empfehle für jede Etappe ${numSuggestions} besondere Orte ENTLANG oder NAHE der Strecke (max. 30 Min. Abstecher).
+Die Koordinaten in Klammern zeigen die exakte Lage der Stopps – empfehle nur Orte im geografischen Korridor dazwischen (max. 30km Luftlinie von der Verbindungslinie).
 
 Reiseroute:
 ${etappeDescriptions}
@@ -63,21 +87,24 @@ Interessen: ${interestText}
 Antworte als JSON-Array mit diesem Schema:
 [
   {
-    "etappeIndex": 0,
+    "etappeIndex": ${targetOffset},
     "name": "Name des Orts",
     "description": "2-3 Sätze warum dieser Ort besonders ist, mit persönlichem Tipp",
     "category": "Kategorie (z.B. Aussichtspunkt, Weingut, Altstadt, Nationalpark)",
     "detourMinutes": 10,
-    "nearestStop": "nächster Ort auf der Route"
+    "nearestStop": "nächster Ort auf der Route",
+    "lat": 45.123,
+    "lng": 4.567
   }
 ]
 
 Regeln:
-- Nur Orte die WIRKLICH entlang/nahe der Strecke liegen
+- Nur Orte die WIRKLICH im geografischen Korridor der Etappe liegen (max. 30km von der Route)
 - Bevorzuge Geheimtipps vor den offensichtlichen Touristenattraktionen
 - ${lang === "de" ? "Beschreibungen auf Deutsch" : "Descriptions in English"}
 - detourMinutes = geschätzte zusätzliche Fahrzeit ab Route
-- Verteile die Empfehlungen gleichmässig über die Etappen`;
+- lat/lng = ungefähre Koordinaten des empfohlenen Orts (PFLICHT)
+- Verteile die Empfehlungen gleichmässig über die Etappe(n)`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -92,7 +119,7 @@ Regeln:
           { role: "user", content: userPrompt },
         ],
         temperature: 0.8,
-        max_tokens: 3000,
+        max_tokens: 4000,
       }),
     });
 
@@ -106,10 +133,7 @@ Regeln:
       } catch {
         detail = `OpenAI Fehler ${response.status}: ${errText.slice(0, 200)}`;
       }
-      return NextResponse.json(
-        { error: detail },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: detail }, { status: 502 });
     }
 
     const data = await response.json();
@@ -121,18 +145,12 @@ Regeln:
       suggestions = JSON.parse(cleaned);
     } catch {
       console.error("Failed to parse AI response:", content);
-      return NextResponse.json(
-        { error: "Invalid AI response format" },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: "Invalid AI response format" }, { status: 502 });
     }
 
     return NextResponse.json({ suggestions });
   } catch (error) {
     console.error("AI POI error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

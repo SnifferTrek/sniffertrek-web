@@ -550,18 +550,62 @@ export default function PlanerPage() {
     }
   }, [poisSearchedFor, trip.stops, destination]);
 
-  const loadAiPois = useCallback(async () => {
+  const [aiLoadingEtappe, setAiLoadingEtappe] = useState<number | null>(null);
+  const [aiPoiPhotos, setAiPoiPhotos] = useState<Record<string, string>>({});
+
+  const loadAiPoisForEtappe = useCallback(async (eIdx: number) => {
     if (etappen.length === 0) return;
-    setAiPoisLoading(true);
+    setAiLoadingEtappe(eIdx);
     setAiPoisError(null);
     try {
       const results = await fetchAiPois({
         etappes: etappen,
         interests: trip.interests || [],
         travelMode: trip.travelMode,
-        stops: trip.stops.map((s) => ({ name: s.name, type: s.type, isHotel: s.isHotel })),
+        stops: trip.stops,
+        etappeIndex: eIdx,
+      });
+      setAiPois((prev) => [...prev.filter((p) => p.etappeIndex !== eIdx), ...results]);
+
+      if (window.google?.maps?.places) {
+        const { fetchPlacePhoto } = await import("@/lib/poiService");
+        for (const poi of results) {
+          if (!aiPoiPhotos[poi.name]) {
+            fetchPlacePhoto(poi.name).then((url) => {
+              if (url) setAiPoiPhotos((prev) => ({ ...prev, [poi.name]: url }));
+            });
+          }
+        }
+      }
+    } catch (err) {
+      setAiPoisError(err instanceof Error ? err.message : "KI-Empfehlungen konnten nicht geladen werden");
+    } finally {
+      setAiLoadingEtappe(null);
+    }
+  }, [etappen, trip.interests, trip.travelMode, trip.stops, aiPoiPhotos]);
+
+  const loadAllAiPois = useCallback(async () => {
+    if (etappen.length === 0) return;
+    setAiPoisLoading(true);
+    setAiPoisError(null);
+    setAiPois([]);
+    try {
+      const results = await fetchAiPois({
+        etappes: etappen,
+        interests: trip.interests || [],
+        travelMode: trip.travelMode,
+        stops: trip.stops,
       });
       setAiPois(results);
+
+      if (window.google?.maps?.places) {
+        const { fetchPlacePhoto } = await import("@/lib/poiService");
+        for (const poi of results) {
+          fetchPlacePhoto(poi.name).then((url) => {
+            if (url) setAiPoiPhotos((prev) => ({ ...prev, [poi.name]: url }));
+          });
+        }
+      }
     } catch (err) {
       setAiPoisError(err instanceof Error ? err.message : "KI-Empfehlungen konnten nicht geladen werden");
       setAiPois([]);
@@ -1959,32 +2003,6 @@ export default function PlanerPage() {
                       </div>
                     </div>
 
-                    {/* Generate Button */}
-                    {etappen.length > 0 ? (
-                      <button
-                        onClick={loadAiPois}
-                        disabled={aiPoisLoading}
-                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-purple-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {aiPoisLoading ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            KI analysiert deine Route...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-4 h-4" />
-                            {aiPois.length > 0 ? "Neue Empfehlungen generieren" : "Empfehlungen für meine Route"}
-                          </>
-                        )}
-                      </button>
-                    ) : (
-                      <div className="text-center py-6">
-                        <Route className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                        <p className="text-sm text-gray-400">Erstelle zuerst eine Route mit Zwischenstopps, um KI-Empfehlungen zu erhalten.</p>
-                      </div>
-                    )}
-
                     {/* AI Error */}
                     {aiPoisError && (
                       <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
@@ -1992,57 +2010,92 @@ export default function PlanerPage() {
                       </div>
                     )}
 
-                    {/* AI Results grouped by Etappe */}
-                    {aiPois.length > 0 && (
+                    {/* Etappen with per-etappe AI buttons */}
+                    {etappen.length > 0 ? (
                       <div className="space-y-4">
+                        {/* All-in-one button */}
+                        {etappen.length > 1 && (
+                          <button
+                            onClick={loadAllAiPois}
+                            disabled={aiPoisLoading}
+                            className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-purple-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {aiPoisLoading ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                KI analysiert alle Etappen...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-4 h-4" />
+                                Alle Etappen auf einmal
+                              </>
+                            )}
+                          </button>
+                        )}
+
                         {etappen.map((etappe, eIdx) => {
                           const suggestions = aiPois.filter((p) => p.etappeIndex === eIdx);
-                          if (suggestions.length === 0) return null;
+                          const isLoading = aiLoadingEtappe === eIdx;
                           return (
                             <div key={eIdx} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                              <div className="bg-gradient-to-r from-purple-500 to-indigo-500 px-5 py-3">
-                                <p className="text-xs text-white/70 font-medium">Etappe {eIdx + 1}</p>
-                                <p className="text-sm text-white font-semibold">{etappe.from} → {etappe.to}</p>
+                              <div className="bg-gradient-to-r from-purple-500 to-indigo-500 px-5 py-3 flex items-center justify-between">
+                                <div>
+                                  <p className="text-xs text-white/70 font-medium">Etappe {eIdx + 1} · {etappe.distanceKm} km · {etappe.durationFormatted}</p>
+                                  <p className="text-sm text-white font-semibold">{etappe.from} → {etappe.to}</p>
+                                </div>
+                                <button
+                                  onClick={() => loadAiPoisForEtappe(eIdx)}
+                                  disabled={isLoading || aiPoisLoading}
+                                  className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
+                                >
+                                  {isLoading ? (
+                                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <Sparkles className="w-3 h-3" />
+                                  )}
+                                  {suggestions.length > 0 ? "Neu" : "Entdecken"}
+                                </button>
                               </div>
-                              <div className="divide-y divide-gray-50">
-                                {suggestions.map((poi, pIdx) => {
-                                  const inBucket = isInBucketList(poi.name);
-                                  return (
-                                    <div key={pIdx} className="p-4 hover:bg-purple-50/30 transition-colors">
-                                      <div className="flex items-start gap-3">
-                                        <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
-                                          <Compass className="w-4 h-4 text-purple-600" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-start justify-between gap-2">
-                                            <div>
-                                              <h4 className="text-sm font-semibold text-gray-900">{poi.name}</h4>
-                                              <div className="flex items-center gap-2 mt-0.5">
-                                                <span className="text-[10px] font-medium text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">{poi.category}</span>
-                                                {poi.detourMinutes != null && (
-                                                  <span className="text-[10px] text-gray-400">
-                                                    <Clock className="w-2.5 h-2.5 inline mr-0.5" />
-                                                    ~{poi.detourMinutes} Min. Abstecher
-                                                  </span>
-                                                )}
-                                              </div>
-                                            </div>
+                              {suggestions.length > 0 && (
+                                <div className="divide-y divide-gray-50">
+                                  {suggestions.map((poi, pIdx) => {
+                                    const inBucket = isInBucketList(poi.name);
+                                    const photoUrl = aiPoiPhotos[poi.name];
+                                    return (
+                                      <div key={pIdx} className="group">
+                                        {photoUrl && (
+                                          <div className="h-40 w-full overflow-hidden">
+                                            <img
+                                              src={photoUrl}
+                                              alt={poi.name}
+                                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                            />
+                                          </div>
+                                        )}
+                                        <div className="p-4">
+                                          <h4 className="text-sm font-semibold text-gray-900">{poi.name}</h4>
+                                          <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[10px] font-medium text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">{poi.category}</span>
+                                            {poi.detourMinutes != null && (
+                                              <span className="text-[10px] text-gray-400">
+                                                <Clock className="w-2.5 h-2.5 inline mr-0.5" />
+                                                ~{poi.detourMinutes} Min. Abstecher
+                                              </span>
+                                            )}
                                           </div>
                                           <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{poi.description}</p>
-                                          <div className="flex items-center gap-2 mt-2">
+                                          <div className="flex items-center gap-3 mt-2.5">
                                             <button
                                               onClick={() => {
-                                                const endIdx = trip.stops.findIndex((s) => s.type === "end");
-                                                const newStop: RouteStop = {
-                                                  id: `stop-${Date.now()}-${pIdx}`,
-                                                  name: poi.name,
-                                                  type: "stop",
-                                                  lat: poi.lat,
-                                                  lng: poi.lng,
-                                                };
+                                                const newStop: RouteStop = { id: `stop-${Date.now()}-${pIdx}`, name: poi.name, type: "stop", lat: poi.lat, lng: poi.lng };
                                                 const newStops = [...trip.stops];
+                                                const endIdx = newStops.findIndex((s) => s.type === "end");
                                                 newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, newStop);
                                                 updateTrip({ stops: newStops });
+                                                if (poi.lat != null && poi.lng != null) {
+                                                  setTimeout(() => updateStopWithCoords(newStop.id, poi.name, poi.lat!, poi.lng!), 100);
+                                                }
                                               }}
                                               className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
                                             >
@@ -2065,13 +2118,29 @@ export default function PlanerPage() {
                                           </div>
                                         </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              {suggestions.length === 0 && !isLoading && (
+                                <div className="px-5 py-4 text-xs text-gray-400 text-center">
+                                  Klicke «Entdecken» für KI-Empfehlungen auf dieser Etappe
+                                </div>
+                              )}
+                              {isLoading && (
+                                <div className="px-5 py-6 flex items-center justify-center gap-2 text-purple-500">
+                                  <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                                  <span className="text-xs">KI sucht Empfehlungen...</span>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6">
+                        <Route className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                        <p className="text-sm text-gray-400">Erstelle zuerst eine Route mit Hotelstopps, um KI-Empfehlungen pro Etappe zu erhalten.</p>
                       </div>
                     )}
                   </div>

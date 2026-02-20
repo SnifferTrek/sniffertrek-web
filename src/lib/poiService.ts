@@ -145,6 +145,24 @@ export async function searchPOIsAlongRoute(
     .slice(0, 40);
 }
 
+export async function fetchPlacePhoto(name: string): Promise<string | null> {
+  if (!window.google?.maps?.places) return null;
+  return new Promise((resolve) => {
+    const dummyDiv = document.createElement("div");
+    const service = new google.maps.places.PlacesService(dummyDiv);
+    service.findPlaceFromQuery(
+      { query: name, fields: ["photos", "place_id"] },
+      (results, status) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK && results?.[0]?.photos?.[0]) {
+          resolve(results[0].photos[0].getUrl({ maxWidth: 400, maxHeight: 300 }));
+        } else {
+          resolve(null);
+        }
+      }
+    );
+  });
+}
+
 export function getPoiCategoryIcon(category: string): string {
   const iconMap: Record<string, string> = {
     "Sehenswürdigkeit": "landmark",
