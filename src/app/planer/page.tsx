@@ -245,7 +245,19 @@ export default function PlanerPage() {
     });
   };
 
-  const updateStopWithCoords = (id: string, name: string, lat: number, lng: number) => {
+  const geocodeStop = async (s: RouteStop): Promise<{ lat: number; lng: number } | null> => {
+    if (s.lat != null && s.lng != null) return { lat: s.lat, lng: s.lng };
+    if (!s.name.trim() || !window.google?.maps) return null;
+    try {
+      const geocoder = new google.maps.Geocoder();
+      const res = await geocoder.geocode({ address: s.bookingAddress || s.name });
+      const loc = res.results?.[0]?.geometry?.location;
+      if (loc) return { lat: loc.lat(), lng: loc.lng() };
+    } catch { /* ignore */ }
+    return null;
+  };
+
+  const updateStopWithCoords = async (id: string, name: string, lat: number, lng: number) => {
     const stopIdx = trip.stops.findIndex((s) => s.id === id);
     if (stopIdx < 0) return;
     const stop = trip.stops[stopIdx];
@@ -265,17 +277,24 @@ export default function PlanerPage() {
       return;
     }
 
-    let bestIdx = newStops.findIndex((s) => s.type === "end");
+    const coords = await Promise.all(
+      newStops.map(async (s) => {
+        const c = await geocodeStop(s);
+        if (c) s = { ...s, lat: c.lat, lng: c.lng };
+        return s;
+      })
+    );
+
+    let bestIdx = coords.findIndex((s) => s.type === "end");
     let minDetour = Infinity;
 
-    for (let i = 0; i < newStops.length - 1; i++) {
-      const a = newStops[i];
-      const b = newStops[i + 1];
+    for (let i = 0; i < coords.length - 1; i++) {
+      const a = coords[i];
+      const b = coords[i + 1];
       if (!a.name.trim() || !b.name.trim()) continue;
-      const aLat = a.lat ?? 0, aLng = a.lng ?? 0;
-      const bLat = b.lat ?? 0, bLng = b.lng ?? 0;
-      if (aLat === 0 && aLng === 0) continue;
-      if (bLat === 0 && bLng === 0) continue;
+      const aLat = a.lat, aLng = a.lng;
+      const bLat = b.lat, bLng = b.lng;
+      if (aLat == null || aLng == null || bLat == null || bLng == null) continue;
 
       const ab = haversine(aLat, aLng, bLat, bLng);
       const ac = haversine(aLat, aLng, lat, lng);
@@ -288,8 +307,9 @@ export default function PlanerPage() {
       }
     }
 
-    newStops.splice(bestIdx, 0, updatedStop);
-    updateTrip({ stops: newStops });
+    const finalStops = coords.map((s, i) => ({ ...newStops[i], lat: s.lat, lng: s.lng }));
+    finalStops.splice(bestIdx, 0, updatedStop);
+    updateTrip({ stops: finalStops });
   };
 
   const updateStopField = (id: string, fields: Partial<RouteStop>) => {
