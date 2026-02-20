@@ -241,6 +241,38 @@ export default function PlanerPage() {
     updateTrip({ stops: newStops });
   };
 
+  const addStopSmart = async (name: string, lat?: number, lng?: number) => {
+    const newStop: RouteStop = { id: `stop-${Date.now()}`, name, type: "stop", lat, lng };
+    const existingStops = trip.stops.filter((s) => s.name.trim());
+    if (existingStops.length < 2 || lat == null || lng == null) {
+      const newStops = [...trip.stops];
+      const endIdx = newStops.findIndex((s) => s.type === "end");
+      newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, newStop);
+      updateTrip({ stops: newStops });
+      return;
+    }
+    const coords = await Promise.all(
+      trip.stops.map(async (s) => {
+        const c = await geocodeStop(s);
+        return c ? { ...s, lat: c.lat, lng: c.lng } : s;
+      })
+    );
+    let bestIdx = coords.findIndex((s) => s.type === "end");
+    let minDetour = Infinity;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const a = coords[i], b = coords[i + 1];
+      if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) continue;
+      const ab = haversine(a.lat, a.lng, b.lat, b.lng);
+      const ac = haversine(a.lat, a.lng, lat, lng);
+      const cb = haversine(lat, lng, b.lat, b.lng);
+      const detour = ac + cb - ab;
+      if (detour < minDetour) { minDetour = detour; bestIdx = i + 1; }
+    }
+    const finalStops: RouteStop[] = coords.map((s, i) => ({ ...trip.stops[i], lat: s.lat, lng: s.lng }));
+    finalStops.splice(bestIdx, 0, newStop);
+    updateTrip({ stops: finalStops });
+  };
+
   const removeStop = (id: string) => {
     updateTrip({ stops: trip.stops.filter((s) => s.id !== id) });
   };
@@ -1011,27 +1043,56 @@ export default function PlanerPage() {
                   Bucket List ({trip.bucketList.length})
                 </h3>
                 <div className="space-y-2">
-                  {trip.bucketList.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between bg-green-50 rounded-xl px-4 py-2.5"
-                    >
-                      <div>
-                        <span className="text-sm font-medium text-gray-800">
-                          {item.name}
-                        </span>
-                        <span className="text-xs text-gray-400 ml-2">
-                          {item.category}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => removeFromBucketList(item.id)}
-                        className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                  {trip.bucketList.map((item) => {
+                    const isStop = trip.stops.some((s) => s.name === item.name);
+                    return (
+                      <div
+                        key={item.id}
+                        className="flex items-start gap-3 bg-green-50 rounded-xl px-4 py-3"
                       >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                        <a
+                          href={`https://www.google.com/maps/search/${encodeURIComponent(item.name)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 hover:ring-2 hover:ring-green-400 transition-all mt-0.5"
+                          title="In Google Maps öffnen"
+                        >
+                          <MapPin className="w-4 h-4 text-green-600" />
+                        </a>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800">{item.name}</p>
+                          <p className="text-[10px] text-gray-400">{item.category}</p>
+                          {item.description && (
+                            <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{item.description}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-1.5">
+                            {!isStop && (
+                              <button
+                                onClick={() => addStopSmart(item.name)}
+                                className="flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-700"
+                              >
+                                <Plus className="w-2.5 h-2.5" />
+                                Als Stopp
+                              </button>
+                            )}
+                            {isStop && (
+                              <span className="flex items-center gap-1 text-[10px] font-medium text-green-600">
+                                <Check className="w-2.5 h-2.5" />
+                                In Route
+                              </span>
+                            )}
+                            <button
+                              onClick={() => removeFromBucketList(item.id)}
+                              className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-red-500 transition-colors"
+                            >
+                              <X className="w-2.5 h-2.5" />
+                              Entfernen
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -2065,15 +2126,23 @@ export default function PlanerPage() {
                                     return (
                                       <div key={pIdx} className="p-4 hover:bg-purple-50/30 transition-colors">
                                         <div className="flex items-start gap-3">
-                                          {photoUrl ? (
-                                            <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0">
-                                              <img src={photoUrl} alt={poi.name} className="w-full h-full object-cover" />
-                                            </div>
-                                          ) : (
-                                            <div className="w-16 h-16 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
-                                              <Compass className="w-6 h-6 text-purple-400" />
-                                            </div>
-                                          )}
+                                          <a
+                                            href={`https://www.google.com/maps/search/${encodeURIComponent(poi.name)}${poi.lat != null && poi.lng != null ? `/@${poi.lat},${poi.lng},14z` : ""}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex-shrink-0"
+                                            title="In Google Maps öffnen"
+                                          >
+                                            {photoUrl ? (
+                                              <div className="w-16 h-16 rounded-xl overflow-hidden hover:ring-2 hover:ring-purple-400 transition-all">
+                                                <img src={photoUrl} alt={poi.name} className="w-full h-full object-cover" />
+                                              </div>
+                                            ) : (
+                                              <div className="w-16 h-16 rounded-xl bg-purple-100 flex items-center justify-center hover:ring-2 hover:ring-purple-400 transition-all">
+                                                <Compass className="w-6 h-6 text-purple-400" />
+                                              </div>
+                                            )}
+                                          </a>
                                           <div className="flex-1 min-w-0">
                                           <h4 className="text-sm font-semibold text-gray-900">{poi.name}</h4>
                                           <div className="flex items-center gap-2 mt-0.5">
@@ -2088,16 +2157,7 @@ export default function PlanerPage() {
                                           <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{poi.description}</p>
                                           <div className="flex items-center gap-3 mt-2.5">
                                             <button
-                                              onClick={() => {
-                                                const newStop: RouteStop = { id: `stop-${Date.now()}-${pIdx}`, name: poi.name, type: "stop", lat: poi.lat, lng: poi.lng };
-                                                const newStops = [...trip.stops];
-                                                const endIdx = newStops.findIndex((s) => s.type === "end");
-                                                newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, newStop);
-                                                updateTrip({ stops: newStops });
-                                                if (poi.lat != null && poi.lng != null) {
-                                                  setTimeout(() => updateStopWithCoords(newStop.id, poi.name, poi.lat!, poi.lng!), 100);
-                                                }
-                                              }}
+                                              onClick={() => addStopSmart(poi.name, poi.lat, poi.lng)}
                                               className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
                                             >
                                               <Plus className="w-3 h-3" />
