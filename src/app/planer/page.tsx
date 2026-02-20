@@ -307,7 +307,7 @@ export default function PlanerPage() {
       }
     }
 
-    const finalStops = coords.map((s, i) => ({ ...newStops[i], lat: s.lat, lng: s.lng }));
+    const finalStops: RouteStop[] = coords.map((s, i) => ({ ...newStops[i], lat: s.lat, lng: s.lng }));
     finalStops.splice(bestIdx, 0, updatedStop);
     updateTrip({ stops: finalStops });
   };
