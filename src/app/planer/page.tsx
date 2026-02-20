@@ -67,6 +67,7 @@ import { useAuth } from "@/components/AuthProvider";
 import GoogleMap, { useGoogleAutocomplete } from "@/components/GoogleMap";
 import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
+import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
 import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
@@ -117,6 +118,12 @@ export default function PlanerPage() {
   const [aiPois, setAiPois] = useState<AiPoiSuggestion[]>([]);
   const [aiPoisLoading, setAiPoisLoading] = useState(false);
   const [aiPoisError, setAiPoisError] = useState<string | null>(null);
+  const [landmarks, setLandmarks] = useState<Landmark[]>([]);
+  const [landmarkQuery, setLandmarkQuery] = useState("");
+  const [landmarkCategory, setLandmarkCategory] = useState("");
+  const [landmarkContinent, setLandmarkContinent] = useState("");
+  const [landmarkUnescoOnly, setLandmarkUnescoOnly] = useState(false);
+  const [landmarksLoaded, setLandmarksLoaded] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -137,6 +144,15 @@ export default function PlanerPage() {
       window.removeEventListener("resize", checkTabScroll);
     };
   }, [checkTabScroll]);
+
+  useEffect(() => {
+    if (activeTab === "bucket" && !landmarksLoaded) {
+      loadLandmarks().then((data) => {
+        setLandmarks(data);
+        setLandmarksLoaded(true);
+      });
+    }
+  }, [activeTab, landmarksLoaded]);
 
   // Load active trip or create new one
   useEffect(() => {
@@ -1621,89 +1637,251 @@ export default function PlanerPage() {
             {/* Bucket List Tab */}
             {activeTab === "bucket" && (
               <div className="space-y-6">
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100 rounded-2xl p-5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <BookmarkPlus className="w-5 h-5 text-green-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-green-900">Bucket List</h3>
-                      <p className="text-sm text-green-700 mt-0.5">
-                        Sammle Orte die du besuchen möchtest. Füge sie über den &quot;Entdecken&quot;-Tab oder Google Places hinzu.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {trip.bucketList.length === 0 ? (
-                  <div className="text-center py-12">
-                    <BookmarkPlus className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-                    <p className="text-gray-400 text-sm">Noch keine Orte auf der Bucket List.</p>
-                    <p className="text-gray-300 text-xs mt-1">
-                      Entdecke spannende Orte im &quot;Entdecken&quot;-Tab und füge sie hier hinzu.
+                {/* My Bucket List */}
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                    Meine Bucket List ({trip.bucketList.length})
+                  </h3>
+                  {trip.bucketList.length === 0 ? (
+                    <p className="text-sm text-gray-400 py-4 text-center">
+                      Noch keine Orte. Stöbere unten in 1&apos;488 Sehenswürdigkeiten.
                     </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {trip.bucketList.map((item) => {
-                      const isStop = trip.stops.some((s) => s.name === item.name);
-                      return (
-                        <div
-                          key={item.id}
-                          className="flex items-start gap-3 bg-white rounded-xl px-5 py-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
-                        >
-                          <a
-                            href={`https://www.google.com/maps/search/${encodeURIComponent(item.name)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0 hover:ring-2 hover:ring-green-400 transition-all mt-0.5"
-                            title="In Google Maps öffnen"
+                  ) : (
+                    <div className="space-y-2">
+                      {trip.bucketList.map((item) => {
+                        const isStop = trip.stops.some((s) => s.name === item.name);
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex items-start gap-3 bg-green-50 rounded-xl px-4 py-3"
                           >
-                            <MapPin className="w-5 h-5 text-green-600" />
-                          </a>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-800">{item.name}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs text-gray-400">{item.category}</span>
-                              {item.rating > 0 && (
-                                <span className="flex items-center gap-0.5 text-xs text-gray-400">
-                                  <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                                  {item.rating}
-                                </span>
+                            <a
+                              href={`https://www.google.com/maps/search/${encodeURIComponent(item.name)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 hover:ring-2 hover:ring-green-400 transition-all mt-0.5"
+                              title="In Google Maps öffnen"
+                            >
+                              <MapPin className="w-4 h-4 text-green-600" />
+                            </a>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-800">{item.name}</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[11px] text-gray-400">{item.category}</span>
+                                {item.rating > 0 && (
+                                  <span className="flex items-center gap-0.5 text-[11px] text-gray-400">
+                                    <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                                    {item.rating}
+                                  </span>
+                                )}
+                              </div>
+                              {item.description && (
+                                <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{item.description}</p>
                               )}
-                            </div>
-                            {item.description && (
-                              <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.description}</p>
-                            )}
-                            <div className="flex items-center gap-3 mt-2">
-                              {!isStop ? (
+                              <div className="flex items-center gap-3 mt-1.5">
+                                {!isStop ? (
+                                  <button
+                                    onClick={() => addStopSmart(item.name)}
+                                    className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    Als Stopp
+                                  </button>
+                                ) : (
+                                  <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
+                                    <Check className="w-3 h-3" />
+                                    In Route
+                                  </span>
+                                )}
                                 <button
-                                  onClick={() => addStopSmart(item.name)}
-                                  className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                                  onClick={() => removeFromBucketList(item.id)}
+                                  className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-500 transition-colors"
                                 >
-                                  <Plus className="w-3 h-3" />
-                                  Als Stopp einfügen
+                                  <X className="w-3 h-3" />
+                                  Entfernen
                                 </button>
-                              ) : (
-                                <span className="flex items-center gap-1 text-xs font-medium text-green-600">
-                                  <Check className="w-3 h-3" />
-                                  In Route
-                                </span>
-                              )}
-                              <button
-                                onClick={() => removeFromBucketList(item.id)}
-                                className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition-colors"
-                              >
-                                <X className="w-3 h-3" />
-                                Entfernen
-                              </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Landmark Explorer */}
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
+                    Sehenswürdigkeiten entdecken
+                  </h3>
+
+                  {/* Search */}
+                  <div className="relative mb-3">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Suche nach Ort, Land, Stadt..."
+                      value={landmarkQuery}
+                      onChange={(e) => setLandmarkQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
                   </div>
-                )}
+
+                  {/* Filters */}
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <button
+                      onClick={() => setLandmarkUnescoOnly(!landmarkUnescoOnly)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        landmarkUnescoOnly
+                          ? "bg-amber-100 text-amber-700 ring-1 ring-amber-300"
+                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                      }`}
+                    >
+                      <Globe className="w-3 h-3" />
+                      UNESCO
+                    </button>
+                    <select
+                      value={landmarkContinent}
+                      onChange={(e) => setLandmarkContinent(e.target.value)}
+                      className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border-0 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Alle Kontinente</option>
+                      {CONTINENTS.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={landmarkCategory}
+                      onChange={(e) => setLandmarkCategory(e.target.value)}
+                      className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border-0 focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Alle Kategorien</option>
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Results */}
+                  {(() => {
+                    const filtered = filterLandmarks(landmarks, {
+                      query: landmarkQuery,
+                      category: landmarkCategory,
+                      continent: landmarkContinent,
+                      unescoOnly: landmarkUnescoOnly,
+                    });
+                    const shown = filtered.slice(0, 30);
+                    const inBucketNames = new Set(trip.bucketList.map((b) => b.name));
+
+                    return (
+                      <>
+                        <p className="text-[11px] text-gray-400 mb-3">
+                          {filtered.length} Ergebnis{filtered.length !== 1 ? "se" : ""}
+                          {filtered.length > 30 && " (erste 30 angezeigt)"}
+                        </p>
+                        <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                          {shown.map((lm) => {
+                            const inBucket = inBucketNames.has(lm.name);
+                            const isStop = trip.stops.some((s) => s.name === lm.name);
+                            return (
+                              <div
+                                key={lm.id}
+                                className="flex items-start gap-3 rounded-xl px-3 py-3 hover:bg-gray-50 transition-colors border border-gray-50"
+                              >
+                                {lm.imageURL ? (
+                                  <img
+                                    src={lm.imageURL}
+                                    alt={lm.name}
+                                    className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <div className="w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <MapPin className="w-5 h-5 text-gray-300" />
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-sm font-medium text-gray-800 truncate">{lm.name}</p>
+                                    {lm.unesco?.isWorldHeritage && (
+                                      <span className="flex-shrink-0 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-bold rounded-full">
+                                        UNESCO
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-gray-400 mt-0.5">
+                                    {lm.category} · {lm.city}, {lm.country}
+                                  </p>
+                                  <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{lm.description}</p>
+                                  <div className="flex items-center gap-2 mt-1.5">
+                                    {!inBucket ? (
+                                      <button
+                                        onClick={() =>
+                                          addToBucketList({
+                                            name: lm.name,
+                                            category: lm.category,
+                                            rating: 0,
+                                            description: lm.description,
+                                          })
+                                        }
+                                        className="flex items-center gap-1 text-[11px] font-medium text-green-600 hover:text-green-700"
+                                      >
+                                        <BookmarkPlus className="w-3 h-3" />
+                                        Bucket List
+                                      </button>
+                                    ) : (
+                                      <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
+                                        <Check className="w-3 h-3" />
+                                        Auf Liste
+                                      </span>
+                                    )}
+                                    {!isStop && (
+                                      <button
+                                        onClick={() => addStopSmart(lm.name, lm.latitude, lm.longitude)}
+                                        className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+                                      >
+                                        <Plus className="w-3 h-3" />
+                                        Als Stopp
+                                      </button>
+                                    )}
+                                    {isStop && (
+                                      <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
+                                        <Check className="w-3 h-3" />
+                                        In Route
+                                      </span>
+                                    )}
+                                    {lm.wikipediaTitleDe && (
+                                      <a
+                                        href={`https://de.wikipedia.org/wiki/${lm.wikipediaTitleDe}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[11px] text-gray-400 hover:text-blue-500 transition-colors"
+                                      >
+                                        Wikipedia
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {!landmarksLoaded && (
+                            <div className="text-center py-8">
+                              <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+                              <p className="text-xs text-gray-400">Lade Sehenswürdigkeiten...</p>
+                            </div>
+                          )}
+                          {landmarksLoaded && filtered.length === 0 && (
+                            <div className="text-center py-8">
+                              <Search className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                              <p className="text-sm text-gray-400">Keine Ergebnisse gefunden.</p>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
               </div>
             )}
 
