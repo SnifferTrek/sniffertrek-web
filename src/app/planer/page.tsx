@@ -603,51 +603,31 @@ export default function PlanerPage() {
                   Noch keine gespeicherten Reisen.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                <div className="flex flex-wrap gap-2">
                   {savedTrips.map((t) => {
                     const isActive = t.id === trip.id;
-                    const stopCount = t.stops.filter((s) => s.type === "stop").length;
-                    const startName = t.stops.find((s) => s.type === "start")?.name;
-                    const endName = t.stops.find((s) => s.type === "end")?.name;
                     return (
                       <button
                         key={t.id}
                         onClick={() => handleLoadTrip(t.id)}
-                        className={`relative group text-left rounded-xl p-4 transition-all hover:scale-[1.02] ${
+                        className={`relative group inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all ${
                           isActive
-                            ? "bg-white shadow-lg ring-2 ring-blue-400"
-                            : "bg-white/15 hover:bg-white/25 border border-white/20"
+                            ? "bg-white text-gray-900 shadow-lg ring-2 ring-blue-400"
+                            : "bg-white/15 text-white hover:bg-white/25 border border-white/20"
                         }`}
                       >
-                        <button
-                          onClick={(e) => handleDeleteTrip(t.id, e)}
-                          className="absolute top-2 right-2 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 hover:bg-red-50"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <span className="truncate max-w-[180px]">{getTripDisplayName(t)}</span>
                         {isActive && (
-                          <span className="absolute top-2 right-2 text-[10px] text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded-full">
+                          <span className="text-[10px] text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
                             Aktiv
                           </span>
                         )}
-                        <p className={`text-sm font-semibold truncate pr-10 ${isActive ? "text-gray-900" : "text-white"}`}>
-                          {getTripDisplayName(t)}
-                        </p>
-                        {startName && endName && (
-                          <p className={`text-[11px] truncate mt-1 ${isActive ? "text-gray-500" : "text-white/60"}`}>
-                            {startName} → {endName}
-                          </p>
-                        )}
-                        <div className={`flex items-center gap-2 mt-2 text-[10px] ${isActive ? "text-gray-400" : "text-white/50"}`}>
-                          {t.startDate && (
-                            <span>{formatDate(t.startDate)}</span>
-                          )}
-                          {stopCount > 0 && (
-                            <span className={`px-1.5 py-0.5 rounded ${isActive ? "bg-gray-100" : "bg-white/10"}`}>
-                              {stopCount} Stopps
-                            </span>
-                          )}
-                        </div>
+                        <button
+                          onClick={(e) => handleDeleteTrip(t.id, e)}
+                          className="p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
                       </button>
                     );
                   })}
