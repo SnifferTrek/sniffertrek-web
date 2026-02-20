@@ -2063,17 +2063,18 @@ export default function PlanerPage() {
                                     const inBucket = isInBucketList(poi.name);
                                     const photoUrl = aiPoiPhotos[poi.name];
                                     return (
-                                      <div key={pIdx} className="group">
-                                        {photoUrl && (
-                                          <div className="h-40 w-full overflow-hidden">
-                                            <img
-                                              src={photoUrl}
-                                              alt={poi.name}
-                                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                            />
-                                          </div>
-                                        )}
-                                        <div className="p-4">
+                                      <div key={pIdx} className="p-4 hover:bg-purple-50/30 transition-colors">
+                                        <div className="flex items-start gap-3">
+                                          {photoUrl ? (
+                                            <div className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0">
+                                              <img src={photoUrl} alt={poi.name} className="w-full h-full object-cover" />
+                                            </div>
+                                          ) : (
+                                            <div className="w-16 h-16 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                                              <Compass className="w-6 h-6 text-purple-400" />
+                                            </div>
+                                          )}
+                                          <div className="flex-1 min-w-0">
                                           <h4 className="text-sm font-semibold text-gray-900">{poi.name}</h4>
                                           <div className="flex items-center gap-2 mt-0.5">
                                             <span className="text-[10px] font-medium text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">{poi.category}</span>
@@ -2116,6 +2117,7 @@ export default function PlanerPage() {
                                               {inBucket ? "In Bucket List" : "Zur Bucket List"}
                                             </button>
                                           </div>
+                                        </div>
                                         </div>
                                       </div>
                                     );
