@@ -68,6 +68,7 @@ import GoogleMap, { useGoogleAutocomplete } from "@/components/GoogleMap";
 import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
 import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
+import WikiThumb from "@/components/WikiThumb";
 import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
@@ -166,15 +167,6 @@ export default function PlanerPage() {
     setSavedTrips(getAllTrips());
   }, []);
 
-  // Auto-save after 3 seconds of inactivity
-  useEffect(() => {
-    if (!hasUnsavedChanges) return;
-    const timer = setTimeout(() => {
-      handleSave();
-    }, 3000);
-    return () => clearTimeout(timer);
-  }, [trip, hasUnsavedChanges]);
-
   const updateTrip = useCallback((updates: Partial<Trip>) => {
     setTrip((prev) => ({ ...prev, ...updates }));
     setHasUnsavedChanges(true);
@@ -191,6 +183,15 @@ export default function PlanerPage() {
       saveTripToCloud(trip, user.id);
     }
   }, [trip, user]);
+
+  // Auto-save after 3 seconds of inactivity
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const timer = setTimeout(() => {
+      handleSave();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [trip, hasUnsavedChanges, handleSave]);
 
   const handleNewTrip = () => {
     if (hasUnsavedChanges) {
@@ -1788,19 +1789,7 @@ export default function PlanerPage() {
                                 key={lm.id}
                                 className="flex items-start gap-3 rounded-xl px-3 py-3 hover:bg-gray-50 transition-colors border border-gray-50"
                               >
-                                {lm.imageURL ? (
-                                  <img
-                                    src={lm.imageURL}
-                                    alt={lm.name}
-                                    className="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-gray-100"
-                                    loading="lazy"
-                                    referrerPolicy="no-referrer"
-                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden"); }}
-                                  />
-                                ) : null}
-                                <div className={`w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0 ${lm.imageURL ? "hidden" : ""}`}>
-                                  <MapPin className="w-5 h-5 text-gray-300" />
-                                </div>
+                                <WikiThumb wikiTitle={lm.wikipediaTitleDe} alt={lm.name} />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5">
                                     <p className="text-sm font-medium text-gray-800 truncate">{lm.name}</p>

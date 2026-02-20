@@ -37,7 +37,6 @@ export function filterLandmarks(
   }
 ): Landmark[] {
   let result = landmarks;
-
   if (opts.unescoOnly) {
     result = result.filter((l) => l.unesco?.isWorldHeritage);
   }
@@ -57,7 +56,6 @@ export function filterLandmarks(
         l.description.toLowerCase().includes(q)
     );
   }
-
   return result;
 }
 
@@ -68,30 +66,40 @@ export function findNearbyLandmarks(
   radiusKm: number = 100
 ): Landmark[] {
   return landmarks
-    .map((l) => ({
-      landmark: l,
-      distance: haversine(lat, lng, l.latitude, l.longitude),
-    }))
+    .map((l) => ({ landmark: l, distance: haversine(lat, lng, l.latitude, l.longitude) }))
     .filter((x) => x.distance <= radiusKm)
     .sort((a, b) => a.distance - b.distance)
     .map((x) => x.landmark);
 }
 
-function haversine(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const thumbCache = new Map<string, string | null>();
+
+export async function fetchLandmarkThumb(wikiTitleDe: string): Promise<string | null> {
+  if (!wikiTitleDe) return null;
+  if (thumbCache.has(wikiTitleDe)) return thumbCache.get(wikiTitleDe)!;
+  try {
+    const res = await fetch(
+      `https://de.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(wikiTitleDe)}`
+    );
+    if (!res.ok) { thumbCache.set(wikiTitleDe, null); return null; }
+    const data = await res.json();
+    const url: string | null = data?.thumbnail?.source || null;
+    thumbCache.set(wikiTitleDe, url);
+    return url;
+  } catch {
+    thumbCache.set(wikiTitleDe, null);
+    return null;
+  }
 }
 
 export const CATEGORIES = [
