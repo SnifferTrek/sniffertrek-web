@@ -125,6 +125,7 @@ export default function PlanerPage() {
   const [landmarkContinent, setLandmarkContinent] = useState("");
   const [landmarkUnescoOnly, setLandmarkUnescoOnly] = useState(false);
   const [landmarksLoaded, setLandmarksLoaded] = useState(false);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -1790,7 +1791,7 @@ export default function PlanerPage() {
                                 className="flex items-start gap-3 rounded-xl px-3 py-3 hover:bg-gray-50 transition-colors border border-gray-50"
                               >
                                 <div className="w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 relative">
-                                  {lm.imageURL ? (
+                                  {lm.imageURL && !failedImages.has(lm.id) ? (
                                     <Image
                                       src={lm.imageURL.replace("/800px-", "/200px-")}
                                       alt={lm.name}
@@ -1798,6 +1799,7 @@ export default function PlanerPage() {
                                       sizes="56px"
                                       className="object-cover"
                                       loading="lazy"
+                                      onError={() => setFailedImages((prev) => new Set(prev).add(lm.id))}
                                     />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center">
