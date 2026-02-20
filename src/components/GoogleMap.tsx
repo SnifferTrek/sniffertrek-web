@@ -210,17 +210,33 @@ export default function GoogleMap({
     const mode = modeMap[travelMode] || google.maps.TravelMode.DRIVING;
 
     // Split route into etappen (segments) at hotel stops
-    const etappenStops: RouteStop[][] = [];
+    const hotelSegments: RouteStop[][] = [];
     let currentEtappe: RouteStop[] = [start];
     for (const ws of waypointStops) {
       currentEtappe.push(ws);
       if (ws.isHotel) {
-        etappenStops.push(currentEtappe);
+        hotelSegments.push(currentEtappe);
         currentEtappe = [ws];
       }
     }
     currentEtappe.push(end);
-    etappenStops.push(currentEtappe);
+    hotelSegments.push(currentEtappe);
+
+    // Further split segments that exceed MAX_WAYPOINTS (25 stops = 23 waypoints + origin + dest)
+    const MAX_SEGMENT_SIZE = MAX_WAYPOINTS + 2;
+    const etappenStops: RouteStop[][] = [];
+    for (const seg of hotelSegments) {
+      if (seg.length <= MAX_SEGMENT_SIZE) {
+        etappenStops.push(seg);
+      } else {
+        let i = 0;
+        while (i < seg.length - 1) {
+          const chunkEnd = Math.min(i + MAX_SEGMENT_SIZE - 1, seg.length - 1);
+          etappenStops.push(seg.slice(i, chunkEnd + 1));
+          i = chunkEnd;
+        }
+      }
+    }
 
     setCalculating(true);
     const service = new google.maps.DirectionsService();
