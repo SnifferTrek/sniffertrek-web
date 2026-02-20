@@ -771,11 +771,8 @@ export default function PlanerPage() {
 
           {/* Hero with Mascot */}
           <div className="text-center mb-10">
-            <div className="relative inline-block mb-4">
-              <SnifferDog size={110} />
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-full flex items-center justify-center shadow-md">
-                <Globe className="w-4 h-4 text-white" />
-              </div>
+            <div className="mb-5 flex justify-center max-w-lg mx-auto">
+              <SnifferDog size={480} />
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
               Willkommen bei <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-cyan-500">SnifferTrek</span>
