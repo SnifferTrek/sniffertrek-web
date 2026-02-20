@@ -82,10 +82,27 @@ export interface AiPoiSuggestion {
   etappeIndex: number;
 }
 
+export type TripModule =
+  | "route"
+  | "flights"
+  | "hotels"
+  | "car"
+  | "train"
+  | "poi"
+  | "bucket"
+  | "esim"
+  | "insurance"
+  | "cruise"
+  | "lastminute"
+  | "apartment"
+  | "camping"
+  | "activities";
+
 export interface Trip {
   id: string;
   name: string;
   travelMode: TravelMode;
+  modules?: TripModule[];
   stops: RouteStop[];
   startDate: string;
   endDate: string;

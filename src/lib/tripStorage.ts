@@ -20,6 +20,7 @@ export function createNewTrip(name?: string): Trip {
     startDate: "",
     endDate: "",
     travelers: 2,
+    modules: [],
     interests: [],
     hotels: [],
     bucketList: [],
