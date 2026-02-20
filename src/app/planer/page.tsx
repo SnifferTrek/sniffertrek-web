@@ -1420,11 +1420,11 @@ export default function PlanerPage() {
                                   </div>
 
                                   {/* Booking details section */}
-                                  <details className="mt-3 group" open={!!stop.bookingConfirmation}>
+                                  <details className="mt-3 group">
                                     <summary className={`text-[11px] cursor-pointer transition-colors list-none flex items-center gap-1.5 ${stop.bookingConfirmation ? "text-green-600 font-semibold" : "text-gray-400 hover:text-green-600"}`}>
+                                      <ChevronRight className="w-3 h-3 transition-transform group-open:rotate-90" />
                                       {stop.bookingConfirmation ? (
                                         <>
-                                          <Check className="w-3 h-3" />
                                           Buchung: {stop.bookingHotelName || stop.bookingConfirmation}
                                           {stop.bookingPrice && <span className="ml-1 text-gray-500 font-normal">· {stop.bookingPrice}</span>}
                                           {stop.bookingLink && (
@@ -1434,10 +1434,7 @@ export default function PlanerPage() {
                                           )}
                                         </>
                                       ) : (
-                                        <>
-                                          <Plus className="w-3 h-3" />
-                                          Buchung eintragen
-                                        </>
+                                        <>Buchung eintragen</>
                                       )}
                                     </summary>
                                     <div className="mt-2 bg-white border border-gray-200 rounded-lg p-3 space-y-2">
