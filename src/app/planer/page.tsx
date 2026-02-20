@@ -124,6 +124,11 @@ export default function PlanerPage() {
   const [landmarkCategory, setLandmarkCategory] = useState("");
   const [landmarkContinent, setLandmarkContinent] = useState("");
   const [landmarkUnescoOnly, setLandmarkUnescoOnly] = useState(false);
+  const [flightFrom, setFlightFrom] = useState("");
+  const [flightTo, setFlightTo] = useState("");
+  const [flightDepart, setFlightDepart] = useState("");
+  const [flightReturn, setFlightReturn] = useState("");
+  const [flightPassengers, setFlightPassengers] = useState(1);
   const [landmarksLoaded, setLandmarksLoaded] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -154,6 +159,16 @@ export default function PlanerPage() {
       });
     }
   }, [activeTab, landmarksLoaded]);
+
+  useEffect(() => {
+    if (activeTab === "flights") {
+      if (!flightFrom && origin) setFlightFrom(origin);
+      if (!flightTo && destination) setFlightTo(destination);
+      if (!flightDepart && trip.startDate) setFlightDepart(trip.startDate);
+      if (!flightReturn && trip.endDate) setFlightReturn(trip.endDate);
+      if (flightPassengers === 1 && trip.travelers > 1) setFlightPassengers(trip.travelers);
+    }
+  }, [activeTab]);
 
   // Load active trip or create new one
   useEffect(() => {
@@ -1877,23 +1892,95 @@ export default function PlanerPage() {
             )}
 
             {/* Flights Tab */}
-            {activeTab === "flights" && (
+            {activeTab === "flights" && (() => {
+              const flightSearchParams = {
+                origin: flightFrom,
+                destination: flightTo,
+                checkIn: flightDepart,
+                checkOut: flightReturn,
+                travelers: flightPassengers,
+              };
+              return (
               <div className="space-y-6">
-                {(!origin || !destination) && (
-                  <div className="bg-cyan-50 border border-cyan-100 rounded-2xl p-5">
-                    <div className="flex items-start gap-3">
-                      <Sparkles className="w-5 h-5 text-cyan-500 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-cyan-800">Tipp</p>
-                        <p className="text-sm text-cyan-600 mt-1">
-                          Gib Start- und Zielort ein, um Flug-Suchergebnisse
-                          vorausgefüllt zu erhalten.
-                        </p>
+                {/* Flight Search Form */}
+                <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
+                    Flugsuche
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Von</label>
+                      <input
+                        type="text"
+                        value={flightFrom}
+                        onChange={(e) => setFlightFrom(e.target.value)}
+                        placeholder="z.B. Zürich"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Nach</label>
+                      <input
+                        type="text"
+                        value={flightTo}
+                        onChange={(e) => setFlightTo(e.target.value)}
+                        placeholder="z.B. Barcelona"
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Hinflug</label>
+                      <input
+                        type="date"
+                        value={flightDepart}
+                        onChange={(e) => setFlightDepart(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Rückflug</label>
+                      <input
+                        type="date"
+                        value={flightReturn}
+                        onChange={(e) => setFlightReturn(e.target.value)}
+                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Passagiere</label>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setFlightPassengers(Math.max(1, flightPassengers - 1))}
+                          className="w-9 h-9 border border-gray-200 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors"
+                        >
+                          -
+                        </button>
+                        <span className="text-sm font-medium text-gray-800 w-8 text-center">{flightPassengers}</span>
+                        <button
+                          onClick={() => setFlightPassengers(Math.min(9, flightPassengers + 1))}
+                          className="w-9 h-9 border border-gray-200 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-50 transition-colors"
+                        >
+                          +
+                        </button>
                       </div>
                     </div>
                   </div>
-                )}
 
+                  {/* Search Summary */}
+                  {flightFrom && flightTo && (
+                    <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 bg-blue-50 rounded-xl px-4 py-2.5">
+                      <Plane className="w-3.5 h-3.5 text-blue-500" />
+                      <span className="font-medium text-blue-700">{flightFrom}</span>
+                      <ArrowRight className="w-3 h-3 text-blue-400" />
+                      <span className="font-medium text-blue-700">{flightTo}</span>
+                      {flightDepart && <span className="text-blue-500">· {formatDate(flightDepart)}</span>}
+                      {flightReturn && <span className="text-blue-500">– {formatDate(flightReturn)}</span>}
+                      <span className="text-blue-500">· {flightPassengers} {flightPassengers === 1 ? "Person" : "Personen"}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Providers */}
                 <div className="grid sm:grid-cols-2 gap-4">
                   {[
                     {
@@ -1901,28 +1988,28 @@ export default function PlanerPage() {
                       desc: "Umfassender Preisvergleich",
                       color: "text-blue-700",
                       bg: "bg-blue-50",
-                      link: buildGoogleFlightsLink(searchParams),
+                      link: buildGoogleFlightsLink(flightSearchParams),
                     },
                     {
                       name: "Booking.com Flights",
                       desc: "Direktbuchung mit Bestpreis",
                       color: "text-indigo-700",
                       bg: "bg-indigo-50",
-                      link: buildBookingFlightsLink(searchParams),
+                      link: buildBookingFlightsLink(flightSearchParams),
                     },
                     {
                       name: "Skyscanner",
                       desc: "Vergleicht hunderte Airlines",
                       color: "text-cyan-700",
                       bg: "bg-cyan-50",
-                      link: buildSkyscannerLink(searchParams),
+                      link: buildSkyscannerLink(flightSearchParams),
                     },
                     {
                       name: "Kayak",
                       desc: "Flexible Suche & Preisalarm",
                       color: "text-orange-700",
                       bg: "bg-orange-50",
-                      link: buildKayakLink(searchParams),
+                      link: buildKayakLink(flightSearchParams),
                     },
                   ].map((provider) => (
                     <a
@@ -1939,16 +2026,8 @@ export default function PlanerPage() {
                         <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
                       </div>
                       <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
-                      <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
-                      {origin && destination && (
-                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
-                          <span className="font-medium">{origin}</span>
-                          <ArrowRight className="w-3 h-3 inline mx-1.5" />
-                          <span className="font-medium">{destination}</span>
-                          {trip.startDate && ` · ${formatDate(trip.startDate)}`}
-                        </div>
-                      )}
-                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
+                      <p className="text-xs text-gray-400">{provider.desc}</p>
+                      <div className={`mt-3 inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
                         <Search className="w-3 h-3" />
                         Flüge suchen
                       </div>
@@ -1956,7 +2035,8 @@ export default function PlanerPage() {
                   ))}
                 </div>
               </div>
-            )}
+              );
+            })()}
 
             {/* Car Tab */}
             {activeTab === "car" && (
