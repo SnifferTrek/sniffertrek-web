@@ -360,6 +360,10 @@ export default function PlanerPage() {
   const handleOptimizeRoute = () => {
     const waypointStops = trip.stops.filter((s) => s.type === "stop" && s.name.trim());
     if (waypointStops.length < 2) return;
+    if (waypointStops.length > 23) {
+      setRouteError("Optimierung ist nur bis 23 Zwischenstopps möglich. Reduziere die Anzahl oder optimiere manuell.");
+      return;
+    }
     setOptimizeRoute(true);
   };
 
@@ -961,9 +965,10 @@ export default function PlanerPage() {
                     onRouteCalculated={(info) => {
                       setRouteInfo(info);
                       setRouteError(null);
+                      setOptimizeRoute(false);
                     }}
                     onStopsReordered={handleStopsReordered}
-                    onError={(msg) => setRouteError(msg)}
+                    onError={(msg) => { setRouteError(msg); setOptimizeRoute(false); }}
                     onMapClick={addStopFromMap}
                   />
                 </div>
