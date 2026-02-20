@@ -69,6 +69,8 @@ import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
 import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
 import WikiThumb from "@/components/WikiThumb";
+import DateRangePicker from "@/components/DateRangePicker";
+import AirportSelect from "@/components/AirportSelect";
 import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
@@ -974,38 +976,13 @@ export default function PlanerPage() {
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
                 Reisedaten
               </h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">
-                    Abreise
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="date"
-                      value={trip.startDate}
-                      onChange={(e) =>
-                        updateTrip({ startDate: e.target.value })
-                      }
-                      className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">
-                    Rückkehr
-                  </label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="date"
-                      value={trip.endDate}
-                      onChange={(e) => updateTrip({ endDate: e.target.value })}
-                      className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
+              <DateRangePicker
+                startDate={trip.startDate}
+                endDate={trip.endDate}
+                onSelect={(s, e) => updateTrip({ startDate: s, endDate: e })}
+                startLabel="Abreise"
+                endLabel="Rückkehr"
+              />
               <div className="mt-3">
                 <label className="text-xs text-gray-500 mb-1 block">
                   Reisende
@@ -1907,45 +1884,30 @@ export default function PlanerPage() {
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
                     Flugsuche
                   </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Von</label>
-                      <input
-                        type="text"
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <AirportSelect
                         value={flightFrom}
-                        onChange={(e) => setFlightFrom(e.target.value)}
+                        onChange={setFlightFrom}
                         placeholder="z.B. Zürich"
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        label="Von"
                       />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Nach</label>
-                      <input
-                        type="text"
+                      <AirportSelect
                         value={flightTo}
-                        onChange={(e) => setFlightTo(e.target.value)}
+                        onChange={setFlightTo}
                         placeholder="z.B. Barcelona"
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        label="Nach"
                       />
                     </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Hinflug</label>
-                      <input
-                        type="date"
-                        value={flightDepart}
-                        onChange={(e) => setFlightDepart(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-medium text-gray-400 mb-1">Rückflug</label>
-                      <input
-                        type="date"
-                        value={flightReturn}
-                        onChange={(e) => setFlightReturn(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
+
+                    <DateRangePicker
+                      startDate={flightDepart}
+                      endDate={flightReturn}
+                      onSelect={(s, e) => { setFlightDepart(s); setFlightReturn(e); }}
+                      startLabel="Hinflug"
+                      endLabel="Rückflug"
+                    />
+
                     <div>
                       <label className="block text-[11px] font-medium text-gray-400 mb-1">Passagiere</label>
                       <div className="flex items-center gap-2">
@@ -1965,19 +1927,6 @@ export default function PlanerPage() {
                       </div>
                     </div>
                   </div>
-
-                  {/* Search Summary */}
-                  {flightFrom && flightTo && (
-                    <div className="mt-4 flex items-center gap-2 text-xs text-gray-500 bg-blue-50 rounded-xl px-4 py-2.5">
-                      <Plane className="w-3.5 h-3.5 text-blue-500" />
-                      <span className="font-medium text-blue-700">{flightFrom}</span>
-                      <ArrowRight className="w-3 h-3 text-blue-400" />
-                      <span className="font-medium text-blue-700">{flightTo}</span>
-                      {flightDepart && <span className="text-blue-500">· {formatDate(flightDepart)}</span>}
-                      {flightReturn && <span className="text-blue-500">– {formatDate(flightReturn)}</span>}
-                      <span className="text-blue-500">· {flightPassengers} {flightPassengers === 1 ? "Person" : "Personen"}</span>
-                    </div>
-                  )}
                 </div>
 
                 {/* Providers */}
