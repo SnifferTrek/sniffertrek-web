@@ -376,6 +376,13 @@ export default function GoogleMap({
               strokeWeight: 2,
             },
           });
+          const hotelInfo = s.isHotel && s.bookingHotelName ? `<br><span style="color:#16a34a;font-size:11px">${s.bookingHotelName}</span>` : "";
+          const infoWindow = new google.maps.InfoWindow({
+            content: `<div style="font-family:system-ui;padding:2px"><strong>${s.name}</strong>${hotelInfo}</div>`,
+          });
+          marker.addListener("click", () => {
+            infoWindow.open(mapInstance.current!, marker);
+          });
           markers.current.push(marker);
         }
 
