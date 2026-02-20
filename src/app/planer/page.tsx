@@ -43,11 +43,14 @@ import Link from "next/link";
 import {
   Trip,
   TravelMode,
+  TravelInterest,
+  AiPoiSuggestion,
   RouteStop,
   BucketListItem,
   RouteLegInfo,
   Etappe,
 } from "@/lib/types";
+import { fetchAiPois } from "@/lib/aiPoiService";
 import {
   createNewTrip,
   saveTrip,
@@ -111,6 +114,9 @@ export default function PlanerPage() {
   const [pois, setPois] = useState<POI[]>([]);
   const [poisLoading, setPoisLoading] = useState(false);
   const [poisSearchedFor, setPoisSearchedFor] = useState("");
+  const [aiPois, setAiPois] = useState<AiPoiSuggestion[]>([]);
+  const [aiPoisLoading, setAiPoisLoading] = useState(false);
+  const [aiPoisError, setAiPoisError] = useState<string | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -500,7 +506,26 @@ export default function PlanerPage() {
           { name: "Casa Batlló", category: "Architektur", rating: 4.7, description: "Meisterwerk des Modernisme" },
         ];
 
-  const [poiScope, setPoiScope] = useState<"route" | "destination">("route");
+  const [poiScope, setPoiScope] = useState<"route" | "destination" | "ai">("ai");
+
+  const interestOptions: { id: TravelInterest; label: string; emoji: string }[] = [
+    { id: "kultur", label: "Kultur & Geschichte", emoji: "🏰" },
+    { id: "natur", label: "Natur & Landschaft", emoji: "🌿" },
+    { id: "kulinarik", label: "Kulinarik & Wein", emoji: "🍷" },
+    { id: "straende", label: "Strände & Küste", emoji: "🏖" },
+    { id: "fotospots", label: "Fotospots", emoji: "📸" },
+    { id: "familien", label: "Familien", emoji: "🎢" },
+    { id: "abenteuer", label: "Abenteuer & Sport", emoji: "🥾" },
+    { id: "shopping", label: "Shopping & Märkte", emoji: "🛍" },
+  ];
+
+  const toggleInterest = (interest: TravelInterest) => {
+    const current = trip.interests || [];
+    const updated = current.includes(interest)
+      ? current.filter((i) => i !== interest)
+      : [...current, interest];
+    updateTrip({ interests: updated });
+  };
 
   const loadPOIs = useCallback(async (scope: "route" | "destination") => {
     const routeStopNames = trip.stops.filter((s) => s.name.trim()).map((s) => s.name);
@@ -525,8 +550,28 @@ export default function PlanerPage() {
     }
   }, [poisSearchedFor, trip.stops, destination]);
 
+  const loadAiPois = useCallback(async () => {
+    if (etappen.length === 0) return;
+    setAiPoisLoading(true);
+    setAiPoisError(null);
+    try {
+      const results = await fetchAiPois({
+        etappes: etappen,
+        interests: trip.interests || [],
+        travelMode: trip.travelMode,
+        stops: trip.stops.map((s) => ({ name: s.name, type: s.type, isHotel: s.isHotel })),
+      });
+      setAiPois(results);
+    } catch (err) {
+      setAiPoisError(err instanceof Error ? err.message : "KI-Empfehlungen konnten nicht geladen werden");
+      setAiPois([]);
+    } finally {
+      setAiPoisLoading(false);
+    }
+  }, [etappen, trip.interests, trip.travelMode, trip.stops]);
+
   useEffect(() => {
-    if (activeTab === "poi") {
+    if (activeTab === "poi" && poiScope !== "ai") {
       loadPOIs(poiScope);
     }
   }, [activeTab, poiScope, loadPOIs]);
@@ -1838,212 +1883,347 @@ export default function PlanerPage() {
             {/* POI Tab */}
             {activeTab === "poi" && (
               <div className="space-y-6">
-                <div className="bg-green-50 border border-green-100 rounded-2xl p-5">
-                  <div className="flex items-start gap-3">
-                    <Compass className="w-5 h-5 text-green-500 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-green-800">
-                        Sehenswürdigkeiten entdecken
-                      </p>
-                      <p className="text-sm text-green-600 mt-1 mb-3">
-                        Entdecke die besten Sehenswürdigkeiten entlang deiner Route.
-                      </p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => { setPoiScope("route"); setPoisSearchedFor(""); }}
-                          className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
-                            poiScope === "route"
-                              ? "bg-green-600 text-white shadow-sm"
-                              : "bg-white text-green-700 border border-green-200 hover:bg-green-100"
-                          }`}
-                        >
-                          <Route className="w-3 h-3 inline mr-1" />
-                          Entlang der Route
-                        </button>
-                        {destination && (
-                          <button
-                            onClick={() => { setPoiScope("destination"); setPoisSearchedFor(""); }}
-                            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-all ${
-                              poiScope === "destination"
-                                ? "bg-green-600 text-white shadow-sm"
-                                : "bg-white text-green-700 border border-green-200 hover:bg-green-100"
-                            }`}
-                          >
-                            <MapPin className="w-3 h-3 inline mr-1" />
-                            Nur {destination}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                {/* Mode Switcher */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPoiScope("ai")}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl font-medium transition-all ${
+                      poiScope === "ai"
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "bg-white text-gray-600 border border-gray-200 hover:bg-purple-50"
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    KI-Empfehlungen
+                  </button>
+                  <button
+                    onClick={() => { setPoiScope("route"); setPoisSearchedFor(""); }}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl font-medium transition-all ${
+                      poiScope === "route"
+                        ? "bg-green-600 text-white shadow-sm"
+                        : "bg-white text-gray-600 border border-gray-200 hover:bg-green-50"
+                    }`}
+                  >
+                    <Route className="w-3.5 h-3.5" />
+                    Google Places
+                  </button>
+                  {destination && (
+                    <button
+                      onClick={() => { setPoiScope("destination"); setPoisSearchedFor(""); }}
+                      className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-xl font-medium transition-all ${
+                        poiScope === "destination"
+                          ? "bg-green-600 text-white shadow-sm"
+                          : "bg-white text-gray-600 border border-gray-200 hover:bg-green-50"
+                      }`}
+                    >
+                      <MapPin className="w-3.5 h-3.5" />
+                      Nur {destination}
+                    </button>
+                  )}
                 </div>
 
-                {/* Aktivitäten-Anbieter */}
-                {destination && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                      Touren & Aktivitäten buchen
-                    </h3>
-                    <div className="grid sm:grid-cols-2 gap-4 mb-6">
-                      <a
-                        href={buildGetYourGuideLink(destination)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
-                            <MapPin className="w-6 h-6 text-orange-600" />
+                {/* AI Recommendations Mode */}
+                {poiScope === "ai" && (
+                  <div className="space-y-5">
+                    {/* Interest Selection */}
+                    <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 rounded-2xl p-5">
+                      <div className="flex items-start gap-3">
+                        <Sparkles className="w-5 h-5 text-purple-500 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-purple-800">
+                            Was interessiert dich?
+                          </p>
+                          <p className="text-xs text-purple-600 mt-1 mb-3">
+                            Wähle deine Interessen -- die KI empfiehlt passende Orte entlang jeder Etappe.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {interestOptions.map((opt) => {
+                              const active = (trip.interests || []).includes(opt.id);
+                              return (
+                                <button
+                                  key={opt.id}
+                                  onClick={() => toggleInterest(opt.id)}
+                                  className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-all ${
+                                    active
+                                      ? "bg-purple-600 text-white shadow-sm"
+                                      : "bg-white text-gray-600 border border-gray-200 hover:border-purple-300 hover:bg-purple-50"
+                                  }`}
+                                >
+                                  <span>{opt.emoji}</span>
+                                  {opt.label}
+                                </button>
+                              );
+                            })}
                           </div>
-                          <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
                         </div>
-                        <h4 className="font-semibold text-gray-900 mb-1">GetYourGuide</h4>
-                        <p className="text-xs text-gray-400 mb-3">Touren, Tickets & Aktivitäten</p>
-                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
-                          Aktivitäten in <span className="font-medium">{destination}</span>
-                        </div>
-                        <div className="inline-flex items-center gap-1 text-xs font-medium text-orange-700 bg-orange-50 px-2.5 py-1 rounded-full">
-                          <Search className="w-3 h-3" />
-                          Aktivitäten entdecken
-                        </div>
-                      </a>
-                      <a
-                        href={buildViatorLink(destination)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
-                            <Compass className="w-6 h-6 text-green-600" />
-                          </div>
-                          <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
-                        </div>
-                        <h4 className="font-semibold text-gray-900 mb-1">Viator</h4>
-                        <p className="text-xs text-gray-400 mb-3">Erlebnisse & Touren von TripAdvisor</p>
-                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
-                          Erlebnisse in <span className="font-medium">{destination}</span>
-                        </div>
-                        <div className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2.5 py-1 rounded-full">
-                          <Search className="w-3 h-3" />
-                          Touren entdecken
-                        </div>
-                      </a>
+                      </div>
                     </div>
+
+                    {/* Generate Button */}
+                    {etappen.length > 0 ? (
+                      <button
+                        onClick={loadAiPois}
+                        disabled={aiPoisLoading}
+                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-purple-500/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {aiPoisLoading ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            KI analysiert deine Route...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            {aiPois.length > 0 ? "Neue Empfehlungen generieren" : "Empfehlungen für meine Route"}
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <div className="text-center py-6">
+                        <Route className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                        <p className="text-sm text-gray-400">Erstelle zuerst eine Route mit Zwischenstopps, um KI-Empfehlungen zu erhalten.</p>
+                      </div>
+                    )}
+
+                    {/* AI Error */}
+                    {aiPoisError && (
+                      <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+                        {aiPoisError}
+                      </div>
+                    )}
+
+                    {/* AI Results grouped by Etappe */}
+                    {aiPois.length > 0 && (
+                      <div className="space-y-4">
+                        {etappen.map((etappe, eIdx) => {
+                          const suggestions = aiPois.filter((p) => p.etappeIndex === eIdx);
+                          if (suggestions.length === 0) return null;
+                          return (
+                            <div key={eIdx} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                              <div className="bg-gradient-to-r from-purple-500 to-indigo-500 px-5 py-3">
+                                <p className="text-xs text-white/70 font-medium">Etappe {eIdx + 1}</p>
+                                <p className="text-sm text-white font-semibold">{etappe.from} → {etappe.to}</p>
+                              </div>
+                              <div className="divide-y divide-gray-50">
+                                {suggestions.map((poi, pIdx) => {
+                                  const inBucket = isInBucketList(poi.name);
+                                  return (
+                                    <div key={pIdx} className="p-4 hover:bg-purple-50/30 transition-colors">
+                                      <div className="flex items-start gap-3">
+                                        <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                                          <Compass className="w-4 h-4 text-purple-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                              <h4 className="text-sm font-semibold text-gray-900">{poi.name}</h4>
+                                              <div className="flex items-center gap-2 mt-0.5">
+                                                <span className="text-[10px] font-medium text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded">{poi.category}</span>
+                                                {poi.detourMinutes != null && (
+                                                  <span className="text-[10px] text-gray-400">
+                                                    <Clock className="w-2.5 h-2.5 inline mr-0.5" />
+                                                    ~{poi.detourMinutes} Min. Abstecher
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{poi.description}</p>
+                                          <div className="flex items-center gap-2 mt-2">
+                                            <button
+                                              onClick={() => {
+                                                const endIdx = trip.stops.findIndex((s) => s.type === "end");
+                                                const newStop: RouteStop = {
+                                                  id: `stop-${Date.now()}-${pIdx}`,
+                                                  name: poi.name,
+                                                  type: "stop",
+                                                  lat: poi.lat,
+                                                  lng: poi.lng,
+                                                };
+                                                const newStops = [...trip.stops];
+                                                newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, newStop);
+                                                updateTrip({ stops: newStops });
+                                              }}
+                                              className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                                            >
+                                              <Plus className="w-3 h-3" />
+                                              Als Stopp einfügen
+                                            </button>
+                                            <button
+                                              onClick={() =>
+                                                inBucket
+                                                  ? removeFromBucketList(trip.bucketList.find((b) => b.name === poi.name)!.id)
+                                                  : addToBucketList({ name: poi.name, category: poi.category, rating: 0, description: poi.description })
+                                              }
+                                              className={`flex items-center gap-1 text-[11px] font-medium transition-colors ${
+                                                inBucket ? "text-green-600" : "text-gray-400 hover:text-green-600"
+                                              }`}
+                                            >
+                                              {inBucket ? <Check className="w-3 h-3" /> : <BookmarkPlus className="w-3 h-3" />}
+                                              {inBucket ? "In Bucket List" : "Zur Bucket List"}
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* Dynamic POIs */}
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                      {poiScope === "route" ? "Entlang der Route" : destination ? `In ${destination}` : "Sehenswürdigkeiten"}
-                      {pois.length > 0 && ` (${pois.length})`}
-                    </h3>
-                    {!poisLoading && pois.length > 0 && (
-                      <button
-                        onClick={() => { setPoisSearchedFor(""); loadPOIs(poiScope); }}
-                        className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-                      >
-                        Aktualisieren
-                      </button>
-                    )}
-                  </div>
-
-                  {poisLoading && (
-                    <div className="flex items-center justify-center py-12">
-                      <div className="flex items-center gap-3 text-gray-400">
-                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                        <span className="text-sm">Sehenswürdigkeiten werden geladen...</span>
+                {/* Google Places Mode */}
+                {(poiScope === "route" || poiScope === "destination") && (
+                  <div className="space-y-5">
+                    {/* Aktivitäten-Anbieter */}
+                    {destination && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                          Touren & Aktivitäten buchen
+                        </h3>
+                        <div className="grid sm:grid-cols-2 gap-4 mb-6">
+                          <a
+                            href={buildGetYourGuideLink(destination)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center">
+                                <MapPin className="w-6 h-6 text-orange-600" />
+                              </div>
+                              <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                            </div>
+                            <h4 className="font-semibold text-gray-900 mb-1">GetYourGuide</h4>
+                            <p className="text-xs text-gray-400 mb-3">Touren, Tickets & Aktivitäten</p>
+                            <div className="inline-flex items-center gap-1 text-xs font-medium text-orange-700 bg-orange-50 px-2.5 py-1 rounded-full">
+                              <Search className="w-3 h-3" />
+                              Aktivitäten entdecken
+                            </div>
+                          </a>
+                          <a
+                            href={buildViatorLink(destination)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
+                                <Compass className="w-6 h-6 text-green-600" />
+                              </div>
+                              <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                            </div>
+                            <h4 className="font-semibold text-gray-900 mb-1">Viator</h4>
+                            <p className="text-xs text-gray-400 mb-3">Erlebnisse & Touren von TripAdvisor</p>
+                            <div className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 px-2.5 py-1 rounded-full">
+                              <Search className="w-3 h-3" />
+                              Touren entdecken
+                            </div>
+                          </a>
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {!poisLoading && !destination && (
-                    <div className="text-center py-8">
-                      <MapPin className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                      <p className="text-sm text-gray-400">Gib ein Reiseziel ein, um Sehenswürdigkeiten zu entdecken.</p>
-                    </div>
-                  )}
+                    {/* Dynamic POIs */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                          {poiScope === "route" ? "Entlang der Route" : destination ? `In ${destination}` : "Sehenswürdigkeiten"}
+                          {pois.length > 0 && ` (${pois.length})`}
+                        </h3>
+                        {!poisLoading && pois.length > 0 && (
+                          <button
+                            onClick={() => { setPoisSearchedFor(""); loadPOIs(poiScope as "route" | "destination"); }}
+                            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                          >
+                            Aktualisieren
+                          </button>
+                        )}
+                      </div>
 
-                  {!poisLoading && destination && displayPOIs.length === 0 && (
-                    <div className="text-center py-8">
-                      <Search className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                      <p className="text-sm text-gray-400">Keine Sehenswürdigkeiten gefunden. Versuche den Tab erneut zu öffnen.</p>
-                    </div>
-                  )}
-
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    {displayPOIs.map((poi) => {
-                      const added = isInBucketList(poi.name);
-                      return (
-                        <div
-                          key={poi.name}
-                          className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group overflow-hidden"
-                        >
-                          {poi.photoUrl && (
-                            <div className="h-36 w-full overflow-hidden">
-                              <img
-                                src={poi.photoUrl}
-                                alt={poi.name}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                              />
-                            </div>
-                          )}
-                          <div className="p-5">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
-                                  {poi.name}
-                                </h4>
-                                <span className="text-xs text-gray-400">
-                                  {poi.category}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
-                                <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
-                                <span className="text-xs font-medium text-yellow-700">
-                                  {poi.rating.toFixed(1)}
-                                </span>
-                              </div>
-                            </div>
-                            <p className="text-sm text-gray-500 line-clamp-2">
-                              {poi.description}
-                            </p>
-                            <button
-                              onClick={() =>
-                                added
-                                  ? removeFromBucketList(
-                                      trip.bucketList.find(
-                                        (b) => b.name === poi.name
-                                      )!.id
-                                    )
-                                  : addToBucketList(poi)
-                              }
-                              className={`mt-3 flex items-center gap-1.5 text-xs font-medium transition-colors ${
-                                added
-                                  ? "text-green-600"
-                                  : "text-blue-600 hover:text-blue-700"
-                              }`}
-                            >
-                              {added ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5" />
-                                  In Bucket List
-                                </>
-                              ) : (
-                                <>
-                                  <Plus className="w-3.5 h-3.5" />
-                                  Zur Bucket List
-                                </>
-                              )}
-                            </button>
+                      {poisLoading && (
+                        <div className="flex items-center justify-center py-12">
+                          <div className="flex items-center gap-3 text-gray-400">
+                            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-sm">Sehenswürdigkeiten werden geladen...</span>
                           </div>
                         </div>
-                      );
-                    })}
+                      )}
+
+                      {!poisLoading && !destination && (
+                        <div className="text-center py-8">
+                          <MapPin className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                          <p className="text-sm text-gray-400">Gib ein Reiseziel ein, um Sehenswürdigkeiten zu entdecken.</p>
+                        </div>
+                      )}
+
+                      {!poisLoading && destination && displayPOIs.length === 0 && (
+                        <div className="text-center py-8">
+                          <Search className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                          <p className="text-sm text-gray-400">Keine Sehenswürdigkeiten gefunden.</p>
+                        </div>
+                      )}
+
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        {displayPOIs.map((poi) => {
+                          const added = isInBucketList(poi.name);
+                          return (
+                            <div
+                              key={poi.name}
+                              className="bg-white rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow group overflow-hidden"
+                            >
+                              {poi.photoUrl && (
+                                <div className="h-36 w-full overflow-hidden">
+                                  <img
+                                    src={poi.photoUrl}
+                                    alt={poi.name}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  />
+                                </div>
+                              )}
+                              <div className="p-5">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div>
+                                    <h4 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                                      {poi.name}
+                                    </h4>
+                                    <span className="text-xs text-gray-400">{poi.category}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
+                                    <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
+                                    <span className="text-xs font-medium text-yellow-700">{poi.rating.toFixed(1)}</span>
+                                  </div>
+                                </div>
+                                <p className="text-sm text-gray-500 line-clamp-2">{poi.description}</p>
+                                <button
+                                  onClick={() =>
+                                    added
+                                      ? removeFromBucketList(trip.bucketList.find((b) => b.name === poi.name)!.id)
+                                      : addToBucketList(poi)
+                                  }
+                                  className={`mt-3 flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                                    added ? "text-green-600" : "text-blue-600 hover:text-blue-700"
+                                  }`}
+                                >
+                                  {added ? (
+                                    <><Check className="w-3.5 h-3.5" /> In Bucket List</>
+                                  ) : (
+                                    <><Plus className="w-3.5 h-3.5" /> Zur Bucket List</>
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 

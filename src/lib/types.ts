@@ -62,6 +62,26 @@ export interface BucketListItem {
   added: string; // ISO date
 }
 
+export type TravelInterest =
+  | "kultur"
+  | "natur"
+  | "kulinarik"
+  | "straende"
+  | "fotospots"
+  | "familien"
+  | "abenteuer"
+  | "shopping";
+
+export interface AiPoiSuggestion {
+  name: string;
+  description: string;
+  category: string;
+  detourMinutes?: number;
+  lat?: number;
+  lng?: number;
+  etappeIndex: number;
+}
+
 export interface Trip {
   id: string;
   name: string;
@@ -70,6 +90,7 @@ export interface Trip {
   startDate: string;
   endDate: string;
   travelers: number;
+  interests?: TravelInterest[];
   hotels: PlannedHotel[];
   bucketList: BucketListItem[];
   notes: string;
