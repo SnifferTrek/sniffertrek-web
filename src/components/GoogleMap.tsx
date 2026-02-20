@@ -394,13 +394,17 @@ export default function GoogleMap({
               strokeWeight: 2,
             },
           });
-          const hotelInfo = s.isHotel && s.bookingHotelName ? `<br><span style="color:#16a34a;font-size:11px">${s.bookingHotelName}</span>` : "";
+          const hotelInfo = s.isHotel && s.bookingHotelName
+            ? `<div style="display:flex;align-items:center;gap:4px;margin-top:3px"><span style="width:8px;height:8px;background:#22c55e;border-radius:50%;display:inline-block"></span><span style="color:#16a34a;font-size:11px">${s.bookingHotelName}</span></div>`
+            : "";
           const canRemove = s.type === "stop" && !(s.isHotel && s.bookingConfirmation);
           const removeBtn = canRemove
-            ? `<button id="remove-stop-${s.id}" style="margin-top:6px;padding:3px 10px;font-size:11px;font-family:system-ui;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;cursor:pointer">Stopp entfernen</button>`
+            ? `<div style="border-top:1px solid #f3f4f6;margin-top:8px;padding-top:6px"><button id="remove-stop-${s.id}" style="display:flex;align-items:center;gap:5px;padding:4px 12px;font-size:11px;font-weight:500;font-family:system-ui;color:#ef4444;background:none;border:none;cursor:pointer;border-radius:6px;transition:background .15s" onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='none'"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Entfernen</button></div>`
             : "";
+          const typeLabel = s.type === "start" ? "Start" : s.type === "end" ? "Ziel" : s.isHotel ? "Übernachtung" : "Zwischenstopp";
+          const typeBadgeColor = s.type === "start" ? "#3b82f6" : s.type === "end" ? "#ef4444" : s.isHotel ? "#a855f7" : "#f97316";
           const infoWindow = new google.maps.InfoWindow({
-            content: `<div style="font-family:system-ui;padding:2px"><strong>${s.name}</strong>${hotelInfo}${removeBtn}</div>`,
+            content: `<div style="font-family:system-ui;padding:4px 2px;min-width:140px"><div style="font-size:13px;font-weight:600;color:#1f2937">${s.name}</div><span style="display:inline-block;margin-top:3px;padding:1px 8px;font-size:9px;font-weight:600;color:white;background:${typeBadgeColor};border-radius:10px;letter-spacing:.3px">${typeLabel}</span>${hotelInfo}${removeBtn}</div>`,
           });
           marker.addListener("click", () => {
             infoWindow.open(mapInstance.current!, marker);
