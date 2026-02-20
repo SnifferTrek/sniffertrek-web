@@ -1,4 +1,4 @@
-export type TravelMode = "auto" | "zug" | "flug";
+export type TravelMode = "auto";
 
 export interface RouteStop {
   id: string;

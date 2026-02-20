@@ -206,8 +206,6 @@ export default function GoogleMap({
 
     const modeMap: Record<string, google.maps.TravelMode> = {
       auto: google.maps.TravelMode.DRIVING,
-      zug: google.maps.TravelMode.TRANSIT,
-      flug: google.maps.TravelMode.DRIVING,
     };
     const mode = modeMap[travelMode] || google.maps.TravelMode.DRIVING;
 

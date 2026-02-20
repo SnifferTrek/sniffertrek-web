@@ -106,7 +106,7 @@ export default function PlanerPage() {
   const [showTripList, setShowTripList] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
   const [activeTab, setActiveTab] = useState<
-    "route" | "hotels" | "flights" | "car" | "poi" | "esim" | "train" | "insurance" | "timeline"
+    "route" | "hotels" | "flights" | "car" | "poi" | "bucket" | "esim" | "train" | "insurance" | "timeline"
   >("route");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -499,14 +499,13 @@ export default function PlanerPage() {
 
   const travelModes = [
     { id: "auto" as TravelMode, label: "Auto", icon: Car },
-    { id: "zug" as TravelMode, label: "Zug", icon: Train },
-    { id: "flug" as TravelMode, label: "Flug", icon: Plane },
   ];
 
   const tabs = [
     { id: "route" as const, label: "Route", icon: Navigation },
     { id: "hotels" as const, label: "Hotels", icon: Hotel },
     { id: "poi" as const, label: "Entdecken", icon: Compass },
+    { id: "bucket" as const, label: "Bucket List", icon: BookmarkPlus },
     { id: "flights" as const, label: "Flüge", icon: Plane },
     { id: "car" as const, label: "Mietwagen", icon: Car },
     { id: "train" as const, label: "Züge", icon: Train },
@@ -799,29 +798,6 @@ export default function PlanerPage() {
               />
             </div>
 
-            {/* Travel Mode */}
-            <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                Verkehrsmittel
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                {travelModes.map((mode) => (
-                  <button
-                    key={mode.id}
-                    onClick={() => updateTrip({ travelMode: mode.id })}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl text-sm font-medium transition-all ${
-                      trip.travelMode === mode.id
-                        ? "bg-blue-50 text-blue-700 border-2 border-blue-500 shadow-sm"
-                        : "bg-gray-50 text-gray-500 border-2 border-transparent hover:bg-gray-100"
-                    }`}
-                  >
-                    <mode.icon className="w-5 h-5" />
-                    {mode.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Route Stops */}
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
@@ -1036,65 +1012,18 @@ export default function PlanerPage() {
               />
             </div>
 
-            {/* Bucket List Summary */}
+            {/* Bucket List Shortcut */}
             {trip.bucketList.length > 0 && (
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              <button
+                onClick={() => setActiveTab("bucket")}
+                className="w-full flex items-center justify-between bg-green-50 border border-green-100 rounded-2xl px-5 py-3 hover:bg-green-100 transition-colors"
+              >
+                <span className="flex items-center gap-2 text-sm font-medium text-green-700">
+                  <BookmarkPlus className="w-4 h-4" />
                   Bucket List ({trip.bucketList.length})
-                </h3>
-                <div className="space-y-2">
-                  {trip.bucketList.map((item) => {
-                    const isStop = trip.stops.some((s) => s.name === item.name);
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex items-start gap-3 bg-green-50 rounded-xl px-4 py-3"
-                      >
-                        <a
-                          href={`https://www.google.com/maps/search/${encodeURIComponent(item.name)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 hover:ring-2 hover:ring-green-400 transition-all mt-0.5"
-                          title="In Google Maps öffnen"
-                        >
-                          <MapPin className="w-4 h-4 text-green-600" />
-                        </a>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-800">{item.name}</p>
-                          <p className="text-[10px] text-gray-400">{item.category}</p>
-                          {item.description && (
-                            <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{item.description}</p>
-                          )}
-                          <div className="flex items-center gap-2 mt-1.5">
-                            {!isStop && (
-                              <button
-                                onClick={() => addStopSmart(item.name)}
-                                className="flex items-center gap-1 text-[10px] font-medium text-blue-600 hover:text-blue-700"
-                              >
-                                <Plus className="w-2.5 h-2.5" />
-                                Als Stopp
-                              </button>
-                            )}
-                            {isStop && (
-                              <span className="flex items-center gap-1 text-[10px] font-medium text-green-600">
-                                <Check className="w-2.5 h-2.5" />
-                                In Route
-                              </span>
-                            )}
-                            <button
-                              onClick={() => removeFromBucketList(item.id)}
-                              className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-red-500 transition-colors"
-                            >
-                              <X className="w-2.5 h-2.5" />
-                              Entfernen
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                </span>
+                <ChevronDown className="w-4 h-4 text-green-400 -rotate-90" />
+              </button>
             )}
           </div>
 
@@ -1686,6 +1615,95 @@ export default function PlanerPage() {
                     </>
                   );
                 })()}
+              </div>
+            )}
+
+            {/* Bucket List Tab */}
+            {activeTab === "bucket" && (
+              <div className="space-y-6">
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100 rounded-2xl p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <BookmarkPlus className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-green-900">Bucket List</h3>
+                      <p className="text-sm text-green-700 mt-0.5">
+                        Sammle Orte die du besuchen möchtest. Füge sie über den &quot;Entdecken&quot;-Tab oder Google Places hinzu.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {trip.bucketList.length === 0 ? (
+                  <div className="text-center py-12">
+                    <BookmarkPlus className="w-12 h-12 text-gray-200 mx-auto mb-3" />
+                    <p className="text-gray-400 text-sm">Noch keine Orte auf der Bucket List.</p>
+                    <p className="text-gray-300 text-xs mt-1">
+                      Entdecke spannende Orte im &quot;Entdecken&quot;-Tab und füge sie hier hinzu.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {trip.bucketList.map((item) => {
+                      const isStop = trip.stops.some((s) => s.name === item.name);
+                      return (
+                        <div
+                          key={item.id}
+                          className="flex items-start gap-3 bg-white rounded-xl px-5 py-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+                        >
+                          <a
+                            href={`https://www.google.com/maps/search/${encodeURIComponent(item.name)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0 hover:ring-2 hover:ring-green-400 transition-all mt-0.5"
+                            title="In Google Maps öffnen"
+                          >
+                            <MapPin className="w-5 h-5 text-green-600" />
+                          </a>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800">{item.name}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs text-gray-400">{item.category}</span>
+                              {item.rating > 0 && (
+                                <span className="flex items-center gap-0.5 text-xs text-gray-400">
+                                  <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                                  {item.rating}
+                                </span>
+                              )}
+                            </div>
+                            {item.description && (
+                              <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.description}</p>
+                            )}
+                            <div className="flex items-center gap-3 mt-2">
+                              {!isStop ? (
+                                <button
+                                  onClick={() => addStopSmart(item.name)}
+                                  className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  Als Stopp einfügen
+                                </button>
+                              ) : (
+                                <span className="flex items-center gap-1 text-xs font-medium text-green-600">
+                                  <Check className="w-3 h-3" />
+                                  In Route
+                                </span>
+                              )}
+                              <button
+                                onClick={() => removeFromBucketList(item.id)}
+                                className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                                Entfernen
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
