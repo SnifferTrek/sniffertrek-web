@@ -1790,16 +1790,20 @@ export default function PlanerPage() {
                               >
                                 {lm.imageURL ? (
                                   <img
-                                    src={lm.imageURL}
+                                    src={lm.imageURL.replace("/800px-", "/200px-")}
                                     alt={lm.name}
-                                    className="w-14 h-14 rounded-lg object-cover flex-shrink-0"
+                                    className="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-gray-100"
                                     loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = "none";
+                                      (e.target as HTMLImageElement).nextElementSibling?.classList.remove("hidden");
+                                    }}
                                   />
-                                ) : (
-                                  <div className="w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                    <MapPin className="w-5 h-5 text-gray-300" />
-                                  </div>
-                                )}
+                                ) : null}
+                                <div className={`w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0 ${lm.imageURL ? "hidden" : ""}`}>
+                                  <MapPin className="w-5 h-5 text-gray-300" />
+                                </div>
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5">
                                     <p className="text-sm font-medium text-gray-800 truncate">{lm.name}</p>
