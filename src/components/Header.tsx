@@ -27,10 +27,10 @@ export default function Header() {
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/#features" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            <Link href="/info#features" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
               Features
             </Link>
-            <Link href="/#how-it-works" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+            <Link href="/info#how-it-works" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
               So funktioniert&apos;s
             </Link>
             <Link href="/meine-reisen" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
@@ -40,7 +40,7 @@ export default function Header() {
               <Settings className="w-4 h-4" />
             </Link>
             <Link
-              href="/planer"
+              href="/"
               className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-5 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-105"
             >
               <Map className="w-4 h-4" />
@@ -91,10 +91,10 @@ export default function Header() {
         {/* Mobile Menu */}
         {menuOpen && (
           <div className="md:hidden pb-4 border-t border-gray-100 mt-2 pt-4 space-y-3">
-            <Link href="/#features" onClick={() => setMenuOpen(false)} className="block text-sm text-gray-600 hover:text-gray-900 py-2">
+            <Link href="/info#features" onClick={() => setMenuOpen(false)} className="block text-sm text-gray-600 hover:text-gray-900 py-2">
               Features
             </Link>
-            <Link href="/#how-it-works" onClick={() => setMenuOpen(false)} className="block text-sm text-gray-600 hover:text-gray-900 py-2">
+            <Link href="/info#how-it-works" onClick={() => setMenuOpen(false)} className="block text-sm text-gray-600 hover:text-gray-900 py-2">
               So funktioniert&apos;s
             </Link>
             <Link href="/meine-reisen" onClick={() => setMenuOpen(false)} className="block text-sm text-gray-600 hover:text-gray-900 py-2">
@@ -132,7 +132,7 @@ export default function Header() {
             )}
 
             <Link
-              href="/planer"
+              href="/"
               onClick={() => setMenuOpen(false)}
               className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-5 py-2.5 rounded-full text-sm font-medium"
             >

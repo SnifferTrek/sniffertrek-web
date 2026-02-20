@@ -153,11 +153,11 @@ export default function LoginPage() {
                     schon jetzt nutzen – deine Daten werden lokal gespeichert.
                   </p>
                   <Link
-                    href="/planer"
+                    href="/"
                     className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 mt-2"
                   >
                     <Map className="w-3.5 h-3.5" />
-                    Zum Planer ohne Login
+                    Reise planen ohne Login
                     <ArrowRight className="w-3 h-3" />
                   </Link>
                 </div>
