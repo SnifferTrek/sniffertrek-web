@@ -97,10 +97,17 @@ Regeln:
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      console.error("OpenAI API error:", err);
+      const errText = await response.text();
+      console.error("OpenAI API error:", response.status, errText);
+      let detail = "AI service unavailable";
+      try {
+        const errJson = JSON.parse(errText);
+        detail = errJson?.error?.message || `OpenAI Fehler ${response.status}: ${errText.slice(0, 200)}`;
+      } catch {
+        detail = `OpenAI Fehler ${response.status}: ${errText.slice(0, 200)}`;
+      }
       return NextResponse.json(
-        { error: "AI service unavailable" },
+        { error: detail },
         { status: 502 }
       );
     }
