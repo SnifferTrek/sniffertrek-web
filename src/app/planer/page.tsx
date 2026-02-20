@@ -575,53 +575,62 @@ export default function PlanerPage() {
             </div>
           </div>
 
-          {/* Trip List Dropdown */}
+          {/* Trip List */}
           {showTripList && (
-            <div className="mt-4 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden max-h-80 overflow-y-auto">
+            <div className="mt-4">
               {savedTrips.length === 0 ? (
-                <div className="p-6 text-center text-gray-400 text-sm">
+                <div className="bg-white/10 rounded-2xl p-6 text-center text-white/60 text-sm">
                   Noch keine gespeicherten Reisen.
                 </div>
               ) : (
-                <div className="divide-y divide-gray-50">
-                  {savedTrips.map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => handleLoadTrip(t.id)}
-                      className={`w-full flex items-center justify-between px-5 py-3.5 hover:bg-blue-50 transition-colors text-left ${
-                        t.id === trip.id ? "bg-blue-50" : ""
-                      }`}
-                    >
-                      <div>
-                        <div className="font-medium text-gray-900 text-sm">
-                          {getTripDisplayName(t)}
-                        </div>
-                        <div className="text-xs text-gray-400 mt-0.5">
-                          {t.startDate
-                            ? `${formatDate(t.startDate)} – ${formatDate(t.endDate)}`
-                            : `Erstellt ${formatDate(t.createdAt)}`}
-                          {" · "}
-                          {t.stops.filter((s) => s.type === "stop").length}{" "}
-                          Zwischenstopps
-                          {t.bucketList.length > 0 &&
-                            ` · ${t.bucketList.length} POIs`}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {t.id === trip.id && (
-                          <span className="text-xs text-blue-600 font-medium bg-blue-100 px-2 py-0.5 rounded-full">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {savedTrips.map((t) => {
+                    const isActive = t.id === trip.id;
+                    const stopCount = t.stops.filter((s) => s.type === "stop").length;
+                    const startName = t.stops.find((s) => s.type === "start")?.name;
+                    const endName = t.stops.find((s) => s.type === "end")?.name;
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => handleLoadTrip(t.id)}
+                        className={`relative group text-left rounded-xl p-4 transition-all hover:scale-[1.02] ${
+                          isActive
+                            ? "bg-white shadow-lg ring-2 ring-blue-400"
+                            : "bg-white/15 hover:bg-white/25 border border-white/20"
+                        }`}
+                      >
+                        <button
+                          onClick={(e) => handleDeleteTrip(t.id, e)}
+                          className="absolute top-2 right-2 p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        {isActive && (
+                          <span className="absolute top-2 right-2 text-[10px] text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded-full">
                             Aktiv
                           </span>
                         )}
-                        <button
-                          onClick={(e) => handleDeleteTrip(t.id, e)}
-                          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </button>
-                  ))}
+                        <p className={`text-sm font-semibold truncate pr-10 ${isActive ? "text-gray-900" : "text-white"}`}>
+                          {getTripDisplayName(t)}
+                        </p>
+                        {startName && endName && (
+                          <p className={`text-[11px] truncate mt-1 ${isActive ? "text-gray-500" : "text-white/60"}`}>
+                            {startName} → {endName}
+                          </p>
+                        )}
+                        <div className={`flex items-center gap-2 mt-2 text-[10px] ${isActive ? "text-gray-400" : "text-white/50"}`}>
+                          {t.startDate && (
+                            <span>{formatDate(t.startDate)}</span>
+                          )}
+                          {stopCount > 0 && (
+                            <span className={`px-1.5 py-0.5 rounded ${isActive ? "bg-gray-100" : "bg-white/10"}`}>
+                              {stopCount} Stopps
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
