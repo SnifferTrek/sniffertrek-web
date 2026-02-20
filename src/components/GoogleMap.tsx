@@ -323,11 +323,23 @@ export default function GoogleMap({
         legs: allLegInfos,
       });
 
+      // Build correctly ordered stop list from etappen
+      const orderedWaypoints: RouteStop[] = [];
+      for (const seg of etappenStops) {
+        for (let si = 1; si < seg.length - 1; si++) {
+          orderedWaypoints.push(seg[si]);
+        }
+        if (seg.length > 1 && seg[seg.length - 1].type === "stop") {
+          const last = seg[seg.length - 1];
+          if (!orderedWaypoints.some((w) => w.id === last.id)) {
+            orderedWaypoints.push(last);
+          }
+        }
+      }
+      const allOrderedStops = [start, ...orderedWaypoints, end];
+
       // Place markers
       if (mapInstance.current) {
-        const allOrderedStops = [start, ...waypointStops, end];
-        let legIdx = 0;
-
         for (let i = 0; i < allOrderedStops.length; i++) {
           const s = allOrderedStops[i];
           const loc = stopLocation(s);
@@ -335,14 +347,12 @@ export default function GoogleMap({
 
           if (loc instanceof google.maps.LatLng) {
             pos = loc;
+          } else if (i === 0) {
+            pos = allLegs[0]?.start_location;
+          } else if (i < allOrderedStops.length - 1) {
+            pos = allLegs[i - 1]?.end_location;
           } else {
-            if (i === 0) pos = allLegs[0]?.start_location;
-            else if (i < allOrderedStops.length - 1) {
-              pos = allLegs[legIdx]?.end_location;
-              legIdx++;
-            } else {
-              pos = allLegs[allLegs.length - 1]?.end_location;
-            }
+            pos = allLegs[allLegs.length - 1]?.end_location;
           }
           if (!pos) continue;
 
