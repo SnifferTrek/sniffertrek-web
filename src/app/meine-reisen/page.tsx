@@ -182,27 +182,15 @@ export default function MeineReisenPage() {
                       </div>
                     )}
 
-                    {/* Route Preview */}
+                    {/* Route Preview – Start → End only */}
                     {filledStops.length >= 2 && (
                       <div className="mt-3 pt-3 border-t border-gray-50">
-                        <div className="flex items-center gap-2 text-xs text-gray-400 flex-wrap">
-                          {filledStops.map((s, i) => (
-                            <span key={s.id} className="flex items-center gap-1">
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  s.type === "start"
-                                    ? "bg-blue-500"
-                                    : s.type === "end"
-                                    ? "bg-red-500"
-                                    : "bg-orange-400"
-                                }`}
-                              />
-                              <span className="text-gray-600">{s.name}</span>
-                              {i < filledStops.length - 1 && (
-                                <ArrowRight className="w-3 h-3 text-gray-300" />
-                              )}
-                            </span>
-                          ))}
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                          <span className="text-gray-600 truncate">{filledStops[0].name}</span>
+                          <ArrowRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                          <span className="text-gray-600 truncate">{filledStops[filledStops.length - 1].name}</span>
                         </div>
                       </div>
                     )}
