@@ -1422,7 +1422,7 @@ export default function PlanerPage() {
                                   {/* Booking details section */}
                                   <details className="mt-3 group">
                                     <summary className={`text-[11px] cursor-pointer transition-colors list-none flex items-center gap-1.5 ${stop.bookingConfirmation ? "text-green-600 font-semibold" : "text-gray-400 hover:text-green-600"}`}>
-                                      <ChevronRight className="w-3 h-3 transition-transform group-open:rotate-90" />
+                                      <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
                                       {stop.bookingConfirmation ? (
                                         <>
                                           Buchung: {stop.bookingHotelName || stop.bookingConfirmation}
