@@ -15,6 +15,7 @@ import {
   Plane,
   ArrowRight,
   FolderOpen,
+  LogIn,
 } from "lucide-react";
 import { Trip, TravelMode } from "@/lib/types";
 import {
@@ -26,6 +27,7 @@ import {
   createNewTrip,
   saveTrip,
 } from "@/lib/tripStorage";
+import { useAuth } from "@/components/AuthProvider";
 
 const modeIcons: Record<TravelMode, typeof Car> = {
   auto: Car,
@@ -36,11 +38,14 @@ const modeLabels: Record<TravelMode, string> = {
 };
 
 export default function MeineReisenPage() {
+  const { user, loading } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
 
   useEffect(() => {
-    setTrips(getAllTrips());
-  }, []);
+    if (user) {
+      setTrips(getAllTrips());
+    }
+  }, [user]);
 
   const handleDelete = (id: string) => {
     deleteTrip(id);
@@ -57,6 +62,39 @@ export default function MeineReisenPage() {
   const handleOpenTrip = (id: string) => {
     setActiveTripId(id);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 pt-20 flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 pt-20">
+        <div className="max-w-md mx-auto px-4 py-20 text-center">
+          <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <LogIn className="w-10 h-10 text-blue-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">
+            Anmeldung erforderlich
+          </h1>
+          <p className="text-gray-500 mb-8">
+            Melde dich an, um deine gespeicherten Reisen zu sehen und von überall darauf zuzugreifen.
+          </p>
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all"
+          >
+            <LogIn className="w-5 h-5" />
+            Jetzt anmelden
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
