@@ -2,6 +2,47 @@ import { supabase, isSupabaseConfigured } from "./supabase";
 import { Trip } from "./types";
 import { getAllTrips, saveTrip } from "./tripStorage";
 
+function buildTripPayload(trip: Trip, userId: string, includeRoutes: boolean) {
+  const base: Record<string, unknown> = {
+    id: trip.id,
+    user_id: userId,
+    name: trip.name,
+    travel_mode: trip.travelMode,
+    stops: trip.stops,
+    start_date: trip.startDate || null,
+    end_date: trip.endDate || null,
+    travelers: trip.travelers,
+    modules: trip.modules || [],
+    interests: trip.interests || [],
+    hotels: trip.hotels,
+    bucket_list: trip.bucketList,
+    notes: trip.notes,
+    created_at: trip.createdAt,
+    updated_at: trip.updatedAt,
+  };
+  if (includeRoutes) {
+    base.routes = trip.routes || null;
+  }
+  return base;
+}
+
+let _hasRoutesColumn: boolean | null = null;
+
+async function upsertTrip(payload: Record<string, unknown>): Promise<boolean> {
+  const { error } = await supabase
+    .from("trips")
+    .upsert(payload, { onConflict: "id" });
+
+  if (error) {
+    if (error.message?.includes("routes") || error.code === "PGRST204") {
+      return false;
+    }
+    console.error("Upsert error:", error.message);
+    return false;
+  }
+  return true;
+}
+
 export async function syncTripsToCloud(userId: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
@@ -9,28 +50,12 @@ export async function syncTripsToCloud(userId: string): Promise<void> {
   if (localTrips.length === 0) return;
 
   for (const trip of localTrips) {
-    const { error } = await supabase.from("trips").upsert(
-      {
-        id: trip.id,
-        user_id: userId,
-        name: trip.name,
-        travel_mode: trip.travelMode,
-        stops: trip.stops,
-        start_date: trip.startDate || null,
-        end_date: trip.endDate || null,
-        travelers: trip.travelers,
-        hotels: trip.hotels,
-        bucket_list: trip.bucketList,
-        notes: trip.notes,
-        created_at: trip.createdAt,
-        updated_at: trip.updatedAt,
-      },
-      { onConflict: "id" }
-    );
-
-    if (error) {
-      console.error("Sync error for trip", trip.id, error.message);
+    if (_hasRoutesColumn !== false) {
+      const ok = await upsertTrip(buildTripPayload(trip, userId, true));
+      if (ok) { _hasRoutesColumn = true; continue; }
+      _hasRoutesColumn = false;
     }
+    await upsertTrip(buildTripPayload(trip, userId, false));
   }
 }
 
@@ -45,22 +70,26 @@ export async function loadTripsFromCloud(userId: string): Promise<Trip[]> {
 
   if (error || !data) return [];
 
-  return data.map((row) => ({
-    id: row.id,
-    name: row.name,
-    travelMode: row.travel_mode,
-    stops: row.stops || [],
-    startDate: row.start_date || "",
-    endDate: row.end_date || "",
-    travelers: row.travelers,
-    modules: row.modules || [],
-    interests: row.interests || [],
-    hotels: row.hotels || [],
-    bucketList: row.bucket_list || [],
-    notes: row.notes || "",
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }));
+  return data.map((row) => {
+    if (row.routes) _hasRoutesColumn = true;
+    return {
+      id: row.id,
+      name: row.name,
+      travelMode: row.travel_mode,
+      stops: row.stops || [],
+      routes: row.routes || undefined,
+      startDate: row.start_date || "",
+      endDate: row.end_date || "",
+      travelers: row.travelers,
+      modules: row.modules || [],
+      interests: row.interests || [],
+      hotels: row.hotels || [],
+      bucketList: row.bucket_list || [],
+      notes: row.notes || "",
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  });
 }
 
 export async function saveTripToCloud(
@@ -69,28 +98,27 @@ export async function saveTripToCloud(
 ): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
 
-  const { error } = await supabase.from("trips").upsert(
-    {
-      id: trip.id,
-      user_id: userId,
-      name: trip.name,
-      travel_mode: trip.travelMode,
-      stops: trip.stops,
-      start_date: trip.startDate || null,
-      end_date: trip.endDate || null,
-      travelers: trip.travelers,
-      modules: trip.modules || [],
-      interests: trip.interests || [],
-      hotels: trip.hotels,
-      bucket_list: trip.bucketList,
-      notes: trip.notes,
-      created_at: trip.createdAt,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" }
+  const payload = buildTripPayload(
+    { ...trip, updatedAt: new Date().toISOString() },
+    userId,
+    _hasRoutesColumn !== false
   );
+  payload.updated_at = new Date().toISOString();
 
-  return !error;
+  const ok = await upsertTrip(payload);
+  if (ok) { _hasRoutesColumn = true; return true; }
+
+  if (_hasRoutesColumn === null) {
+    _hasRoutesColumn = false;
+    const fallback = buildTripPayload(
+      { ...trip, updatedAt: new Date().toISOString() },
+      userId,
+      false
+    );
+    fallback.updated_at = new Date().toISOString();
+    return await upsertTrip(fallback);
+  }
+  return false;
 }
 
 export async function deleteTripFromCloud(tripId: string): Promise<boolean> {

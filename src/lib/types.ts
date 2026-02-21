@@ -98,12 +98,26 @@ export type TripModule =
   | "camping"
   | "activities";
 
+export type TransportModule = "route" | "flights" | "car" | "train";
+
+export interface ModuleRoute {
+  stops: RouteStop[];
+}
+
+export interface TripRoutes {
+  route?: ModuleRoute;
+  flights?: ModuleRoute;
+  car?: ModuleRoute;
+  train?: ModuleRoute;
+}
+
 export interface Trip {
   id: string;
   name: string;
   travelMode: TravelMode;
   modules?: TripModule[];
   stops: RouteStop[];
+  routes?: TripRoutes;
   startDate: string;
   endDate: string;
   travelers: number;

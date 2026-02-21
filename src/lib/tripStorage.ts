@@ -1,4 +1,4 @@
-import { Trip, RouteStop } from "./types";
+import { Trip, RouteStop, TransportModule, ModuleRoute } from "./types";
 
 const STORAGE_KEY = "sniffertrek_trips";
 const ACTIVE_TRIP_KEY = "sniffertrek_active_trip";
@@ -7,16 +7,23 @@ function generateId(): string {
   return `trip_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
+function defaultStops(): RouteStop[] {
+  return [
+    { id: "start", name: "", type: "start" },
+    { id: "end", name: "", type: "end" },
+  ];
+}
+
 export function createNewTrip(name?: string): Trip {
   const now = new Date().toISOString();
   return {
     id: generateId(),
     name: name || "Neue Reise",
     travelMode: "auto",
-    stops: [
-      { id: "start", name: "", type: "start" },
-      { id: "end", name: "", type: "end" },
-    ],
+    stops: defaultStops(),
+    routes: {
+      route: { stops: defaultStops() },
+    },
     startDate: "",
     endDate: "",
     travelers: 2,
@@ -28,6 +35,22 @@ export function createNewTrip(name?: string): Trip {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export function getRouteStops(trip: Trip, module: TransportModule): RouteStop[] {
+  if (trip.routes?.[module]) {
+    return trip.routes[module].stops;
+  }
+  if (module === "route") return trip.stops;
+  return defaultStops();
+}
+
+export function ensureModuleRoute(trip: Trip, module: TransportModule): Trip {
+  const routes = { ...trip.routes };
+  if (!routes[module]) {
+    routes[module] = { stops: defaultStops() };
+  }
+  return { ...trip, routes };
 }
 
 export function getAllTrips(): Trip[] {

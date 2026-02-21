@@ -51,6 +51,7 @@ import {
   RouteLegInfo,
   Etappe,
   TripModule,
+  TransportModule,
 } from "@/lib/types";
 import { fetchAiPois } from "@/lib/aiPoiService";
 import {
@@ -248,16 +249,43 @@ export default function PlanerPage() {
     }
   };
 
+  const TRANSPORT_TABS: string[] = ["route", "car", "train", "flights"];
+  const isTransportTab = TRANSPORT_TABS.includes(activeTab);
+
+  const defaultStopsForRoute = (): RouteStop[] => [
+    { id: "start", name: "", type: "start" },
+    { id: "end", name: "", type: "end" },
+  ];
+
+  const currentRouteStops: RouteStop[] = (() => {
+    if (activeTab === "route") return trip.stops;
+    const key = activeTab as TransportModule;
+    if (TRANSPORT_TABS.includes(key)) return trip.routes?.[key]?.stops || defaultStopsForRoute();
+    return trip.stops;
+  })();
+
+  const updateCurrentStops = useCallback((newStops: RouteStop[]) => {
+    if (activeTab === "route") {
+      updateTrip({ stops: newStops });
+    } else {
+      const key = activeTab as TransportModule;
+      if (TRANSPORT_TABS.includes(key)) {
+        const routes = { ...trip.routes, [key]: { stops: newStops } };
+        updateTrip({ routes });
+      }
+    }
+  }, [activeTab, trip.routes, updateTrip]);
+
   const addStop = () => {
     const newStop: RouteStop = {
       id: `stop-${Date.now()}`,
       name: "",
       type: "stop",
     };
-    const endIdx = trip.stops.findIndex((s) => s.type === "end");
-    const newStops = [...trip.stops];
+    const endIdx = currentRouteStops.findIndex((s) => s.type === "end");
+    const newStops = [...currentRouteStops];
     newStops.splice(endIdx, 0, newStop);
-    updateTrip({ stops: newStops });
+    updateCurrentStops(newStops);
   };
 
   const addStopFromMap = (placeName: string, lat: number, lng: number, insertAtIndex?: number) => {
@@ -268,28 +296,29 @@ export default function PlanerPage() {
       lat,
       lng,
     };
-    const newStops = [...trip.stops];
+    const newStops = [...currentRouteStops];
     if (insertAtIndex != null && insertAtIndex >= 0 && insertAtIndex <= newStops.length) {
       newStops.splice(insertAtIndex, 0, newStop);
     } else {
       const endIdx = newStops.findIndex((s) => s.type === "end");
       newStops.splice(endIdx, 0, newStop);
     }
-    updateTrip({ stops: newStops });
+    updateCurrentStops(newStops);
   };
 
   const addStopSmart = async (name: string, lat?: number, lng?: number) => {
     const newStop: RouteStop = { id: `stop-${Date.now()}`, name, type: "stop", lat, lng };
-    const existingStops = trip.stops.filter((s) => s.name.trim());
+    const stops = currentRouteStops;
+    const existingStops = stops.filter((s) => s.name.trim());
     if (existingStops.length < 2 || lat == null || lng == null) {
-      const newStops = [...trip.stops];
+      const newStops = [...stops];
       const endIdx = newStops.findIndex((s) => s.type === "end");
       newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, newStop);
-      updateTrip({ stops: newStops });
+      updateCurrentStops(newStops);
       return;
     }
     const coords = await Promise.all(
-      trip.stops.map(async (s) => {
+      stops.map(async (s) => {
         const c = await geocodeStop(s);
         return c ? { ...s, lat: c.lat, lng: c.lng } : s;
       })
@@ -305,19 +334,19 @@ export default function PlanerPage() {
       const detour = ac + cb - ab;
       if (detour < minDetour) { minDetour = detour; bestIdx = i + 1; }
     }
-    const finalStops: RouteStop[] = coords.map((s, i) => ({ ...trip.stops[i], lat: s.lat, lng: s.lng }));
+    const finalStops: RouteStop[] = coords.map((s, i) => ({ ...stops[i], lat: s.lat, lng: s.lng }));
     finalStops.splice(bestIdx, 0, newStop);
-    updateTrip({ stops: finalStops });
+    updateCurrentStops(finalStops);
   };
 
   const removeStop = (id: string) => {
-    updateTrip({ stops: trip.stops.filter((s) => s.id !== id) });
+    updateCurrentStops(currentRouteStops.filter((s) => s.id !== id));
   };
 
   const updateStop = (id: string, name: string) => {
-    updateTrip({
-      stops: trip.stops.map((s) => (s.id === id ? { ...s, name } : s)),
-    });
+    updateCurrentStops(
+      currentRouteStops.map((s) => (s.id === id ? { ...s, name } : s))
+    );
   };
 
   const geocodeStop = async (s: RouteStop): Promise<{ lat: number; lng: number } | null> => {
@@ -333,22 +362,23 @@ export default function PlanerPage() {
   };
 
   const updateStopWithCoords = async (id: string, name: string, lat: number, lng: number) => {
-    const stopIdx = trip.stops.findIndex((s) => s.id === id);
+    const stops = currentRouteStops;
+    const stopIdx = stops.findIndex((s) => s.id === id);
     if (stopIdx < 0) return;
-    const stop = trip.stops[stopIdx];
+    const stop = stops[stopIdx];
     if (stop.type !== "stop") {
-      updateTrip({ stops: trip.stops.map((s) => (s.id === id ? { ...s, name, lat, lng } : s)) });
+      updateCurrentStops(stops.map((s) => (s.id === id ? { ...s, name, lat, lng } : s)));
       return;
     }
 
-    const newStops = trip.stops.filter((s) => s.id !== id);
+    const newStops = stops.filter((s) => s.id !== id);
     const updatedStop: RouteStop = { ...stop, name, lat, lng };
 
     const filledStops = newStops.filter((s) => s.name.trim());
     if (filledStops.length < 2) {
       const endIdx = newStops.findIndex((s) => s.type === "end");
       newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, updatedStop);
-      updateTrip({ stops: newStops });
+      updateCurrentStops(newStops);
       return;
     }
 
@@ -384,34 +414,35 @@ export default function PlanerPage() {
 
     const finalStops: RouteStop[] = coords.map((s, i) => ({ ...newStops[i], lat: s.lat, lng: s.lng }));
     finalStops.splice(bestIdx, 0, updatedStop);
-    updateTrip({ stops: finalStops });
+    updateCurrentStops(finalStops);
   };
 
   const updateStopField = (id: string, fields: Partial<RouteStop>) => {
-    updateTrip({
-      stops: trip.stops.map((s) => (s.id === id ? { ...s, ...fields } : s)),
-    });
+    updateCurrentStops(
+      currentRouteStops.map((s) => (s.id === id ? { ...s, ...fields } : s))
+    );
   };
 
   const toggleHotel = (id: string) => {
-    updateTrip({
-      stops: trip.stops.map((s) =>
+    updateCurrentStops(
+      currentRouteStops.map((s) =>
         s.id === id ? { ...s, isHotel: !s.isHotel } : s
-      ),
-    });
+      )
+    );
   };
 
   const etappen: Etappe[] = (() => {
     if (!routeInfo?.legs?.length) return [];
+    const stops = currentRouteStops;
 
-    const hotelStops = trip.stops.filter((s) => s.type === "stop" && s.isHotel && s.name.trim());
+    const hotelStops = stops.filter((s) => s.type === "stop" && s.isHotel && s.name.trim());
     const hotelStopNames = hotelStops.map((s) => s.name.toLowerCase());
 
     if (hotelStopNames.length === 0) {
       const totalKm = routeInfo.legs.reduce((sum, l) => sum + l.distanceMeters, 0);
       const totalSec = routeInfo.legs.reduce((sum, l) => sum + l.durationSeconds, 0);
-      const startName = trip.stops.find((s) => s.type === "start")?.name || "Start";
-      const endName = trip.stops.find((s) => s.type === "end")?.name || "Ziel";
+      const startName = stops.find((s) => s.type === "start")?.name || "Start";
+      const endName = stops.find((s) => s.type === "end")?.name || "Ziel";
       return [{
         index: 0,
         label: "Etappe 1",
@@ -426,8 +457,8 @@ export default function PlanerPage() {
     const result: Etappe[] = [];
     let currentLegs: RouteLegInfo[] = [];
     let etappeIdx = 0;
-    const startName = trip.stops.find((s) => s.type === "start")?.name || "Start";
-    let etappeFrom = startName;
+    const startName2 = stops.find((s) => s.type === "start")?.name || "Start";
+    let etappeFrom = startName2;
 
     for (const leg of routeInfo.legs) {
       currentLegs.push(leg);
@@ -459,7 +490,7 @@ export default function PlanerPage() {
     if (currentLegs.length > 0) {
       const km = currentLegs.reduce((s, l) => s + l.distanceMeters, 0);
       const sec = currentLegs.reduce((s, l) => s + l.durationSeconds, 0);
-      const endName = trip.stops.find((s) => s.type === "end")?.name || "Ziel";
+      const endName = stops.find((s) => s.type === "end")?.name || "Ziel";
       result.push({
         index: etappeIdx,
         label: `Etappe ${etappeIdx + 1}`,
@@ -475,7 +506,7 @@ export default function PlanerPage() {
   })();
 
   const moveStop = (id: string, direction: "up" | "down") => {
-    const newStops = [...trip.stops];
+    const newStops = [...currentRouteStops];
     const idx = newStops.findIndex((s) => s.id === id);
     if (idx < 0) return;
     const targetIdx = direction === "up" ? idx - 1 : idx + 1;
@@ -483,24 +514,25 @@ export default function PlanerPage() {
     if (newStops[targetIdx].type === "start") return;
     if (newStops[targetIdx].type === "end") return;
     [newStops[idx], newStops[targetIdx]] = [newStops[targetIdx], newStops[idx]];
-    updateTrip({ stops: newStops });
+    updateCurrentStops(newStops);
   };
 
   const reverseRoute = () => {
-    const start = trip.stops.find((s) => s.type === "start");
-    const end = trip.stops.find((s) => s.type === "end");
-    const waypoints = trip.stops.filter((s) => s.type === "stop");
+    const stops = currentRouteStops;
+    const start = stops.find((s) => s.type === "start");
+    const end = stops.find((s) => s.type === "end");
+    const waypoints = stops.filter((s) => s.type === "stop");
     if (!start || !end) return;
 
     const newStart: RouteStop = { ...start, name: end.name };
     const newEnd: RouteStop = { ...end, name: start.name };
     const reversedWaypoints = [...waypoints].reverse();
 
-    updateTrip({ stops: [newStart, ...reversedWaypoints, newEnd] });
+    updateCurrentStops([newStart, ...reversedWaypoints, newEnd]);
   };
 
   const handleOptimizeRoute = () => {
-    const waypointStops = trip.stops.filter((s) => s.type === "stop" && s.name.trim());
+    const waypointStops = currentRouteStops.filter((s) => s.type === "stop" && s.name.trim());
     if (waypointStops.length < 2) return;
     if (waypointStops.length > 23) {
       setRouteError("Optimierung ist nur bis 23 Zwischenstopps möglich. Reduziere die Anzahl oder optimiere manuell.");
@@ -510,16 +542,22 @@ export default function PlanerPage() {
   };
 
   const handleStopsReordered = useCallback((orderedIds: string[]) => {
+    const stops = activeTab === "route" ? trip.stops : (trip.routes?.[activeTab as TransportModule]?.stops || []);
     const stopLookup: Record<string, RouteStop> = {};
-    trip.stops.forEach((s) => { stopLookup[s.id] = s; });
+    stops.forEach((s) => { stopLookup[s.id] = s; });
     const reordered = orderedIds
       .map((id) => stopLookup[id])
       .filter((s): s is RouteStop => !!s);
-    if (reordered.length === trip.stops.length) {
-      updateTrip({ stops: reordered });
+    if (reordered.length === stops.length) {
+      if (activeTab === "route") {
+        updateTrip({ stops: reordered });
+      } else {
+        const routes = { ...trip.routes, [activeTab as TransportModule]: { stops: reordered } };
+        updateTrip({ routes });
+      }
     }
     setOptimizeRoute(false);
-  }, [trip.stops, updateTrip]);
+  }, [activeTab, trip.stops, trip.routes, updateTrip]);
 
   const addToBucketList = (item: Omit<BucketListItem, "id" | "added">) => {
     const newItem: BucketListItem = {
@@ -541,7 +579,7 @@ export default function PlanerPage() {
   const activeModules = trip.modules?.length ? trip.modules : ["route", "hotels", "poi", "bucket"];
 
   const allTabs = [
-    { id: "route" as const, label: "Route", icon: Navigation, module: "route" },
+    { id: "route" as const, label: "Autoroute", icon: Car, module: "route" },
     { id: "hotels" as const, label: "Hotels", icon: Hotel, module: "hotels" },
     { id: "poi" as const, label: "Entdecken", icon: Compass, module: "poi" },
     { id: "bucket" as const, label: "Bucket List", icon: BookmarkPlus, module: "bucket" },
@@ -557,6 +595,8 @@ export default function PlanerPage() {
 
   const destination = trip.stops.find((s) => s.type === "end")?.name || "";
   const origin = trip.stops.find((s) => s.type === "start")?.name || "";
+  const currentOrigin = currentRouteStops.find((s) => s.type === "start")?.name || "";
+  const currentDestination = currentRouteStops.find((s) => s.type === "end")?.name || "";
 
   const searchParams = {
     destination,
@@ -839,16 +879,17 @@ export default function PlanerPage() {
               />
             </div>
 
-            {/* Route Stops */}
+            {/* Route Stops - only for transport tabs */}
+            {isTransportTab && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
-                Route
+                {activeTab === "route" ? "Autoroute" : activeTab === "flights" ? "Flugroute" : activeTab === "car" ? "Mietwagen-Route" : activeTab === "train" ? "Zugroute" : "Route"}
               </h3>
               <div className="space-y-3 relative">
-                {trip.stops.length > 1 && (
+                {currentRouteStops.length > 1 && (
                   <div className="absolute left-[19px] top-[28px] bottom-[28px] w-0.5 bg-gradient-to-b from-blue-400 via-gray-200 to-red-400 z-0" />
                 )}
-                {trip.stops.map((stop, stopIndex) => (
+                {currentRouteStops.map((stop, stopIndex) => (
                     <div
                       key={`${trip.id}-${stop.id}`}
                       className="relative flex items-center gap-2 z-10 rounded-xl py-1 transition-all"
@@ -865,7 +906,7 @@ export default function PlanerPage() {
                           </button>
                           <button
                             onClick={() => moveStop(stop.id, "down")}
-                            disabled={stopIndex >= trip.stops.length - 2}
+                            disabled={stopIndex >= currentRouteStops.length - 2}
                             className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-20 disabled:hover:text-gray-300 transition-colors"
                             title="Nach unten"
                           >
@@ -977,6 +1018,7 @@ export default function PlanerPage() {
                 Zwischenstopp hinzufügen
               </button>
             </div>
+            )}
 
             {/* Date & Travelers */}
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
@@ -1096,10 +1138,10 @@ export default function PlanerPage() {
               )}
             </div>
 
-            {/* Route Tab */}
-            {activeTab === "route" && (
+            {/* Route Tab (shared for auto, car, train) */}
+            {(activeTab === "route" || activeTab === "car" || activeTab === "train") && (
               <div className="space-y-6">
-                {!origin && !destination && (
+                {!currentOrigin && !currentDestination && (
                   <div className="bg-blue-50 border border-blue-100 rounded-2xl p-5">
                     <div className="flex items-start gap-3">
                       <Sparkles className="w-5 h-5 text-blue-500 mt-0.5" />
@@ -1116,7 +1158,7 @@ export default function PlanerPage() {
 
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
                   <GoogleMap
-                    stops={trip.stops}
+                    stops={currentRouteStops}
                     travelMode={trip.travelMode}
                     optimize={optimizeRoute}
                     onRouteCalculated={(info) => {
@@ -1175,18 +1217,18 @@ export default function PlanerPage() {
                     </div>
                   </div>
 
-                  {origin && destination && !routeInfo?.distance && !routeError && (
+                  {currentOrigin && currentDestination && !routeInfo?.distance && !routeError && (
                     <p className="text-xs text-gray-400 text-center mt-4">
                       Wähle Start und Ziel über die Autocomplete-Vorschläge aus, damit die Route berechnet wird.
                     </p>
                   )}
 
                   {(() => {
-                    const waypointCount = trip.stops.filter((s) => s.type === "stop" && s.name.trim()).length;
+                    const waypointCount = currentRouteStops.filter((s) => s.type === "stop" && s.name.trim()).length;
                     const tooMany = waypointCount >= 20;
                     return (
                       <>
-                        {origin && destination && !tooMany && (
+                        {currentOrigin && currentDestination && !tooMany && (
                           <button
                             onClick={reverseRoute}
                             className="mt-4 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
@@ -1311,12 +1353,22 @@ export default function PlanerPage() {
             {activeTab === "hotels" && (
               <div className="space-y-6">
                 {(() => {
-                  const hotelStops = trip.stops.filter(
-                    (s) => s.type === "stop" && s.isHotel && s.name.trim()
-                  );
-                  const allStopsWithHotelOption = trip.stops.filter(
-                    (s) => s.type === "stop" && s.name.trim()
-                  );
+                  const allRouteStops = [
+                    ...trip.stops,
+                    ...(trip.routes?.flights?.stops || []),
+                    ...(trip.routes?.car?.stops || []),
+                    ...(trip.routes?.train?.stops || []),
+                  ];
+                  const seen = new Set<string>();
+                  const deduped = allRouteStops.filter((s) => {
+                    if (s.type !== "stop" || !s.name.trim()) return false;
+                    const key = s.name.toLowerCase().trim();
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                  });
+                  const hotelStops = deduped.filter((s) => s.isHotel);
+                  const allStopsWithHotelOption = deduped;
 
                   function addDaysLocal(dateStr: string, days: number): string {
                     const [y, m, d] = dateStr.split("-").map(Number);
@@ -1994,23 +2046,9 @@ export default function PlanerPage() {
               );
             })()}
 
-            {/* Car Tab */}
+            {/* Car Tab - Affiliate Links */}
             {activeTab === "car" && (
               <div className="space-y-6">
-                {!destination && (
-                  <div className="bg-orange-50 border border-orange-100 rounded-2xl p-5">
-                    <div className="flex items-start gap-3">
-                      <Sparkles className="w-5 h-5 text-orange-500 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-orange-800">Tipp</p>
-                        <p className="text-sm text-orange-600 mt-1">
-                          Gib ein Reiseziel ein, um Mietwagen-Angebote vorausgefüllt zu vergleichen.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {[
                     {
@@ -2066,23 +2104,9 @@ export default function PlanerPage() {
               </div>
             )}
 
-            {/* Train Tab */}
+            {/* Train Tab - Affiliate Links */}
             {activeTab === "train" && (
               <div className="space-y-6">
-                {(!origin || !destination) && (
-                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-5">
-                    <div className="flex items-start gap-3">
-                      <Sparkles className="w-5 h-5 text-indigo-500 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-indigo-800">Tipp</p>
-                        <p className="text-sm text-indigo-600 mt-1">
-                          Gib Start- und Zielort ein, um Zugverbindungen vorausgefüllt zu suchen.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 <div className="grid sm:grid-cols-2 gap-4">
                   {[
                     {
