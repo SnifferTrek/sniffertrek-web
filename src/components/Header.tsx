@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Globe, Map, Menu, X, LogIn, User, LogOut, Settings } from "lucide-react";
+import { Globe, Menu, X, LogIn, User, LogOut, Settings } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "./AuthProvider";
 
@@ -39,14 +39,6 @@ export default function Header() {
             <Link href="/admin/partner" className="text-sm text-gray-400 hover:text-gray-600 transition-colors" title="Partner-Verwaltung">
               <Settings className="w-4 h-4" />
             </Link>
-            <Link
-              href="/#neue-reise"
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-5 py-2 rounded-full text-sm font-medium hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-105"
-            >
-              <Map className="w-4 h-4" />
-              Reise planen
-            </Link>
-
             {/* Auth Button */}
             {!loading && (
               user ? (
@@ -131,14 +123,6 @@ export default function Header() {
               )
             )}
 
-            <Link
-              href="/#neue-reise"
-              onClick={() => setMenuOpen(false)}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-5 py-2.5 rounded-full text-sm font-medium"
-            >
-              <Map className="w-4 h-4" />
-              Reise planen
-            </Link>
           </div>
         )}
       </div>
