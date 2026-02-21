@@ -134,7 +134,7 @@ export default function WelcomePage() {
         {/* New Trip Card */}
         <div className="bg-white/80 backdrop-blur-sm rounded-3xl border border-gray-200/60 shadow-sm p-6 sm:p-8 mb-10">
           {/* Trip Name */}
-          <div className="mb-8">
+          <div id="neue-reise" className="mb-8">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 mb-3">
               <PenLine className="w-4 h-4 text-blue-500" />
               Neue Reise planen
