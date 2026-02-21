@@ -31,6 +31,8 @@ import {
   formatDate,
 } from "@/lib/tripStorage";
 import SnifferDog from "@/components/SnifferDog";
+import { useAuth } from "@/components/AuthProvider";
+import Link from "next/link";
 
 const MODULE_GROUPS = [
   {
@@ -83,9 +85,11 @@ const MODULE_LABEL: Record<string, string> = {
 
 export default function WelcomePage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [tripName, setTripName] = useState("");
   const [selectedModules, setSelectedModules] = useState<string[]>(["route", "hotels", "poi", "bucket"]);
   const [savedTrips, setSavedTrips] = useState<Trip[]>([]);
+  const [showLoginHint, setShowLoginHint] = useState(false);
 
   useEffect(() => {
     setSavedTrips(getAllTrips());
@@ -98,6 +102,10 @@ export default function WelcomePage() {
   };
 
   const startNewTrip = () => {
+    if (!user && savedTrips.length >= 1) {
+      setShowLoginHint(true);
+      return;
+    }
     const name = tripName.trim() || undefined;
     const newTrip = createNewTrip(name);
     newTrip.modules = selectedModules as TripModule[];
@@ -208,6 +216,32 @@ export default function WelcomePage() {
             </div>
           </div>
 
+          {/* Login Hint */}
+          {showLoginHint && (
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-5">
+              <p className="text-sm font-medium text-amber-800 mb-2">
+                Kostenlos anmelden für weitere Reisen
+              </p>
+              <p className="text-sm text-amber-600 mb-4">
+                Ohne Konto kannst du nur eine Reise speichern. Melde dich an, um beliebig viele Reisen zu planen und sie auf allen Geräten zu synchronisieren.
+              </p>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/login"
+                  className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg transition-all"
+                >
+                  Jetzt anmelden
+                </Link>
+                <button
+                  onClick={() => setShowLoginHint(false)}
+                  className="text-sm text-amber-600 hover:text-amber-800 transition-colors"
+                >
+                  Schliessen
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Start Button */}
           <div className="text-center">
             <button
@@ -218,7 +252,7 @@ export default function WelcomePage() {
               <Sparkles className="w-5 h-5" />
               {tripName.trim() ? `"${tripName.trim()}" starten` : "Neue Reise planen"}
             </button>
-            {selectedModules.length > 0 && (
+            {selectedModules.length > 0 && !showLoginHint && (
               <p className="text-[11px] text-gray-400 mt-2.5">
                 {selectedModules.length} {selectedModules.length === 1 ? "Modul" : "Module"} ausgewählt
               </p>
