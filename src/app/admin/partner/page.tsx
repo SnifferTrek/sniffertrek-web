@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Settings,
   ExternalLink,
@@ -21,6 +22,7 @@ import {
   Sparkles,
   Copy,
   Search,
+  ShieldAlert,
 } from "lucide-react";
 import {
   AffiliatePartner,
@@ -31,6 +33,9 @@ import {
   getModules,
   getPartnersByModule,
 } from "@/lib/affiliateConfig";
+import { useAuth } from "@/components/AuthProvider";
+
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
 
 const moduleIcons: Record<string, React.ElementType> = {
   "Flüge": Plane,
@@ -68,6 +73,10 @@ const statusConfig: Record<
 };
 
 export default function PartnerOverviewPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+  const isAdmin = !!user && !!ADMIN_EMAIL && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   const [partners, setPartners] = useState<AffiliatePartner[]>([]);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(
     new Set()
@@ -79,10 +88,43 @@ export default function PartnerOverviewPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
+    if (!loading && !isAdmin) return;
     const loaded = loadPartners();
     setPartners(loaded);
     setExpandedModules(new Set(getModules()));
-  }, []);
+  }, [loading, isAdmin]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 pt-20 flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="min-h-screen bg-gray-50 pt-20">
+        <div className="max-w-md mx-auto px-4 py-20 text-center">
+          <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <ShieldAlert className="w-10 h-10 text-red-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">
+            Zugang verweigert
+          </h1>
+          <p className="text-gray-500 mb-8">
+            Dieser Bereich ist nur für den Administrator zugänglich.
+          </p>
+          <button
+            onClick={() => router.push("/")}
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all"
+          >
+            Zur Startseite
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const toggleModule = (module: string) => {
     setExpandedModules((prev) => {

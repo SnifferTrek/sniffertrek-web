@@ -5,9 +5,12 @@ import { Globe, Menu, X, LogIn, User, LogOut, Settings } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "./AuthProvider";
 
+const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
+
 export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const { user, loading, logout } = useAuth();
+  const isAdmin = !!user && !!ADMIN_EMAIL && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/20">
@@ -36,9 +39,11 @@ export default function Header() {
             <Link href="/meine-reisen" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
               Meine Reisen
             </Link>
-            <Link href="/admin/partner" className="text-sm text-gray-400 hover:text-gray-600 transition-colors" title="Partner-Verwaltung">
-              <Settings className="w-4 h-4" />
-            </Link>
+            {isAdmin && (
+              <Link href="/admin/partner" className="text-sm text-gray-400 hover:text-gray-600 transition-colors" title="Partner-Verwaltung">
+                <Settings className="w-4 h-4" />
+              </Link>
+            )}
             {/* Auth Button */}
             {!loading && (
               user ? (
