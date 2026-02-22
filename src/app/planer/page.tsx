@@ -418,17 +418,33 @@ export default function PlanerPage() {
   };
 
   const updateStopField = (id: string, fields: Partial<RouteStop>) => {
-    updateCurrentStops(
-      currentRouteStops.map((s) => (s.id === id ? { ...s, ...fields } : s))
-    );
+    const inCurrent = currentRouteStops.some((s) => s.id === id);
+    if (inCurrent && isTransportTab) {
+      updateCurrentStops(
+        currentRouteStops.map((s) => (s.id === id ? { ...s, ...fields } : s))
+      );
+    } else {
+      updateTrip({
+        stops: trip.stops.map((s) => (s.id === id ? { ...s, ...fields } : s)),
+      });
+    }
   };
 
   const toggleHotel = (id: string) => {
-    updateCurrentStops(
-      currentRouteStops.map((s) =>
-        s.id === id ? { ...s, isHotel: !s.isHotel } : s
-      )
-    );
+    const inCurrent = currentRouteStops.some((s) => s.id === id);
+    if (inCurrent && isTransportTab) {
+      updateCurrentStops(
+        currentRouteStops.map((s) =>
+          s.id === id ? { ...s, isHotel: !s.isHotel } : s
+        )
+      );
+    } else {
+      updateTrip({
+        stops: trip.stops.map((s) =>
+          s.id === id ? { ...s, isHotel: !s.isHotel } : s
+        ),
+      });
+    }
   };
 
   const etappen: Etappe[] = (() => {
