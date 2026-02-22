@@ -38,6 +38,8 @@ import {
   ChevronRight,
   ChevronLeft,
   ArrowDownUp,
+  FileDown,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -74,6 +76,7 @@ import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from
 import WikiThumb from "@/components/WikiThumb";
 import DateRangePicker from "@/components/DateRangePicker";
 import AirportSelect from "@/components/AirportSelect";
+import { generateTripPDF } from "@/lib/pdfService";
 import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
@@ -136,6 +139,9 @@ export default function PlanerPage() {
   const [flightReturn, setFlightReturn] = useState("");
   const [flightPassengers, setFlightPassengers] = useState(1);
   const [landmarksLoaded, setLandmarksLoaded] = useState(false);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState(0);
+  const [pdfProgressMsg, setPdfProgressMsg] = useState("");
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -447,6 +453,19 @@ export default function PlanerPage() {
     }
   };
 
+  const extractCityFromAddress = (addr: string): string => {
+    const line = (addr || "").split("\n")[0];
+    const plzMatch = line.match(/\b\d{4,5}\s+([^,\n]+)/);
+    if (plzMatch) return plzMatch[1].trim();
+    const parts = line.split(",").map((p) => p.trim());
+    if (parts.length >= 3) {
+      if (/^\d/.test(parts[0]) || /\b(strasse|straße|weg|gasse|rue|route|via|avenue|road|str\.|chemin|place|boulevard|blvd)\b/i.test(parts[0])) {
+        return parts[1].replace(/^\d{4,5}\s*/, "").trim();
+      }
+    }
+    return parts[0].trim();
+  };
+
   const etappen: Etappe[] = (() => {
     if (!routeInfo?.legs?.length) return [];
     const stops = currentRouteStops;
@@ -489,7 +508,7 @@ export default function PlanerPage() {
           index: etappeIdx,
           label: `Etappe ${etappeIdx + 1}`,
           from: etappeFrom,
-          to: leg.to.split(",")[0],
+          to: extractCityFromAddress(leg.to),
           legs: [...currentLegs],
           distanceKm: Math.round(km / 1000),
           durationFormatted: formatDur(sec),
@@ -497,7 +516,7 @@ export default function PlanerPage() {
           hotelName: matchedStop.bookingHotelName,
           hotelAddress: matchedStop.bookingAddress,
         });
-        etappeFrom = leg.to.split(",")[0];
+        etappeFrom = extractCityFromAddress(leg.to);
         currentLegs = [];
         etappeIdx++;
       }
@@ -751,8 +770,60 @@ export default function PlanerPage() {
   const isInBucketList = (name: string) =>
     trip.bucketList.some((b) => b.name === name);
 
+  const handleDownloadPDF = async () => {
+    // Open window immediately (in click context) to avoid popup blocker
+    const pdfWindow = window.open("", "_blank");
+    if (pdfWindow) {
+      pdfWindow.document.write("<html><head><title>PDF wird erstellt…</title></head><body style='display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#555'><p>PDF wird erstellt…</p></body></html>");
+    }
+    setPdfGenerating(true);
+    setPdfProgress(0);
+    setPdfProgressMsg("Starte…");
+    try {
+      const blob = await generateTripPDF({
+        trip,
+        etappen,
+        routeInfo: routeInfo ? { distance: routeInfo.distance, duration: routeInfo.duration, stops: routeInfo.stops } : undefined,
+        googleApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "AIzaSyDTcV42T-ZkriZOB8RtNZMtGR8gZq3Izi0",
+        onProgress: (pct, msg) => {
+          setPdfProgress(pct);
+          setPdfProgressMsg(msg);
+        },
+      });
+      const url = URL.createObjectURL(blob);
+      if (pdfWindow) {
+        pdfWindow.location.href = url;
+      } else {
+        window.open(url, "_blank");
+      }
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      pdfWindow?.close();
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
+      {/* PDF Generation Overlay */}
+      {pdfGenerating && (
+        <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
+            <Loader2 className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">PDF wird erstellt…</h3>
+            <p className="text-sm text-gray-500 mb-4">{pdfProgressMsg}</p>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-gradient-to-r from-blue-500 to-cyan-400 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${pdfProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 mt-2">{pdfProgress}%</p>
+          </div>
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="bg-gradient-to-r from-blue-600 to-cyan-500 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -791,6 +862,17 @@ export default function PlanerPage() {
                   Wird gespeichert…
                 </span>
               )}
+
+              {/* PDF Download */}
+              <button
+                onClick={handleDownloadPDF}
+                disabled={pdfGenerating}
+                className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all border border-white/20 disabled:opacity-50"
+                title="Reise als PDF herunterladen"
+              >
+                {pdfGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                <span className="hidden sm:inline">PDF</span>
+              </button>
 
               {/* Trip List Toggle */}
               <button
