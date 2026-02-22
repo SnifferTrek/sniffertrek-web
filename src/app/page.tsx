@@ -103,7 +103,12 @@ export default function WelcomePage() {
 
   const startNewTrip = () => {
     if (!user && savedTrips.length >= 1) {
-      setShowLoginHint(true);
+      if (showLoginHint) {
+        setActiveTripId(savedTrips[0].id);
+        router.push("/planer");
+      } else {
+        setShowLoginHint(true);
+      }
       return;
     }
     const name = tripName.trim() || undefined;
@@ -223,7 +228,7 @@ export default function WelcomePage() {
                 Kostenlos anmelden für weitere Reisen
               </p>
               <p className="text-sm text-amber-600 mb-4">
-                Ohne Konto kannst du nur eine Reise speichern. Melde dich an, um beliebig viele Reisen zu planen und sie auf allen Geräten zu synchronisieren.
+                Ohne Konto kannst du nur eine Reise bearbeiten. Melde dich an, um beliebig viele Reisen zu planen und sie auf allen Geräten zu synchronisieren.
               </p>
               <div className="flex items-center gap-3">
                 <Link
@@ -233,10 +238,13 @@ export default function WelcomePage() {
                   Jetzt anmelden
                 </Link>
                 <button
-                  onClick={() => setShowLoginHint(false)}
-                  className="text-sm text-amber-600 hover:text-amber-800 transition-colors"
+                  onClick={() => {
+                    setActiveTripId(savedTrips[0].id);
+                    router.push("/planer");
+                  }}
+                  className="text-sm text-amber-600 hover:text-amber-800 font-medium transition-colors"
                 >
-                  Schliessen
+                  Ohne Anmeldung planen →
                 </button>
               </div>
             </div>
@@ -250,7 +258,7 @@ export default function WelcomePage() {
               className="inline-flex items-center gap-2.5 px-8 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-semibold rounded-2xl shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               <Sparkles className="w-5 h-5" />
-              {tripName.trim() ? `"${tripName.trim()}" starten` : "Neue Reise planen"}
+              {showLoginHint ? "Ohne Anmeldung planen" : tripName.trim() ? `"${tripName.trim()}" starten` : "Neue Reise planen"}
             </button>
             {selectedModules.length > 0 && !showLoginHint && (
               <p className="text-[11px] text-gray-400 mt-2.5">
