@@ -1158,6 +1158,7 @@ export default function PlanerPage() {
 
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
                   <GoogleMap
+                    key={activeTab}
                     stops={currentRouteStops}
                     travelMode={trip.travelMode}
                     optimize={optimizeRoute}
