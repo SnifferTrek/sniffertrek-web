@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnifferTrek – Landing Page Mockup</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; overflow-x: hidden; }
+
+  /* ===== NAV ===== */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(255,255,255,0.75); backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(255,255,255,0.3);
+    padding: 0 2rem; height: 64px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-logo { font-size: 1.3rem; font-weight: 800; color: #111; }
+  .nav-logo span { background: linear-gradient(135deg, #2563eb, #06b6d4); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .nav-links { display: flex; gap: 2rem; align-items: center; }
+  .nav-links a { font-size: 0.875rem; color: #6b7280; text-decoration: none; }
+  .nav-links a:hover { color: #111; }
+
+  /* ===== HERO ===== */
+  .hero {
+    position: relative; height: 100vh; min-height: 700px;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+
+  .hero-slides {
+    position: absolute; inset: 0;
+  }
+  .hero-slide {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center;
+    opacity: 0;
+    animation: kenburns 24s ease-in-out infinite;
+    transform: scale(1.05);
+  }
+  .hero-slide:nth-child(1) { animation-delay: 0s; background-image: url('https://images.unsplash.com/photo-1533105079780-92b9be482077?w=1920&q=80'); }
+  .hero-slide:nth-child(2) { animation-delay: 6s; background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1920&q=80'); }
+  .hero-slide:nth-child(3) { animation-delay: 12s; background-image: url('https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=1920&q=80'); }
+  .hero-slide:nth-child(4) { animation-delay: 18s; background-image: url('https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=1920&q=80'); }
+
+  @keyframes kenburns {
+    0%      { opacity: 0; transform: scale(1.05); }
+    4%      { opacity: 1; }
+    25%     { opacity: 1; transform: scale(1.15) translate(-1%, 1%); }
+    29%     { opacity: 0; transform: scale(1.18) translate(-1.5%, 1.5%); }
+    100%    { opacity: 0; transform: scale(1.05); }
+  }
+
+  .hero-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 100%);
+    z-index: 2;
+  }
+
+  .hero-content {
+    position: relative; z-index: 3;
+    text-align: center; color: white; max-width: 700px; padding: 0 1.5rem;
+  }
+  .hero-content h1 {
+    font-size: 3.5rem; font-weight: 800; line-height: 1.1;
+    margin-bottom: 1rem; text-shadow: 0 2px 20px rgba(0,0,0,0.3);
+  }
+  .hero-content p {
+    font-size: 1.25rem; opacity: 0.9; margin-bottom: 2.5rem;
+    text-shadow: 0 1px 10px rgba(0,0,0,0.3); font-weight: 300;
+  }
+
+  .hero-search {
+    display: flex; gap: 0.5rem; max-width: 560px; margin: 0 auto;
+    background: rgba(255,255,255,0.95); backdrop-filter: blur(8px);
+    border-radius: 1rem; padding: 0.4rem; box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .hero-search input {
+    flex: 1; border: none; outline: none; padding: 0.8rem 1.2rem;
+    font-size: 1rem; background: transparent; color: #333;
+    border-radius: 0.75rem;
+  }
+  .hero-search input::placeholder { color: #9ca3af; }
+  .hero-search button {
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+    color: white; border: none; padding: 0.8rem 1.8rem;
+    border-radius: 0.75rem; font-weight: 600; font-size: 0.95rem;
+    cursor: pointer; white-space: nowrap;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .hero-search button:hover { transform: scale(1.03); box-shadow: 0 8px 25px rgba(37,99,235,0.4); }
+
+  .hero-stats {
+    display: flex; gap: 2.5rem; justify-content: center; margin-top: 2.5rem;
+  }
+  .hero-stats .stat { text-align: center; }
+  .hero-stats .stat-value { font-size: 1.5rem; font-weight: 700; }
+  .hero-stats .stat-label { font-size: 0.75rem; opacity: 0.7; }
+
+  /* ===== INSPIRATION TICKER ===== */
+  .inspiration {
+    padding: 3rem 0 2rem;
+    background: white;
+    text-align: center;
+    overflow: hidden;
+  }
+  .inspiration h2 {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.15em; color: #9ca3af; margin-bottom: 1.5rem;
+  }
+  .ticker-wrap {
+    position: relative;
+  }
+  .ticker-wrap::before, .ticker-wrap::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 80px; z-index: 2;
+  }
+  .ticker-wrap::before { left: 0; background: linear-gradient(to right, white, transparent); }
+  .ticker-wrap::after  { right: 0; background: linear-gradient(to left, white, transparent); }
+
+  .ticker {
+    display: flex; gap: 2rem;
+    animation: scroll-ticker 35s linear infinite;
+    width: max-content;
+  }
+  @keyframes scroll-ticker {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .ticker-item {
+    flex-shrink: 0; text-align: center; cursor: pointer;
+    transition: transform 0.3s;
+  }
+  .ticker-item:hover { transform: scale(1.1); }
+  .ticker-item:hover .ticker-img { box-shadow: 0 8px 30px rgba(0,0,0,0.2); }
+  .ticker-img {
+    width: 120px; height: 120px; border-radius: 50%;
+    object-fit: cover; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    transition: box-shadow 0.3s;
+  }
+  .ticker-label {
+    margin-top: 0.6rem; font-size: 0.8rem; font-weight: 600; color: #374151;
+  }
+
+  /* ===== MODULE CARDS ===== */
+  .modules {
+    max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 4rem;
+  }
+  .modules h2 {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.15em; color: #9ca3af; margin-bottom: 1.5rem; text-align: center;
+  }
+  .module-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;
+  }
+  .module-card {
+    position: relative; border-radius: 1rem; overflow: hidden;
+    height: 140px; cursor: pointer;
+    transition: transform 0.3s, box-shadow 0.3s;
+    border: 2px solid transparent;
+  }
+  .module-card:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(0,0,0,0.15); }
+  .module-card.selected { border-color: #2563eb; }
+  .module-card.selected::after {
+    content: '✓'; position: absolute; top: 8px; right: 8px;
+    width: 24px; height: 24px; background: #2563eb; color: white;
+    border-radius: 50%; font-size: 12px; display: flex; align-items: center; justify-content: center;
+    z-index: 3;
+  }
+  .module-bg {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center;
+    transition: transform 0.5s;
+  }
+  .module-card:hover .module-bg { transform: scale(1.08); }
+  .module-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.15) 100%);
+    z-index: 1;
+  }
+  .module-card.selected .module-overlay {
+    background: linear-gradient(to top, rgba(37,99,235,0.75) 0%, rgba(37,99,235,0.15) 100%);
+  }
+  .module-label {
+    position: absolute; bottom: 0; left: 0; right: 0; padding: 1rem;
+    z-index: 2; color: white;
+  }
+  .module-label strong { display: block; font-size: 0.95rem; }
+  .module-label span { font-size: 0.7rem; opacity: 0.8; }
+
+  /* ===== CTA ===== */
+  .cta-section {
+    text-align: center; padding: 1rem 1.5rem 3rem;
+  }
+  .cta-btn {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    background: linear-gradient(135deg, #2563eb, #06b6d4);
+    color: white; border: none; padding: 1rem 2.5rem;
+    border-radius: 1rem; font-weight: 700; font-size: 1.1rem;
+    cursor: pointer; box-shadow: 0 8px 30px rgba(37,99,235,0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .cta-btn:hover { transform: scale(1.04); box-shadow: 0 12px 40px rgba(37,99,235,0.4); }
+  .cta-sub { font-size: 0.75rem; color: #9ca3af; margin-top: 0.75rem; }
+
+  /* ===== SHOWCASE ===== */
+  .showcase {
+    max-width: 1100px; margin: 0 auto; padding: 3rem 1.5rem 4rem;
+  }
+  .showcase h2 {
+    font-size: 1.8rem; font-weight: 800; color: #111; text-align: center; margin-bottom: 0.5rem;
+  }
+  .showcase .subtitle { text-align: center; color: #6b7280; margin-bottom: 2.5rem; }
+  .showcase-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;
+  }
+  .showcase-card {
+    border-radius: 1.25rem; overflow: hidden; background: white;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    transition: transform 0.4s, box-shadow 0.4s;
+    cursor: pointer;
+    perspective: 800px;
+  }
+  .showcase-card:hover {
+    transform: translateY(-8px) rotateX(2deg);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+  }
+  .showcase-card img {
+    width: 100%; height: 200px; object-fit: cover;
+    transition: transform 0.5s;
+  }
+  .showcase-card:hover img { transform: scale(1.05); }
+  .showcase-card .card-body { padding: 1.25rem; }
+  .showcase-card .card-body h3 { font-size: 1.1rem; font-weight: 700; color: #111; margin-bottom: 0.3rem; }
+  .showcase-card .card-body p { font-size: 0.8rem; color: #6b7280; margin-bottom: 0.75rem; }
+  .showcase-card .tags { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .showcase-card .tag {
+    font-size: 0.65rem; font-weight: 600; padding: 0.2rem 0.6rem;
+    border-radius: 999px; background: #eff6ff; color: #2563eb;
+  }
+
+  /* ===== FADE IN ON SCROLL ===== */
+  .fade-in {
+    opacity: 0; transform: translateY(30px);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+  /* ===== LABEL ===== */
+  .mockup-label {
+    position: fixed; bottom: 1rem; right: 1rem; z-index: 200;
+    background: #111; color: white; padding: 0.5rem 1rem;
+    border-radius: 0.5rem; font-size: 0.75rem; font-weight: 600;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">Sniffer<span>Trek</span></div>
+  <div class="nav-links">
+    <a href="#">Features</a>
+    <a href="#">So funktioniert's</a>
+    <a href="#">Meine Reisen</a>
+    <a href="#" style="color:#2563eb;font-weight:600">Anmelden</a>
+  </div>
+</nav>
+
+<!-- HERO with Ken Burns Slideshow -->
+<section class="hero">
+  <div class="hero-slides">
+    <div class="hero-slide"></div>
+    <div class="hero-slide"></div>
+    <div class="hero-slide"></div>
+    <div class="hero-slide"></div>
+  </div>
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <h1>Plane deine<br>Traumreise.</h1>
+    <p>Route, Hotels, Flüge und Sehenswürdigkeiten — alles an einem Ort.</p>
+    <div class="hero-search">
+      <input type="text" placeholder="z.B. Sommerurlaub Südfrankreich, Roadtrip Island...">
+      <button>✨ Reise planen</button>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><div class="stat-value">1'000+</div><div class="stat-label">Sehenswürdigkeiten</div></div>
+      <div class="stat"><div class="stat-value">50+</div><div class="stat-label">Länder</div></div>
+      <div class="stat"><div class="stat-value">100%</div><div class="stat-label">Kostenlos</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- INSPIRATION TICKER -->
+<section class="inspiration fade-in">
+  <h2>Lass dich inspirieren</h2>
+  <div class="ticker-wrap">
+    <div class="ticker">
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?w=300&q=80" alt="Santorini"><div class="ticker-label">Santorini</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=300&q=80" alt="Nordlichter"><div class="ticker-label">Nordlichter</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=300&q=80" alt="Venedig"><div class="ticker-label">Venedig</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=300&q=80" alt="Malediven"><div class="ticker-label">Malediven</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=300&q=80" alt="Paris"><div class="ticker-label">Paris</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1583422409516-2895a77efded?w=300&q=80" alt="Barcelona"><div class="ticker-label">Barcelona</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=300&q=80" alt="Amalfi"><div class="ticker-label">Amalfi</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1617329636938-90cf1b12c279?w=300&q=80" alt="Hallstatt"><div class="ticker-label">Hallstatt</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=300&q=80" alt="Dubrovnik"><div class="ticker-label">Dubrovnik</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1534008897995-27a23e859048?w=300&q=80" alt="Cinque Terre"><div class="ticker-label">Cinque Terre</div></div>
+      <!-- Duplicate for seamless loop -->
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?w=300&q=80" alt="Santorini"><div class="ticker-label">Santorini</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=300&q=80" alt="Nordlichter"><div class="ticker-label">Nordlichter</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=300&q=80" alt="Venedig"><div class="ticker-label">Venedig</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?w=300&q=80" alt="Malediven"><div class="ticker-label">Malediven</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1499856871958-5b9627545d1a?w=300&q=80" alt="Paris"><div class="ticker-label">Paris</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1583422409516-2895a77efded?w=300&q=80" alt="Barcelona"><div class="ticker-label">Barcelona</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1516483638261-f4dbaf036963?w=300&q=80" alt="Amalfi"><div class="ticker-label">Amalfi</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1617329636938-90cf1b12c279?w=300&q=80" alt="Hallstatt"><div class="ticker-label">Hallstatt</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=300&q=80" alt="Dubrovnik"><div class="ticker-label">Dubrovnik</div></div>
+      <div class="ticker-item"><img class="ticker-img" src="https://images.unsplash.com/photo-1534008897995-27a23e859048?w=300&q=80" alt="Cinque Terre"><div class="ticker-label">Cinque Terre</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- MODULE SELECTION with photos -->
+<section class="modules fade-in">
+  <h2>Wähle deine Module</h2>
+  <div class="module-grid">
+    <div class="module-card selected">
+      <div class="module-bg" style="background-image:url('https://images.unsplash.com/photo-1449824913935-59a10b8d2000?w=600&q=80')"></div>
+      <div class="module-overlay"></div>
+      <div class="module-label"><strong>Autoroute</strong><span>Strassenroute mit Karte</span></div>
+    </div>
+    <div class="module-card selected">
+      <div class="module-bg" style="background-image:url('https://images.unsplash.com/photo-1436491865332-7a61a109db05?w=600&q=80')"></div>
+      <div class="module-overlay"></div>
+      <div class="module-label"><strong>Flug</strong><span>Flugsuche & Vergleich</span></div>
+    </div>
+    <div class="module-card selected">
+      <div class="module-bg" style="background-image:url('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&q=80')"></div>
+      <div class="module-overlay"></div>
+      <div class="module-label"><strong>Hotels</strong><span>Hotels vergleichen</span></div>
+    </div>
+    <div class="module-card selected">
+      <div class="module-bg" style="background-image:url('https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=600&q=80')"></div>
+      <div class="module-overlay"></div>
+      <div class="module-label"><strong>Entdecken</strong><span>KI-Empfehlungen & POIs</span></div>
+    </div>
+    <div class="module-card">
+      <div class="module-bg" style="background-image:url('https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=600&q=80')"></div>
+      <div class="module-overlay"></div>
+      <div class="module-label"><strong>Mietwagen</strong><span>Mietwagen buchen</span></div>
+    </div>
+    <div class="module-card">
+      <div class="module-bg" style="background-image:url('https://images.unsplash.com/photo-1474487548417-781cb71495f3?w=600&q=80')"></div>
+      <div class="module-overlay"></div>
+      <div class="module-label"><strong>Zug</strong><span>Zugverbindungen</span></div>
+    </div>
+    <div class="module-card">
+      <div class="module-bg" style="background-image:url('https://images.unsplash.com/photo-1526512340740-9217d0159da9?w=600&q=80')"></div>
+      <div class="module-overlay"></div>
+      <div class="module-label"><strong>eSIM</strong><span>Mobiles Internet</span></div>
+    </div>
+    <div class="module-card">
+      <div class="module-bg" style="background-image:url('https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?w=600&q=80')"></div>
+      <div class="module-overlay"></div>
+      <div class="module-label"><strong>Bucket List</strong><span>1'488 Sehenswürdigkeiten</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section fade-in">
+  <button class="cta-btn">✨ Neue Reise planen</button>
+  <div class="cta-sub">4 Module ausgewählt</div>
+</section>
+
+<!-- SHOWCASE: Example Trips -->
+<section class="showcase fade-in">
+  <h2>Inspiration gefällig?</h2>
+  <p class="subtitle">Entdecke beliebte Reiserouten unserer Community</p>
+  <div class="showcase-grid">
+    <div class="showcase-card">
+      <div style="overflow:hidden"><img src="https://images.unsplash.com/photo-1533105079780-92b9be482077?w=800&q=80" alt="Südfrankreich"></div>
+      <div class="card-body">
+        <h3>Roadtrip Südfrankreich</h3>
+        <p>14 Tage · Zürich → Côte d'Azur → Provence → Zürich</p>
+        <div class="tags"><span class="tag">Auto</span><span class="tag">Hotels</span><span class="tag">POIs</span><span class="tag">2'340 km</span></div>
+      </div>
+    </div>
+    <div class="showcase-card">
+      <div style="overflow:hidden"><img src="https://images.unsplash.com/photo-1534008897995-27a23e859048?w=800&q=80" alt="Italien"></div>
+      <div class="card-body">
+        <h3>Bella Italia</h3>
+        <p>10 Tage · Cinque Terre → Rom → Amalfi → Venedig</p>
+        <div class="tags"><span class="tag">Zug</span><span class="tag">Hotels</span><span class="tag">Bucket List</span><span class="tag">1'800 km</span></div>
+      </div>
+    </div>
+    <div class="showcase-card">
+      <div style="overflow:hidden"><img src="https://images.unsplash.com/photo-1583422409516-2895a77efded?w=800&q=80" alt="Spanien"><div>
+      <div class="card-body">
+        <h3>Spanien-Portugal</h3>
+        <p>21 Tage · Barcelona → Madrid → Lissabon → Porto</p>
+        <div class="tags"><span class="tag">Auto</span><span class="tag">Flug</span><span class="tag">Hotels</span><span class="tag">3'100 km</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div style="height:4rem"></div>
+
+<!-- Mockup Label -->
+<div class="mockup-label">MOCKUP – Entwurf Startseite</div>
+
+<script>
+// Scroll fade-in
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.15 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// Toggle module cards
+document.querySelectorAll('.module-card').forEach(card => {
+  card.addEventListener('click', () => card.classList.toggle('selected'));
+});
+</script>
+</body>
+</html>
