@@ -70,7 +70,7 @@ export default function WelcomePage() {
   const router = useRouter();
   const { user } = useAuth();
   const [tripName, setTripName] = useState("");
-  const [selectedModules, setSelectedModules] = useState<string[]>(["route", "hotels", "poi", "bucket"]);
+  const [selectedModules, setSelectedModules] = useState<string[]>(["route"]);
   const [savedTrips, setSavedTrips] = useState<Trip[]>([]);
   const [showLoginHint, setShowLoginHint] = useState(false);
   const modulesRef = useRef<HTMLDivElement>(null);
@@ -195,10 +195,10 @@ export default function WelcomePage() {
                 disabled={!item.active}
                 className={`relative rounded-2xl overflow-hidden h-[130px] sm:h-[140px] text-left transition-all duration-300 group ${
                   !item.active
-                    ? "opacity-40 cursor-not-allowed"
+                    ? "opacity-40 cursor-not-allowed grayscale"
                     : isSelected
-                    ? "ring-2 ring-blue-500 shadow-lg shadow-blue-500/15 scale-[1.02]"
-                    : "hover:-translate-y-1 hover:shadow-lg"
+                    ? "ring-3 ring-blue-500 shadow-xl shadow-blue-500/25 scale-[1.03]"
+                    : "opacity-60 grayscale-[40%] hover:opacity-90 hover:grayscale-0 hover:-translate-y-1 hover:shadow-lg"
                 }`}
               >
                 {/* Background photo */}
@@ -208,10 +208,10 @@ export default function WelcomePage() {
                 />
                 {/* Overlay */}
                 <div
-                  className={`absolute inset-0 transition-colors duration-300 ${
+                  className={`absolute inset-0 transition-all duration-300 ${
                     isSelected
-                      ? "bg-gradient-to-t from-blue-700/80 via-blue-600/30 to-blue-500/10"
-                      : "bg-gradient-to-t from-black/70 via-black/25 to-black/5"
+                      ? "bg-gradient-to-t from-blue-700/75 via-blue-500/20 to-transparent"
+                      : "bg-gradient-to-t from-black/75 via-black/40 to-black/15"
                   }`}
                 />
 

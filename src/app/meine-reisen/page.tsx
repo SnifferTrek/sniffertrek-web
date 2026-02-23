@@ -28,6 +28,7 @@ import {
   saveTrip,
 } from "@/lib/tripStorage";
 import { useAuth } from "@/components/AuthProvider";
+import { deleteTripFromCloud } from "@/lib/cloudSync";
 
 const modeIcons: Record<TravelMode, typeof Car> = {
   auto: Car,
@@ -49,6 +50,9 @@ export default function MeineReisenPage() {
 
   const handleDelete = (id: string) => {
     deleteTrip(id);
+    if (user) {
+      deleteTripFromCloud(id);
+    }
     setTrips(getAllTrips());
   };
 

@@ -9,8 +9,8 @@ import {
 } from "react";
 import { AuthUser, getCurrentUser, onAuthStateChange, signOut } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
-import { loadTripsFromCloud, syncTripsToCloud, verifySyncBeforeLogout } from "@/lib/cloudSync";
-import { getAllTrips, saveTrip, clearAllTrips } from "@/lib/tripStorage";
+import { loadTripsFromCloud, verifySyncBeforeLogout } from "@/lib/cloudSync";
+import { saveTrip, clearAllTrips } from "@/lib/tripStorage";
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -42,23 +42,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     async function handleUserLogin(u: AuthUser) {
-      const localTrips = getAllTrips();
+      clearAllTrips();
       const cloudTrips = await loadTripsFromCloud(u.id);
-
-      if (cloudTrips.length > 0) {
-        clearAllTrips();
-        for (const trip of cloudTrips) {
-          saveTrip(trip);
-        }
-        if (localTrips.length > 0 && localTrips.some((lt) => !cloudTrips.find((ct) => ct.id === lt.id))) {
-          const orphanTrips = localTrips.filter((lt) => !cloudTrips.find((ct) => ct.id === lt.id));
-          for (const trip of orphanTrips) {
-            saveTrip(trip);
-          }
-          await syncTripsToCloud(u.id);
-        }
-      } else if (localTrips.length > 0) {
-        await syncTripsToCloud(u.id);
+      for (const trip of cloudTrips) {
+        saveTrip(trip);
       }
     }
 
