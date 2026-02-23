@@ -90,6 +90,7 @@ export default function GoogleMap({
   const [error, setError] = useState<string | null>(null);
   const [calculating, setCalculating] = useState(false);
   const [addMode, setAddMode] = useState(false);
+  const [routeStatus, setRouteStatus] = useState<string | null>(null);
 
   const onRouteCalculatedRef = useRef(onRouteCalculated);
   const onStopsReorderedRef = useRef(onStopsReordered);
@@ -193,13 +194,19 @@ export default function GoogleMap({
   }, []);
 
   const calculateRoute = useCallback(async () => {
-    if (!loaded || !mapInstance.current) return;
+    if (!loaded || !mapInstance.current) {
+      console.log("[Route] Waiting: loaded=", loaded, "map=", !!mapInstance.current);
+      return;
+    }
 
     clearRenderers();
+    setRouteStatus(null);
 
     const filledStops = stops.filter((s) => s.name.trim() !== "");
     const start = filledStops.find((s) => s.type === "start");
     const end = filledStops.find((s) => s.type === "end");
+
+    console.log("[Route] Filled stops:", filledStops.length, "Start:", start?.name, "End:", end?.name);
 
     if (!start || !end) {
       onRouteCalculatedRef.current?.({ distance: "", duration: "", stops: 0, legs: [] });
@@ -332,7 +339,8 @@ export default function GoogleMap({
         if (!usedCacheKeys.has(k)) segmentCache.current.delete(k);
       }
 
-      console.log(`Route: ${etappenStops.length} Etappen, ${apiCalls} API-Aufrufe, ${segmentCache.current.size - apiCalls} aus Cache`);
+      console.log(`[Route] OK: ${etappenStops.length} Etappen, ${apiCalls} API-Aufrufe, ${segmentCache.current.size - apiCalls} aus Cache`);
+      setRouteStatus(null);
 
       onRouteCalculatedRef.current?.({
         distance: formatDistance(totalDistance),
@@ -436,6 +444,7 @@ export default function GoogleMap({
 
       setError(null);
     } catch (status) {
+      console.error("[Route] Error:", status);
       const errorMessages: Record<string, string> = {
         NOT_FOUND: "Einer der Orte wurde nicht gefunden. Prüfe die Eingabe.",
         ZERO_RESULTS: "Keine Route zwischen diesen Orten gefunden.",
@@ -445,6 +454,7 @@ export default function GoogleMap({
         MAX_WAYPOINTS_EXCEEDED: "Zu viele Zwischenstopps für eine Anfrage.",
       };
       const msg = errorMessages[String(status)] || `Routenberechnung fehlgeschlagen (${status})`;
+      setRouteStatus(msg);
       onErrorRef.current?.(msg);
     } finally {
       setCalculating(false);
@@ -507,6 +517,11 @@ export default function GoogleMap({
         <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
           <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           <span className="text-xs text-gray-600 font-medium">Route wird berechnet...</span>
+        </div>
+      )}
+      {routeStatus && !calculating && (
+        <div className="absolute bottom-4 left-4 right-4 bg-amber-50/95 backdrop-blur-sm border border-amber-300 rounded-xl px-4 py-3 shadow-lg">
+          <p className="text-xs font-medium text-amber-800">{routeStatus}</p>
         </div>
       )}
       {addMode && (
