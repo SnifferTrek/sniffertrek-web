@@ -1200,7 +1200,7 @@ export default function PlanerPage() {
               <div
                 ref={tabsRef}
                 onScroll={checkTabScroll}
-                className="flex gap-1 bg-white rounded-2xl p-1.5 shadow-sm border border-gray-100 overflow-x-auto"
+                className="flex gap-1.5 bg-gray-100 rounded-2xl p-1.5 shadow-sm border border-gray-200 overflow-x-auto"
                 style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
               >
                 {tabs.map((tab) => (
@@ -1215,11 +1215,11 @@ export default function PlanerPage() {
                     data-tab={tab.id}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
                       activeTab === tab.id
-                        ? "bg-blue-50 text-blue-700 shadow-sm"
-                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                        ? "bg-white text-blue-700 shadow-md border border-gray-200/80 ring-1 ring-blue-500/20"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
                     }`}
                   >
-                    <tab.icon className="w-4 h-4" />
+                    <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? "text-blue-500" : ""}`} />
                     {tab.label}
                   </button>
                 ))}
