@@ -117,7 +117,7 @@ export default function PlanerPage() {
   const planerRouter = useRouter();
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
   const [activeTab, setActiveTab] = useState<
-    "route" | "hotels" | "flights" | "car" | "poi" | "bucket" | "esim" | "train" | "insurance" | "timeline"
+    "route" | "hotels" | "flights" | "car" | "poi" | "bucket" | "esim" | "train" | "insurance"
   >("route");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -623,10 +623,9 @@ export default function PlanerPage() {
     { id: "train" as const, label: "Züge", icon: Train, module: "train" },
     { id: "esim" as const, label: "eSIM", icon: Smartphone, module: "esim" },
     { id: "insurance" as const, label: "Versicherung", icon: Shield, module: "insurance" },
-    { id: "timeline" as const, label: "Timeline", icon: Calendar, module: "timeline" },
   ];
 
-  const tabs = allTabs.filter((t) => t.module === "timeline" || activeModules.includes(t.module));
+  const tabs = allTabs.filter((t) => activeModules.includes(t.module));
 
   const destination = trip.stops.find((s) => s.type === "end")?.name || "";
   const origin = trip.stops.find((s) => s.type === "start")?.name || "";
@@ -2790,165 +2789,6 @@ export default function PlanerPage() {
               </div>
             )}
 
-            {/* Timeline Tab */}
-            {activeTab === "timeline" && (
-              <div className="space-y-6">
-                <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-100 rounded-2xl p-5">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="w-5 h-5 text-blue-500 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">
-                        Deine Reise-Timeline
-                      </p>
-                      <p className="text-sm text-blue-600 mt-1">
-                        Übersicht deiner gesamten Reise – Route, Stopps und Bucket List auf einen Blick.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Trip Summary */}
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                  <h3 className="font-semibold text-gray-900 mb-4">Reise-Zusammenfassung</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {trip.stops.filter((s) => s.name.trim()).length}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">Orte</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {routeInfo?.distance || "—"}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">Distanz</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {trip.startDate && trip.endDate
-                          ? Math.ceil(
-                              (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) /
-                                (1000 * 60 * 60 * 24)
-                            )
-                          : "—"}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">Tage</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">
-                        {trip.bucketList.length}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">Bucket List</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Timeline Steps */}
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                  <h3 className="font-semibold text-gray-900 mb-6">Route & Stopps</h3>
-                  <div className="relative">
-                    {trip.stops.filter((s) => s.name.trim()).length > 1 && (
-                      <div className="absolute left-[19px] top-6 bottom-6 w-0.5 bg-gradient-to-b from-blue-400 via-orange-300 to-red-400" />
-                    )}
-                    <div className="space-y-6">
-                      {trip.stops
-                        .filter((s) => s.name.trim())
-                        .map((stop, idx, arr) => (
-                          <div key={stop.id} className="relative flex items-start gap-4">
-                            <div
-                              className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                stop.type === "start"
-                                  ? "bg-blue-500"
-                                  : stop.type === "end"
-                                  ? "bg-red-500"
-                                  : "bg-orange-400"
-                              }`}
-                            >
-                              {stop.type === "start" ? (
-                                <CircleDot className="w-5 h-5 text-white" />
-                              ) : stop.type === "end" ? (
-                                <Flag className="w-5 h-5 text-white" />
-                              ) : (
-                                <MapPin className="w-5 h-5 text-white" />
-                              )}
-                            </div>
-                            <div className="flex-1 pt-1.5">
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-medium text-gray-900">{stop.name}</h4>
-                                <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">
-                                  {stop.type === "start"
-                                    ? "Start"
-                                    : stop.type === "end"
-                                    ? "Ziel"
-                                    : `Stopp ${idx}`}
-                                </span>
-                              </div>
-                              {idx === 0 && trip.startDate && (
-                                <p className="text-xs text-gray-400 mt-1">
-                                  Abreise: {formatDate(trip.startDate)}
-                                </p>
-                              )}
-                              {idx === arr.length - 1 && trip.endDate && (
-                                <p className="text-xs text-gray-400 mt-1">
-                                  Ankunft: {formatDate(trip.endDate)}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-
-                    {trip.stops.filter((s) => s.name.trim()).length === 0 && (
-                      <div className="text-center py-6">
-                        <Navigation className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                        <p className="text-sm text-gray-400">Keine Route geplant. Füge Orte im Route-Tab hinzu.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Bucket List in Timeline */}
-                {trip.bucketList.length > 0 && (
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                    <h3 className="font-semibold text-gray-900 mb-4">
-                      Bucket List ({trip.bucketList.length})
-                    </h3>
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      {trip.bucketList.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center gap-3 bg-green-50 rounded-xl px-4 py-3"
-                        >
-                          <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <MapPin className="w-4 h-4 text-green-600" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm font-medium text-gray-800 truncate">
-                              {item.name}
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-400">
-                              <span>{item.category}</span>
-                              <span className="flex items-center gap-0.5">
-                                <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                                {item.rating}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Notes */}
-                {trip.notes && (
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                    <h3 className="font-semibold text-gray-900 mb-3">Notizen</h3>
-                    <p className="text-sm text-gray-600 whitespace-pre-wrap">{trip.notes}</p>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
