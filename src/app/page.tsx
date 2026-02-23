@@ -18,6 +18,7 @@ import {
   Clock,
   Check,
   ArrowRight,
+  Sparkles,
 } from "lucide-react";
 import { TripModule, Trip } from "@/lib/types";
 import {
@@ -100,6 +101,10 @@ export default function WelcomePage() {
     );
   };
 
+  const scrollToModules = () => {
+    modulesRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
   const startNewTrip = () => {
     if (!user && savedTrips.length >= 1) {
       if (showLoginHint) {
@@ -123,22 +128,16 @@ export default function WelcomePage() {
     router.push("/planer");
   };
 
-  const buttonLabel = showLoginHint
-    ? "Ohne Anmeldung planen"
-    : tripName.trim()
-    ? `"${tripName.trim()}" starten`
-    : "Neue Reise planen";
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero with Ken Burns slideshow */}
       <HeroSlideshow
         tripName={tripName}
         onTripNameChange={setTripName}
-        onStart={startNewTrip}
+        onStart={scrollToModules}
         moduleCount={selectedModules.length}
-        disabled={selectedModules.length === 0}
-        buttonLabel={buttonLabel}
+        disabled={false}
+        buttonLabel="Neue Reise planen"
       />
 
       {/* Inspiration ticker */}
@@ -239,6 +238,26 @@ export default function WelcomePage() {
               </button>
             );
           })}
+        </div>
+
+        {/* Start trip button */}
+        <div className="text-center mt-8">
+          {tripName.trim() && (
+            <p className="text-sm text-gray-500 mb-3">
+              Reise: <span className="font-semibold text-gray-800">&ldquo;{tripName.trim()}&rdquo;</span>
+            </p>
+          )}
+          <button
+            onClick={startNewTrip}
+            disabled={selectedModules.length === 0}
+            className="inline-flex items-center gap-2.5 px-8 py-3.5 bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-semibold rounded-2xl shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          >
+            <Sparkles className="w-5 h-5" />
+            {tripName.trim() ? `"${tripName.trim()}" starten` : "Reise starten"}
+          </button>
+          <p className="text-[11px] text-gray-400 mt-2.5">
+            {selectedModules.length} {selectedModules.length === 1 ? "Modul" : "Module"} ausgewählt
+          </p>
         </div>
       </section>
 
