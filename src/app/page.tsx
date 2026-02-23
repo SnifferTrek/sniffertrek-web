@@ -92,8 +92,12 @@ export default function WelcomePage() {
   const [showLoginHint, setShowLoginHint] = useState(false);
 
   useEffect(() => {
-    setSavedTrips(getAllTrips());
-  }, []);
+    if (user) {
+      setSavedTrips(getAllTrips());
+    } else {
+      setSavedTrips([]);
+    }
+  }, [user]);
 
   const toggleModule = (id: string) => {
     setSelectedModules((prev) =>

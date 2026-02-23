@@ -82,11 +82,9 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     if (user) {
-      const { syncSuccess } = await verifySyncBeforeLogout(user.id);
-      if (syncSuccess) {
-        clearAllTrips();
-      }
+      await verifySyncBeforeLogout(user.id);
     }
+    clearAllTrips();
     await signOut();
     setUser(null);
   };
