@@ -40,6 +40,7 @@ import {
   ArrowDownUp,
   FileDown,
   Loader2,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -142,6 +143,7 @@ export default function PlanerPage() {
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfProgress, setPdfProgress] = useState(0);
   const [pdfProgressMsg, setPdfProgressMsg] = useState("");
+  const [showModuleSettings, setShowModuleSettings] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -626,6 +628,15 @@ export default function PlanerPage() {
   ];
 
   const tabs = allTabs.filter((t) => activeModules.includes(t.module));
+
+  const toggleModule = (mod: string) => {
+    const current = trip.modules?.length ? [...trip.modules] : ["route", "hotels", "poi", "bucket"];
+    const updated = current.includes(mod)
+      ? current.filter((m) => m !== mod)
+      : [...current, mod];
+    if (updated.length === 0) return;
+    updateTrip({ modules: updated as Trip["modules"] });
+  };
 
   const destination = trip.stops.find((s) => s.type === "end")?.name || "";
   const origin = trip.stops.find((s) => s.type === "start")?.name || "";
@@ -1196,32 +1207,80 @@ export default function PlanerPage() {
                   <ChevronLeft className="w-4 h-4 text-gray-600" />
                 </button>
               )}
-              <div
-                ref={tabsRef}
-                onScroll={checkTabScroll}
-                className="flex gap-1.5 bg-gray-100 rounded-2xl p-1.5 shadow-sm border border-gray-200 overflow-x-auto"
-                style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
-              >
-                {tabs.map((tab) => (
+              <div className="flex items-center gap-2">
+                <div
+                  ref={tabsRef}
+                  onScroll={checkTabScroll}
+                  className="flex-1 flex gap-1.5 bg-gray-100 rounded-2xl p-1.5 shadow-sm border border-gray-200 overflow-x-auto"
+                  style={{ scrollbarWidth: "none", msOverflowStyle: "none", WebkitOverflowScrolling: "touch" }}
+                >
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        const el = tabsRef.current;
+                        const btn = el?.querySelector(`[data-tab="${tab.id}"]`) as HTMLElement | null;
+                        if (el && btn) btn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+                      }}
+                      data-tab={tab.id}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
+                        activeTab === tab.id
+                          ? "bg-white text-blue-700 shadow-md border border-gray-200/80 ring-1 ring-blue-500/20"
+                          : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
+                      }`}
+                    >
+                      <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? "text-blue-500" : ""}`} />
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Module settings gear */}
+                <div className="relative flex-shrink-0">
                   <button
-                    key={tab.id}
-                    onClick={() => {
-                      setActiveTab(tab.id);
-                      const el = tabsRef.current;
-                      const btn = el?.querySelector(`[data-tab="${tab.id}"]`) as HTMLElement | null;
-                      if (el && btn) btn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
-                    }}
-                    data-tab={tab.id}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${
-                      activeTab === tab.id
-                        ? "bg-white text-blue-700 shadow-md border border-gray-200/80 ring-1 ring-blue-500/20"
-                        : "text-gray-500 hover:text-gray-700 hover:bg-white/60"
+                    onClick={() => setShowModuleSettings(!showModuleSettings)}
+                    className={`w-10 h-10 flex items-center justify-center rounded-xl border transition-all ${
+                      showModuleSettings
+                        ? "bg-blue-50 border-blue-200 text-blue-600"
+                        : "bg-white border-gray-200 text-gray-400 hover:text-gray-600 hover:border-gray-300"
                     }`}
+                    title="Module verwalten"
                   >
-                    <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? "text-blue-500" : ""}`} />
-                    {tab.label}
+                    <Settings className="w-4 h-4" />
                   </button>
-                ))}
+
+                  {showModuleSettings && (
+                    <>
+                      <div className="fixed inset-0 z-30" onClick={() => setShowModuleSettings(false)} />
+                      <div className="absolute right-0 top-12 z-40 bg-white rounded-2xl shadow-xl border border-gray-200 p-4 w-64">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
+                          Module ein/aus
+                        </h3>
+                        <div className="space-y-1.5">
+                          {allTabs.map((tab) => {
+                            const isActive = activeModules.includes(tab.module);
+                            return (
+                              <button
+                                key={tab.id}
+                                onClick={() => toggleModule(tab.module)}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
+                                  isActive
+                                    ? "bg-blue-50 text-blue-700 font-medium"
+                                    : "text-gray-500 hover:bg-gray-50"
+                                }`}
+                              >
+                                <tab.icon className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-blue-500" : "text-gray-400"}`} />
+                                <span className="flex-1 text-left">{tab.label}</span>
+                                {isActive && <Check className="w-4 h-4 text-blue-500 flex-shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
               {canScrollRight && (
                 <button
