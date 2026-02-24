@@ -1065,7 +1065,7 @@ export default function PlanerPage() {
                         ) : (
                         <input
                           type="text"
-                          defaultValue={stop.name}
+                          value={stop.name}
                           ref={(el) => {
                             if (el && autocompleteReady) {
                               attachAutocomplete(el, (place, lat, lng) => {
