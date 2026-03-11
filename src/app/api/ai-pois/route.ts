@@ -23,6 +23,51 @@ interface EtappeInput {
   viaStops: { name: string; lat?: number; lng?: number }[];
 }
 
+function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const x =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((aLat * Math.PI) / 180) *
+      Math.cos((bLat * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function getEtappeAnchorPoints(e: EtappeInput): Array<{ lat: number; lng: number }> {
+  const points: Array<{ lat: number; lng: number }> = [];
+  if (e.fromLat != null && e.fromLng != null) points.push({ lat: e.fromLat, lng: e.fromLng });
+  for (const v of e.viaStops) {
+    if (v.lat != null && v.lng != null) points.push({ lat: v.lat, lng: v.lng });
+  }
+  if (e.toLat != null && e.toLng != null) points.push({ lat: e.toLat, lng: e.toLng });
+  return points;
+}
+
+function nearestEtappeByCoords(
+  lat: number,
+  lng: number,
+  etappes: EtappeInput[]
+): { localIndex: number; minDistanceKm: number } | null {
+  let bestIndex = -1;
+  let bestDistance = Infinity;
+  for (let i = 0; i < etappes.length; i++) {
+    const anchors = getEtappeAnchorPoints(etappes[i]);
+    if (anchors.length === 0) continue;
+    for (const p of anchors) {
+      const d = haversineKm(lat, lng, p.lat, p.lng);
+      if (d < bestDistance) {
+        bestDistance = d;
+        bestIndex = i;
+      }
+    }
+  }
+  if (bestIndex < 0) return null;
+  return { localIndex: bestIndex, minDistanceKm: bestDistance };
+}
+
 export async function POST(request: NextRequest) {
   if (!OPENAI_API_KEY) {
     return NextResponse.json(
@@ -71,7 +116,9 @@ export async function POST(request: NextRequest) {
       .join("\n");
 
     const systemPrompt = `Du bist ein erfahrener Reiseberater und Lokalexperte. Du gibst personalisierte Empfehlungen für Reisende ${modeText}.
-Antworte ausschliesslich mit validem JSON – kein Markdown, keine Erklärungen ausserhalb des JSON.`;
+Antworte ausschliesslich mit validem JSON – kein Markdown, keine Erklärungen ausserhalb des JSON.
+WICHTIG: Keine erfundenen Fakten. Wenn du bei einem Detail unsicher bist (z.B. exakter See, Fluss, historische Behauptung),
+formuliere neutral und allgemein statt konkret-falsch.`;
 
     const numSuggestions = targetEtappes.length === 1 ? "5-8" : "3-5";
 
@@ -103,7 +150,8 @@ Regeln:
 - ${lang === "de" ? "Beschreibungen auf Deutsch" : "Descriptions in English"}
 - detourMinutes = geschätzte zusätzliche Fahrzeit ab Route
 - lat/lng = ungefähre Koordinaten des empfohlenen Orts (PFLICHT)
-- Verteile die Empfehlungen gleichmässig über die Etappe(n)`;
+- Verteile die Empfehlungen gleichmässig über die Etappe(n)
+- Schreibe faktenorientiert; keine unsicheren Gewässer-/Regionszuordnungen als Tatsache behaupten`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -117,7 +165,7 @@ Regeln:
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-        temperature: 0.8,
+        temperature: 0.25,
         max_tokens: 4000,
       }),
     });
@@ -147,7 +195,34 @@ Regeln:
       return NextResponse.json({ error: "Invalid AI response format" }, { status: 502 });
     }
 
-    return NextResponse.json({ suggestions });
+    const normalizedSuggestions = Array.isArray(suggestions)
+      ? suggestions
+          .map((s: Record<string, unknown>) => {
+            const lat = typeof s.lat === "number" ? s.lat : undefined;
+            const lng = typeof s.lng === "number" ? s.lng : undefined;
+            if (lat == null || lng == null) {
+              // Keep fallback indexing for entries without coordinates.
+              const fallbackIndex =
+                etappeIndex != null
+                  ? etappeIndex
+                  : typeof s.etappeIndex === "number"
+                  ? s.etappeIndex
+                  : 0;
+              return { ...s, etappeIndex: fallbackIndex };
+            }
+
+            const nearest = nearestEtappeByCoords(lat, lng, targetEtappes);
+            if (!nearest) return null;
+
+            // Hard guard against clearly wrong geography.
+            if (nearest.minDistanceKm > 120) return null;
+
+            return { ...s, etappeIndex: targetOffset + nearest.localIndex };
+          })
+          .filter(Boolean)
+      : [];
+
+    return NextResponse.json({ suggestions: normalizedSuggestions });
   } catch (error) {
     console.error("AI POI error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

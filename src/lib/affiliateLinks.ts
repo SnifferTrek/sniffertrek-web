@@ -7,6 +7,7 @@ interface SearchParams {
   travelers?: number;
   rooms?: number;
   origin?: string;
+  clickRef?: string;
 }
 
 function getPartnerConfig(id: string) {
@@ -40,29 +41,71 @@ export function buildBookingHotelLink(params: SearchParams): string {
 }
 
 export function buildExpediaHotelLink(params: SearchParams): string {
-  const partner = getPartnerConfig("expedia-hotels");
-  const base = "https://www.expedia.com/Hotel-Search";
-  const query = new URLSearchParams();
-  if (params.destination) query.set("destination", params.destination);
-  if (params.checkIn) query.set("startDate", params.checkIn);
-  if (params.checkOut) query.set("endDate", params.checkOut);
-  if (params.travelers) query.set("adults", String(params.travelers));
-  if (params.rooms) query.set("rooms", String(params.rooms));
-  if (partner?.affiliateId) query.set("affcid", partner.affiliateId);
-  return `${base}?${query.toString()}`;
+  // Creator link + tracking params + dynamic search values.
+  const url = new URL("https://expedia.com/affiliates/sniffertrek/zuerich-mar10-mar12");
+  const clickRef = params.clickRef?.trim() || "1101lCkMQ5EE";
+  url.searchParams.set("siteid", "1");
+  url.searchParams.set("langid", "1033");
+  url.searchParams.set("clickref", clickRef);
+  url.searchParams.set("affcid", "US.DIRECT.PHG.1011l412531.0");
+  url.searchParams.set("ref_id", clickRef);
+  url.searchParams.set("my_ad", "AFF.US.DIRECT.PHG.1011l412531.0");
+  url.searchParams.set("afflid", "1101lCkMQ5EE");
+  url.searchParams.set("affdtl", "PHG.1101lCkMQ5EE.VPWYLDv9bf");
+
+  if (params.destination) url.searchParams.set("destination", params.destination);
+  if (params.checkIn) url.searchParams.set("startDate", formatDate(params.checkIn));
+  if (params.checkOut) url.searchParams.set("endDate", formatDate(params.checkOut));
+  if (params.travelers) url.searchParams.set("adults", String(params.travelers));
+  if (params.rooms) url.searchParams.set("rooms", String(params.rooms));
+
+  return url.toString();
 }
 
 export function buildHotelsComLink(params: SearchParams): string {
-  const partner = getPartnerConfig("hotels-com");
-  const base = "https://www.hotels.com/Hotel-Search";
-  const query = new URLSearchParams();
-  if (params.destination) query.set("destination", params.destination);
-  if (params.checkIn) query.set("startDate", params.checkIn);
-  if (params.checkOut) query.set("endDate", params.checkOut);
-  if (params.travelers) query.set("adults", String(params.travelers));
-  if (params.rooms) query.set("rooms", String(params.rooms));
-  if (partner?.affiliateId) query.set("AFFCID", partner.affiliateId);
-  return `${base}?${query.toString()}`;
+  void params;
+  // Safe tracking-first link (no destination/date prefill).
+  return "https://www.hotels.com/affiliates/hotelscom-home.10ZQa9h";
+}
+
+export function buildHotelsComDeeplink(params: SearchParams): string {
+  const url = new URL("https://www.hotels.com/Hotel-Search");
+  const clickRef = params.clickRef?.trim() || "1101lCkMQ5EE";
+  if (params.destination) url.searchParams.set("destination", params.destination);
+  if (params.checkIn) url.searchParams.set("startDate", formatDate(params.checkIn));
+  if (params.checkOut) url.searchParams.set("endDate", formatDate(params.checkOut));
+  if (params.rooms) url.searchParams.set("rooms", String(params.rooms));
+  if (params.travelers) url.searchParams.set("adults", String(params.travelers));
+  url.searchParams.set("pos", "HCOM_CH");
+  url.searchParams.set("locale", "de_CH");
+  url.searchParams.set("clickref", clickRef);
+  url.searchParams.set("rffrid", clickRef);
+  url.searchParams.set("AFFCID", "US.DIRECT.PHG.1011l412531.0");
+  url.searchParams.set("affcid", "US.DIRECT.PHG.1011l412531.0");
+  url.searchParams.set("afflid", "1101lCkMQ5EE");
+  url.searchParams.set("affdtl", "PHG.1101lCkMQ5EE.VPWYLDv9bf");
+  return url.toString();
+}
+
+export function buildExpediaHotelDeeplink(params: SearchParams): string {
+  const url = new URL("https://www.expedia.com/go/hotel/search/Destination");
+  const clickRef = params.clickRef?.trim() || "1101lCkMQ5EE";
+  url.searchParams.set("SearchType", "Destination");
+  if (params.destination) url.searchParams.set("CityName", params.destination);
+  if (params.checkIn) url.searchParams.set("InDate", formatDate(params.checkIn));
+  if (params.checkOut) url.searchParams.set("OutDate", formatDate(params.checkOut));
+  if (params.rooms) url.searchParams.set("NumRoom", String(params.rooms));
+  if (params.travelers) url.searchParams.set("NumAdult-Room1", String(params.travelers));
+  url.searchParams.set("siteid", "1");
+  url.searchParams.set("langid", "1033");
+  url.searchParams.set("clickref", clickRef);
+  url.searchParams.set("affcid", "US.DIRECT.PHG.1011l412531.0");
+  url.searchParams.set("ref_id", clickRef);
+  url.searchParams.set("my_ad", "AFF.US.DIRECT.PHG.1011l412531.0");
+  url.searchParams.set("afflid", "1101lCkMQ5EE");
+  url.searchParams.set("affdtl", "PHG.1101lCkMQ5EE.VPWYLDv9bf");
+  url.searchParams.set("mdpcid", "US.DIRECT.PHG.1011l412531.0");
+  return url.toString();
 }
 
 export function buildAgodaHotelLink(params: SearchParams): string {

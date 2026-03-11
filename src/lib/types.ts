@@ -17,6 +17,20 @@ export interface RouteStop {
   bookingPrice?: string;
   bookingLink?: string;
   bookingProvider?: string;
+  discoverySource?: "ai" | "custom";
+  discoveryEtappeIndex?: number;
+  discoveryCategory?: string;
+  discoveryDescription?: string;
+  discoveryPhotoUrl?: string;
+  discoveryPhotoDataUrl?: string;
+  discoveryAddedAt?: string;
+}
+
+export interface ViaPoint {
+  id: string;
+  lat: number;
+  lng: number;
+  afterStopId?: string;
 }
 
 export interface RouteLegInfo {
@@ -37,6 +51,7 @@ export interface Etappe {
   hotelBooked?: boolean;
   hotelName?: string;
   hotelAddress?: string;
+  hotelNights?: number;
 }
 
 export interface PlannedHotel {
@@ -89,8 +104,10 @@ export type TripModule =
   | "car"
   | "train"
   | "poi"
+  | "report"
   | "bucket"
   | "esim"
+  | "droneMaps"
   | "insurance"
   | "cruise"
   | "lastminute"
@@ -102,6 +119,8 @@ export type TransportModule = "route" | "flights" | "car" | "train";
 
 export interface ModuleRoute {
   stops: RouteStop[];
+  viaPoints?: ViaPoint[];
+  overviewPolyline?: string;
 }
 
 export interface TripRoutes {
@@ -110,6 +129,20 @@ export interface TripRoutes {
   car?: ModuleRoute;
   train?: ModuleRoute;
 }
+
+export type PdfPhotoPlacement = "afterHotel" | "afterTeilstrecken" | "afterEntdecken";
+export type PdfPhotoLayout =
+  | "auto"
+  | "onePerPageMax"
+  | "onePortraitTopHalf"
+  | "onePortraitBottomHalf"
+  | "twoPortraitSideBySide"
+  | "twoPortraitStacked"
+  | "twoMixedStacked"
+  | "sixPortraitGrid"
+  | "threePortraitOneLandscape"
+  | "grid"
+  | "smartPages";
 
 export interface Trip {
   id: string;
@@ -124,6 +157,24 @@ export interface Trip {
   interests?: TravelInterest[];
   hotels: PlannedHotel[];
   bucketList: BucketListItem[];
+  pdfPhotosByEtappe?: Record<string, string[]>;
+  pdfPhotoLibraryByEtappe?: Record<string, string[]>;
+  pdfCoverPhotoDataUrl?: string;
+  pdfCoverPhotoStyle?: "background" | "belowTitle";
+  pdfCoverTitleColor?: string;
+  pdfCoverTitleSize?: number;
+  pdfCoverTitleFont?: "helvetica" | "times" | "courier";
+  pdfCoverTitleAlign?: "left" | "center" | "right";
+  pdfCoverDateColor?: string;
+  pdfCoverDateSize?: number;
+  pdfCoverDateFont?: "helvetica" | "times" | "courier";
+  pdfCoverDateAlign?: "left" | "center" | "right";
+  pdfPhotoPlacementByEtappe?: Record<string, PdfPhotoPlacement>;
+  pdfPhotoLayoutByEtappe?: Record<string, PdfPhotoLayout>;
+  pdfPhotoPagesByEtappe?: Record<string, number>;
+  pdfOverviewMapStoragePath?: string;
+  pdfOverviewMapPublicUrl?: string;
+  pdfOverviewMapPreparedAt?: string;
   notes: string;
   createdAt: string;
   updatedAt: string;

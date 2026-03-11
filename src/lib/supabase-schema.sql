@@ -44,3 +44,71 @@ CREATE POLICY "Users can delete own trips"
 -- Index für schnelle Abfragen
 CREATE INDEX IF NOT EXISTS idx_trips_user_id ON trips(user_id);
 CREATE INDEX IF NOT EXISTS idx_trips_updated_at ON trips(updated_at DESC);
+
+-- Affiliate Click Tracking
+CREATE TABLE IF NOT EXISTS affiliate_clicks (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  module TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  target_url TEXT NOT NULL,
+  trip_id TEXT,
+  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  destination TEXT,
+  origin TEXT,
+  context JSONB NOT NULL DEFAULT '{}'::jsonb,
+  page_url TEXT,
+  referrer TEXT,
+  user_agent TEXT,
+  session_id TEXT,
+  clicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE affiliate_clicks ENABLE ROW LEVEL SECURITY;
+
+-- Allow inserts from anonymous and logged-in users.
+CREATE POLICY "Anyone can insert affiliate clicks"
+  ON affiliate_clicks FOR INSERT
+  WITH CHECK (true);
+
+-- Only authenticated users can read their own click records.
+CREATE POLICY "Users can read own affiliate clicks"
+  ON affiliate_clicks FOR SELECT
+  USING (auth.uid() = user_id);
+
+CREATE INDEX IF NOT EXISTS idx_affiliate_clicks_clicked_at ON affiliate_clicks(clicked_at DESC);
+CREATE INDEX IF NOT EXISTS idx_affiliate_clicks_provider ON affiliate_clicks(provider);
+CREATE INDEX IF NOT EXISTS idx_affiliate_clicks_user_id ON affiliate_clicks(user_id);
+
+-- Storage bucket for prepared PDF overview maps
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('trip-maps', 'trip-maps', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Users can read/write only files under their own folder: <user_id>/<trip_id>/...
+CREATE POLICY "Users can read own trip maps"
+  ON storage.objects FOR SELECT
+  USING (
+    bucket_id = 'trip-maps'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "Users can insert own trip maps"
+  ON storage.objects FOR INSERT
+  WITH CHECK (
+    bucket_id = 'trip-maps'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "Users can update own trip maps"
+  ON storage.objects FOR UPDATE
+  USING (
+    bucket_id = 'trip-maps'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+CREATE POLICY "Users can delete own trip maps"
+  ON storage.objects FOR DELETE
+  USING (
+    bucket_id = 'trip-maps'
+    AND (storage.foldername(name))[1] = auth.uid()::text
+  );
