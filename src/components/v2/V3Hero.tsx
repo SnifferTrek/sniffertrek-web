@@ -30,11 +30,13 @@ export default function V3Hero() {
             ))}
           </ul>
 
-          <p className="v3-hero-route-corridor">{V2_DEMO_TRIP.corridor}</p>
-
-          <a href="#beispiel" className="v2-hero-example-link mt-4 inline-flex">
-            Beispielreise ansehen ↓
-          </a>
+          <div className="v3-hero-example">
+            <p className="v3-hero-example-label">Beispielreise</p>
+            <p className="v3-hero-example-route">{V2_DEMO_TRIP.corridor}</p>
+            <a href="#beispiel" className="v3-hero-example-link">
+              Reise ansehen ↓
+            </a>
+          </div>
         </div>
 
         <V3HeroScene />

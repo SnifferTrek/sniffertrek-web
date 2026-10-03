@@ -18,6 +18,7 @@ export default function V3HeroScene() {
           height={ROUTE_MAP.height}
           className="v3-hero-scene-map-img"
           priority
+          unoptimized
           sizes="(min-width: 1024px) 58vw, 100vw"
         />
       </div>

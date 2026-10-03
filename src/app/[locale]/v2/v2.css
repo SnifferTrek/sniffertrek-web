@@ -185,9 +185,9 @@
 .v3-hero-inner {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
   max-width: none;
-  padding: 0 1rem 2rem;
+  padding: 0 1rem 1.5rem;
 }
 
 .v3-hero-content {
@@ -195,40 +195,70 @@
   z-index: 2;
   width: min(100%, 34rem);
   margin-inline: auto;
-  padding-top: 1.75rem;
+  padding-top: 1.5rem;
 }
 
-.v3-hero-route-corridor {
-  margin-top: 1rem;
+.v3-hero .v2-hero-sub {
+  max-width: 30rem;
+}
+
+.v3-hero-example {
+  margin-top: 1.25rem;
+}
+
+.v3-hero-example-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--v2-muted);
+}
+
+.v3-hero-example-route {
+  margin-top: 0.35rem;
   font-size: 0.875rem;
   font-weight: 500;
   letter-spacing: -0.01em;
-  color: var(--v2-muted);
+  color: var(--v2-ink);
+}
+
+.v3-hero-example-link {
+  display: inline-flex;
+  margin-top: 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--v2-accent);
+  text-decoration: none;
+}
+
+.v3-hero-example-link:hover {
+  text-decoration: underline;
 }
 
 .v3-hero-scene {
   position: relative;
   width: 100%;
-  min-height: clamp(18rem, 78vw, 30rem);
+  min-height: clamp(16rem, 72vw, 28rem);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-inline: 0.25rem;
 }
 
 .v3-hero-scene-map-wrap {
   position: relative;
   width: 100%;
-  height: 100%;
-  max-height: clamp(20rem, 84vw, 34rem);
+  max-width: 100%;
+  aspect-ratio: 1024 / 999;
+  max-height: clamp(18rem, 78vw, 32rem);
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(180deg, black 0%, black 90%, transparent 100%);
-  mask-image: linear-gradient(180deg, black 0%, black 90%, transparent 100%);
 }
 
 .v3-hero-scene-map-img {
   display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  max-height: inherit;
   object-fit: contain;
   object-position: center center;
 }
@@ -237,66 +267,83 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, transparent 84%, rgba(247, 247, 249, 0.75) 94%, var(--v2-bg) 100%);
+  background: linear-gradient(180deg, transparent 86%, rgba(247, 247, 249, 0.65) 95%, var(--v2-bg) 100%);
 }
 
 @media (min-width: 640px) {
   .v3-hero-scene {
-    min-height: clamp(20rem, 62vw, 32rem);
+    min-height: clamp(18rem, 56vw, 28rem);
   }
 
   .v3-hero-scene-map-wrap {
-    max-height: clamp(22rem, 70vw, 36rem);
+    max-height: clamp(20rem, 64vw, 32rem);
   }
 }
 
 @media (min-width: 1024px) {
   .v3-hero-inner {
     display: grid;
-    grid-template-columns: minmax(20rem, 0.43fr) minmax(0, 0.57fr);
-    gap: 2rem 2.5rem;
+    grid-template-columns: minmax(19rem, 0.44fr) minmax(0, 0.56fr);
+    gap: 1.75rem 2rem;
     align-items: center;
-    min-height: min(78vh, 760px);
-    padding: clamp(1.25rem, 2.5vh, 2rem) clamp(1.5rem, 4vw, 3.5rem) clamp(2rem, 3vh, 2.5rem);
+    padding: clamp(1rem, 1.8vh, 1.5rem) clamp(1.75rem, 3.5vw, 3rem) clamp(1.25rem, 2vh, 1.75rem);
   }
 
   .v3-hero-content {
     margin: 0;
     width: 100%;
-    max-width: 32rem;
+    max-width: 29rem;
     padding-top: 0;
   }
 
+  .v3-hero .v2-display-hero {
+    font-size: clamp(2.3rem, 0.95rem + 3.6vw, 3.85rem);
+  }
+
+  .v3-hero .v2-hero-sub {
+    max-width: 27.5rem;
+    margin-top: 1rem;
+    line-height: 1.5;
+  }
+
   .v3-hero-scene {
-    min-height: min(68vh, 640px);
-    justify-content: flex-end;
+    min-height: 0;
+    justify-content: center;
+    padding: 0.5rem 1.25rem 0.5rem 0.25rem;
   }
 
   .v3-hero-scene-map-wrap {
-    max-height: min(72vh, 680px);
-    -webkit-mask-image:
-      linear-gradient(90deg, transparent 0%, black 10%, black 100%),
-      linear-gradient(180deg, black 0%, black 90%, transparent 100%);
-    mask-image:
-      linear-gradient(90deg, transparent 0%, black 10%, black 100%),
-      linear-gradient(180deg, black 0%, black 90%, transparent 100%);
+    width: min(100%, 34rem);
+    max-height: min(52vh, 500px);
+    margin-inline: auto;
   }
 
   .v3-hero-scene-fade {
     background:
-      linear-gradient(90deg, var(--v2-bg) 0%, rgba(247, 247, 249, 0.92) 6%, transparent 22%),
-      linear-gradient(180deg, transparent 88%, rgba(247, 247, 249, 0.6) 96%, var(--v2-bg) 100%);
+      linear-gradient(90deg, var(--v2-bg) 0%, rgba(247, 247, 249, 0.55) 2%, transparent 7%),
+      linear-gradient(180deg, transparent 90%, rgba(247, 247, 249, 0.45) 97%, var(--v2-bg) 100%);
   }
 }
 
 @media (min-width: 1440px) {
   .v3-hero-inner {
-    grid-template-columns: minmax(22rem, 0.42fr) minmax(0, 0.58fr);
-    gap: 2.5rem 3rem;
+    grid-template-columns: minmax(20rem, 0.43fr) minmax(0, 0.57fr);
+    gap: 2rem 2.5rem;
   }
 
   .v3-hero-scene-map-wrap {
-    max-height: min(74vh, 700px);
+    max-height: min(54vh, 520px);
+  }
+}
+
+@media print {
+  .v3-hero-scene-fade {
+    display: none;
+  }
+
+  .v3-hero-scene-map-img {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 
