@@ -1,5 +1,12 @@
-import type { TravelReportSlug } from "@/lib/travelReports/types";
 import { inspirationPhoto } from "@/lib/inspirationDestinations";
+
+type TravelReportSlug =
+  | "venedig"
+  | "cinque-terre"
+  | "cote-dazur"
+  | "barcelona"
+  | "provence"
+  | "grandes-alpes";
 
 /** Zentrale Liste der veröffentlichten Reiseberichte (Header, Übersicht, Sibling-Nav). */
 export const TRAVEL_REPORT_NAV: {
