@@ -131,14 +131,7 @@ export default function WelcomePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero with Ken Burns slideshow */}
-      <HeroSlideshow
-        tripName={tripName}
-        onTripNameChange={setTripName}
-        onStart={scrollToModules}
-        moduleCount={selectedModules.length}
-        disabled={false}
-        buttonLabel="Neue Reise planen"
-      />
+      <HeroSlideshow />
 
       {/* Inspiration ticker */}
       <InspirationTicker />
