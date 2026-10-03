@@ -1,13 +1,12 @@
 "use client";
 
-import { Menu, X, LogIn, User, Settings, Printer, ChevronDown } from "lucide-react";
+import { Menu, X, LogIn, User, Settings, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { useAuth } from "./AuthProvider";
 import { isMasterUser } from "@/lib/isMasterUser";
 import { TRAVEL_REPORT_NAV } from "@/lib/travelReports/travelReportNav";
-import { printTravelReport } from "@/lib/printTravelReport";
 import LanguageSwitcher from "./LanguageSwitcher";
 
 const navLink =
@@ -23,9 +22,8 @@ export default function Header() {
   const pathname = usePathname();
   const { user, loading } = useAuth();
   const isAdmin = isMasterUser(user);
-  const onReportPage = pathname.startsWith("/reisebericht/");
   const unsereActive =
-    pathname === "/unsere-reisen" || pathname.startsWith("/unsere-reisen/") || onReportPage;
+    pathname === "/unsere-reisen" || pathname.startsWith("/unsere-reisen/") || pathname.startsWith("/reisebericht/");
 
   useEffect(() => {
     setUnsereOpen(false);
@@ -125,18 +123,6 @@ export default function Header() {
                 </div>
               ) : null}
             </div>
-
-            {onReportPage ? (
-              <button
-                type="button"
-                onClick={() => void printTravelReport()}
-                title={t("savePdfTitle")}
-                aria-label={t("savePdfAria")}
-                className="st-apple-nav__icon-btn"
-              >
-                <Printer className="h-4 w-4" />
-              </button>
-            ) : null}
 
             <LanguageSwitcher />
 
