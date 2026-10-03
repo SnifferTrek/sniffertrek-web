@@ -308,20 +308,21 @@
 
   .v3-hero-scene {
     min-height: 0;
-    justify-content: center;
-    padding: 0.5rem 1.25rem 0.5rem 0.25rem;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 0.25rem 0.5rem 0.25rem 0;
   }
 
   .v3-hero-scene-map-wrap {
-    width: min(100%, 34rem);
-    max-height: min(52vh, 500px);
-    margin-inline: auto;
+    width: min(100%, 42rem);
+    max-height: min(64vh, 620px);
+    margin-inline: auto 0;
   }
 
   .v3-hero-scene-fade {
     background:
-      linear-gradient(90deg, var(--v2-bg) 0%, rgba(247, 247, 249, 0.55) 2%, transparent 7%),
-      linear-gradient(180deg, transparent 90%, rgba(247, 247, 249, 0.45) 97%, var(--v2-bg) 100%);
+      linear-gradient(90deg, var(--v2-bg) 0%, rgba(247, 247, 249, 0.72) 5%, rgba(247, 247, 249, 0.18) 12%, transparent 18%),
+      linear-gradient(180deg, transparent 84%, rgba(247, 247, 249, 0.28) 93%, var(--v2-bg) 100%);
   }
 }
 
@@ -332,7 +333,8 @@
   }
 
   .v3-hero-scene-map-wrap {
-    max-height: min(54vh, 520px);
+    width: min(100%, 44rem);
+    max-height: min(66vh, 640px);
   }
 }
 
