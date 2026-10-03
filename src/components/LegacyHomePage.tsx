@@ -131,7 +131,14 @@ export default function WelcomePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero with Ken Burns slideshow */}
-      <HeroSlideshow />
+      <HeroSlideshow
+        tripName={tripName}
+        onTripNameChange={setTripName}
+        onStart={startNewTrip}
+        moduleCount={selectedModules.length}
+        disabled={selectedModules.length === 0}
+        buttonLabel={tripName.trim() ? `"${tripName.trim()}" starten` : "Reise starten"}
+      />
 
       {/* Inspiration ticker */}
       <InspirationTicker />
