@@ -223,37 +223,14 @@ export default function Header() {
               </div>
             </div>
 
-            {onReportPage ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  void printTravelReport();
-                }}
-                className="flex w-full items-center gap-2 rounded-xl border border-black/8 px-3 py-2.5 text-sm font-medium text-[var(--bcn-black)] hover:bg-black/[0.03]"
-              >
-                <Printer className="h-4 w-4" />
-                {t("savePdf")}
-              </button>
-            ) : null}
-
             {!loading &&
               (user ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    toggleKonto();
-                    setMenuOpen(false);
-                  }}
-                  className={`-mx-1 mt-2 flex w-full items-center gap-3 rounded-xl border-t border-black/6 px-1 py-3 pt-4 text-left transition-colors hover:bg-black/[0.03] ${
-                    kontoOpen ? "bg-[rgba(0,113,227,0.06)]" : ""
-                  }`}
+                <Link
+                  href="/meine-reisen"
+                  onClick={() => setMenuOpen(false)}
+                  className="-mx-1 mt-2 flex w-full items-center gap-3 rounded-xl border-t border-black/6 px-1 py-3 pt-4 text-left transition-colors hover:bg-black/[0.03]"
                 >
-                  <div
-                    className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(0,113,227,0.1)] text-[var(--bcn-blue)] ${
-                      kontoOpen ? "ring-2 ring-[var(--bcn-blue)]" : ""
-                    }`}
-                  >
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(0,113,227,0.1)] text-[var(--bcn-blue)]">
                     <User className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -262,7 +239,7 @@ export default function Header() {
                       {user.name || user.email}
                     </p>
                   </div>
-                </button>
+                </Link>
               ) : (
                 <Link
                   href="/login"
