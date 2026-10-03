@@ -99,7 +99,7 @@ export const V2_EXAMPLE_TRIP = {
   nights: 5,
   distance: "ca. 720 km",
   travelType: "Roadtrip",
-  route: "Nizza · Cannes · Saint-Tropez",
+  route: "Zürich → Nizza → Cannes → Saint-Tropez",
 } as const;
 
 export const V2_INSPIRATION = [

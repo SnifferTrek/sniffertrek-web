@@ -1,4 +1,4 @@
-/** Fiktives Reisepaar – keine echte Person, kein Wohnort. */
+/** Redaktionelle Reisestimmen – Anna & Thomas. */
 
 /** Visuelle Referenz (KI): bewusst unauffällig, keine Promi-Ähnlichkeit. */
 export const TRAVEL_COUPLE_LOOK = {
@@ -12,10 +12,9 @@ export const TRAVEL_COUPLE = {
  displayName: "Anna & Thomas",
  tagline: "Reisetipps, die wir selbst ausprobieren würden",
  intro:
- "Wir sind Anna und Thomas – eine erfundene Stimme hinter SnifferTrek. Kein Nachname, kein fester Wohnort: nur ehrliche Tipps von unterwegs.",
+ "Anna und Thomas – Reisestimmen mit Tipps von unterwegs. Kein Nachname, kein fester Wohnort: nur ehrliche Eindrücke entlang der Route.",
  voice: "«Lieber eine Gasse tiefer als den vollen Platz.»",
- disclaimer:
- "Anna und Thomas sind fiktive Figuren. Porträts sind KI-generiert und zeigen keine reale Person.",
+ disclaimer: "",
 } as const;
 
 /** Regeln für KI- oder Stock-Fotos mit Anna & Thomas in Reiseberichten. */
