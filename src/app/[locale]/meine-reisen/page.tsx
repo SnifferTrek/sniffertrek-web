@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useTranslations } from "next-intl";
-import { Link, useRouter } from "@/i18n/navigation";
+import { Link } from "@/i18n/navigation";
 import {
+  Map,
   Plus,
   Trash2,
   Calendar,
@@ -11,13 +11,11 @@ import {
   MapPin,
   BookmarkPlus,
   Car,
+  Train,
+  Plane,
   ArrowRight,
+  FolderOpen,
   LogIn,
-  Share2,
-  UserMinus,
-  Mail,
-  LayoutGrid,
-  List,
 } from "lucide-react";
 import { Trip, TravelMode } from "@/lib/types";
 import {
@@ -26,71 +24,43 @@ import {
   setActiveTripId,
   getTripDisplayName,
   formatDate,
+  createNewTrip,
+  saveTrip,
 } from "@/lib/tripStorage";
 import { useAuth } from "@/components/AuthProvider";
 import { deleteTripFromCloud } from "@/lib/cloudSync";
-import TripShareModal from "@/components/TripShareModal";
-import {
-  isSharedTripCollaborator,
-  leaveSharedTrip,
-  listTripEmailInvitesByTripIds,
-  type TripEmailInviteRow,
-} from "@/lib/tripShare";
 
 const modeIcons: Record<TravelMode, typeof Car> = {
   auto: Car,
 };
 
-const VIEW_KEY = "sniffertrek_trips_view";
-type TripsView = "list" | "cards";
-
-function readStoredView(tripCount: number): TripsView {
-  if (typeof window === "undefined") return tripCount >= 8 ? "list" : "cards";
-  const stored = window.localStorage.getItem(VIEW_KEY);
-  if (stored === "list" || stored === "cards") return stored;
-  return tripCount >= 8 ? "list" : "cards";
-}
+const modeLabels: Record<TravelMode, string> = {
+  auto: "Auto",
+};
 
 export default function MeineReisenPage() {
-  const t = useTranslations("trips");
-  const tChrome = useTranslations("chrome");
-  const router = useRouter();
   const { user, loading } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
-  const [shareTrip, setShareTrip] = useState<Trip | null>(null);
-  const [invitesByTrip, setInvitesByTrip] = useState<Record<string, TripEmailInviteRow[]>>({});
-  const [view, setView] = useState<TripsView>("list");
 
   useEffect(() => {
-    if (!user) return;
-    const all = getAllTrips();
-    setTrips(all);
-    setView(readStoredView(all.length));
-    const ownedIds = all.filter((t) => !isSharedTripCollaborator(t)).map((t) => t.id);
-    void listTripEmailInvitesByTripIds(ownedIds).then(setInvitesByTrip);
-  }, [user, shareTrip]);
-
-  const setViewPersist = (next: TripsView) => {
-    setView(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(VIEW_KEY, next);
+    if (user) {
+      setTrips(getAllTrips());
     }
-  };
+  }, [user]);
 
-  const handleDelete = async (trip: Trip) => {
-    if (!user) return;
-    if (isSharedTripCollaborator(trip)) {
-      await leaveSharedTrip(trip.id, user.id);
-      deleteTrip(trip.id);
-    } else {
-      deleteTrip(trip.id);
-      void deleteTripFromCloud(trip.id);
+  const handleDelete = (id: string) => {
+    deleteTrip(id);
+    if (user) {
+      deleteTripFromCloud(id);
     }
     setTrips(getAllTrips());
   };
 
   const handleNewTrip = () => {
-    router.push("/reise-planen");
+    const newTrip = createNewTrip();
+    saveTrip(newTrip);
+    setActiveTripId(newTrip.id);
+    window.location.href = "/planer";
   };
 
   const handleOpenTrip = (id: string) => {
@@ -99,378 +69,186 @@ export default function MeineReisenPage() {
 
   if (loading) {
     return (
-      <div className="st-apple-auth flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--bcn-blue)] border-t-transparent" />
+      <div className="min-h-screen bg-gray-50 pt-20 flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
       </div>
     );
   }
 
   if (!user) {
     return (
-      <div className="st-apple-auth">
-        <div className="mx-auto max-w-md px-4 py-12 text-center">
-          <p className="st-apple-hub__eyebrow" style={{ textAlign: "center" }}>
-            {tChrome("myTrips")}
-          </p>
-          <h1
-            className="st-apple-hub__title"
-            style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", textAlign: "center" }}
-          >
-            {t("loginRequiredTitle")}
-          </h1>
-          <p className="st-apple-hub__sub" style={{ marginInline: "auto", textAlign: "center" }}>
-            {t("loginRequiredBody")}
-          </p>
-          <div className="mt-8 flex justify-center">
-            <Link href="/login" className="bcn-apple-btn bcn-apple-btn--blue">
-              <LogIn className="h-4 w-4" />
-              {t("signInNow")}
-            </Link>
+      <div className="min-h-screen bg-gray-50 pt-20">
+        <div className="max-w-md mx-auto px-4 py-20 text-center">
+          <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <LogIn className="w-10 h-10 text-blue-400" />
           </div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">
+            Anmeldung erforderlich
+          </h1>
+          <p className="text-gray-500 mb-8">
+            Melde dich an, um deine gespeicherten Reisen zu sehen und von überall darauf zuzugreifen.
+          </p>
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all"
+          >
+            <LogIn className="w-5 h-5" />
+            Jetzt anmelden
+          </Link>
         </div>
       </div>
     );
   }
 
-  const renderTripMeta = (trip: Trip) => {
-    const shared = isSharedTripCollaborator(trip);
-    const isEditor = shared && trip.shareRole === "editor";
-    const isViewer = shared && trip.shareRole === "viewer";
-    const shareEmails = !shared ? invitesByTrip[trip.id] || [] : [];
-    const filledStops = trip.stops.filter((s) => s.name.trim() !== "");
-    return { shared, isEditor, isViewer, shareEmails, filledStops };
-  };
-
   return (
-    <div className="st-apple-hub">
-      <div className="st-apple-hub__inner">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="min-h-screen bg-gray-50 pt-20">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-cyan-500 py-10 px-4">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <p className="st-apple-hub__eyebrow">{tChrome("account")}</p>
-            <h1 className="st-apple-hub__title">{t("title")}</h1>
-            <p className="st-apple-hub__sub">
+            <div className="flex items-center gap-3 mb-2">
+              <FolderOpen className="w-7 h-7 text-white/80" />
+              <h1 className="text-2xl sm:text-3xl font-bold text-white">
+                Meine Reisen
+              </h1>
+            </div>
+            <p className="text-blue-100 text-sm">
               {trips.length === 0
-                ? t("emptyCount")
-                : trips.length === 1
-                  ? t("savedOne")
-                  : t("savedMany", { count: trips.length })}
+                ? "Du hast noch keine Reisen gespeichert."
+                : `${trips.length} ${trips.length === 1 ? "gespeicherte Reise" : "gespeicherte Reisen"}`}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {trips.length > 0 && (
-              <div className="st-apple-trips-view-toggle" role="group" aria-label={t("viewAria")}>
-                <button
-                  type="button"
-                  onClick={() => setViewPersist("list")}
-                  className={view === "list" ? "is-active" : ""}
-                  title={t("list")}
-                  aria-pressed={view === "list"}
-                >
-                  <List className="h-4 w-4" />
-                  {t("list")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewPersist("cards")}
-                  className={view === "cards" ? "is-active" : ""}
-                  title={t("cards")}
-                  aria-pressed={view === "cards"}
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                  {t("cards")}
-                </button>
-              </div>
-            )}
-            <button type="button" onClick={handleNewTrip} className="bcn-apple-btn bcn-apple-btn--blue">
-              <Plus className="h-4 w-4" />
-              {t("planNow")}
+          <button
+            onClick={handleNewTrip}
+            className="inline-flex items-center gap-2 bg-white text-blue-700 px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all shadow-lg"
+          >
+            <Plus className="w-4 h-4" />
+            Neue Reise planen
+          </button>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        {trips.length === 0 ? (
+          /* Empty State */
+          <div className="bg-white rounded-2xl p-12 shadow-sm border border-gray-100 text-center">
+            <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <Map className="w-10 h-10 text-blue-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-3">
+              Noch keine Reisen
+            </h2>
+            <p className="text-gray-500 max-w-md mx-auto mb-8">
+              Plane deine erste Reise – wähle Start und Ziel, vergleiche Hotels
+              und Flüge und erstelle deine persönliche Bucket List.
+            </p>
+            <button
+              onClick={handleNewTrip}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all"
+            >
+              <Plus className="w-5 h-5" />
+              Erste Reise planen
             </button>
           </div>
-        </div>
-
-        {trips.length === 0 ? (
-          <div className="st-apple-auth__card mt-10 text-center">
-            <h2 className="text-xl font-semibold text-[var(--bcn-black)]">{t("emptyTitle")}</h2>
-            <p className="mx-auto mt-3 max-w-md text-[var(--bcn-muted)]">
-              {t("emptyBody")}
-            </p>
-            <div className="mt-8 flex justify-center">
-              <button
-                type="button"
-                onClick={handleNewTrip}
-                className="bcn-apple-btn bcn-apple-btn--blue"
-              >
-                <Plus className="h-4 w-4" />
-                {t("planNow")}
-              </button>
-            </div>
-          </div>
-        ) : view === "list" ? (
-          <div className="st-apple-trips-list mt-8">
-            {trips.map((trip) => {
-              const ModeIcon = modeIcons[trip.travelMode];
-              const { shared, isEditor, isViewer, shareEmails, filledStops } = renderTripMeta(trip);
-              const stopsCount = trip.stops.filter((s) => s.type === "stop").length;
-
-              return (
-                <div
-                  key={trip.id}
-                  className={`st-apple-trip-row${
-                    isEditor ? " st-apple-trip-row--shared" : ""
-                  }${isViewer ? " st-apple-trip-row--readonly" : ""}${
-                    shareEmails.length > 0 ? " st-apple-trip-row--shared-out" : ""
-                  }`}
-                >
-                  <Link
-                    href="/planer"
-                    onClick={() => handleOpenTrip(trip.id)}
-                    className="st-apple-trip-row__main"
-                  >
-                    <span className="st-apple-trip-row__accent" aria-hidden />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-[15px] font-semibold text-[#1d1d1f]">
-                          {getTripDisplayName(trip)}
-                        </h3>
-                        {isEditor && (
-                          <span className="st-apple-trip-row__pill st-apple-trip-row__pill--collab">
-                            {t("collaborate")}
-                          </span>
-                        )}
-                        {isViewer && (
-                          <span className="st-apple-trip-row__pill st-apple-trip-row__pill--readonly">
-                            {t("readOnly")}
-                          </span>
-                        )}
-                        {shareEmails.length > 0 && (
-                          <span className="st-apple-trip-row__pill st-apple-trip-row__pill--shared-out">
-                            {t("shared")}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#86868b]">
-                        <span className="inline-flex items-center gap-1">
-                          <ModeIcon className="h-3 w-3" />
-                          {t("car")}
-                        </span>
-                        {trip.startDate && (
-                          <span className="inline-flex items-center gap-1">
-                            <Calendar className="h-3 w-3" />
-                            {formatDate(trip.startDate)}
-                            {trip.endDate && ` – ${formatDate(trip.endDate)}`}
-                          </span>
-                        )}
-                        <span className="inline-flex items-center gap-1">
-                          <Users className="h-3 w-3" />
-                          {trip.travelers}
-                        </span>
-                        {stopsCount > 0 && (
-                          <span className="inline-flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {t("stops", { count: stopsCount })}
-                          </span>
-                        )}
-                        {filledStops.length >= 2 && (
-                          <span className="inline-flex max-w-[14rem] items-center gap-1 truncate">
-                            {filledStops[0].name}
-                            <ArrowRight className="h-3 w-3 shrink-0" />
-                            {filledStops[filledStops.length - 1].name}
-                          </span>
-                        )}
-                      </div>
-                      {shareEmails.length > 0 && (
-                        <p className="st-apple-trip-row__shared-emails">
-                          <Mail className="h-3 w-3 shrink-0" />
-                          <span>
-                            {t("sharedPrefix", { emails: shareEmails.map((i) => i.email).join(", ") })}
-                          </span>
-                        </p>
-                      )}
-                    </div>
-                    <span className="hidden shrink-0 text-[11px] text-[#aeaeb2] sm:block">
-                      {formatDate(trip.updatedAt)}
-                    </span>
-                  </Link>
-                  <div className="st-apple-trip-row__actions">
-                    {!shared && (
-                      <button
-                        type="button"
-                        onClick={() => setShareTrip(trip)}
-                        className="rounded-lg p-1.5 text-[#aeaeb2] hover:bg-blue-50 hover:text-[var(--bcn-blue)]"
-                        aria-label={t("shareAria")}
-                        title={t("share")}
-                      >
-                        <Share2 className="h-4 w-4" />
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void handleDelete(trip)}
-                      className="rounded-lg p-1.5 text-[#aeaeb2] hover:bg-red-50 hover:text-red-500"
-                      aria-label={shared ? t("leave") : t("deleteAria")}
-                      title={shared ? t("leave") : t("delete")}
-                    >
-                      {shared ? <UserMinus className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         ) : (
-          <div className="st-apple-trips-grid mt-10">
+          /* Trip Cards */
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {trips.map((trip) => {
               const ModeIcon = modeIcons[trip.travelMode];
-              const stopsCount = trip.stops.filter((s) => s.type === "stop").length;
-              const { shared, isEditor, isViewer, shareEmails, filledStops } = renderTripMeta(trip);
+              const stopsCount = trip.stops.filter(
+                (s) => s.type === "stop"
+              ).length;
+              const filledStops = trip.stops.filter(
+                (s) => s.name.trim() !== ""
+              );
 
               return (
                 <Link
                   key={trip.id}
                   href="/planer"
                   onClick={() => handleOpenTrip(trip.id)}
-                  className={`st-apple-trip-card${
-                    isEditor ? " st-apple-trip-card--shared" : ""
-                  }${isViewer ? " st-apple-trip-card--shared-readonly" : ""}${
-                    shareEmails.length > 0 ? " st-apple-trip-card--shared-out" : ""
-                  }`}
+                  className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1"
                 >
-                  <div className="st-apple-trip-card__head relative overflow-hidden">
-                    <div className="absolute right-2 top-2 opacity-15">
-                      <ModeIcon className="h-20 w-20 text-white" />
+                  {/* Card Header */}
+                  <div className="bg-gradient-to-r from-blue-500 to-cyan-400 p-5 relative overflow-hidden">
+                    <div className="absolute top-2 right-2 opacity-10">
+                      <ModeIcon className="w-20 h-20 text-white" />
                     </div>
                     <div className="relative">
-                      <h3 className="text-lg font-bold leading-tight text-white">
+                      <h3 className="font-bold text-white text-lg leading-tight">
                         {getTripDisplayName(trip)}
                       </h3>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="st-apple-trip-card__badge">
-                          <ModeIcon className="h-3 w-3" />
-                          {t("car")}
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="inline-flex items-center gap-1 text-xs text-white/80 bg-white/15 px-2 py-0.5 rounded-full">
+                          <ModeIcon className="w-3 h-3" />
+                          {modeLabels[trip.travelMode]}
                         </span>
-                        {shareEmails.length > 0 && (
-                          <span className="st-apple-trip-card__badge st-apple-trip-card__badge--shared-out">
-                            <Share2 className="h-3 w-3" />
-                            {t("shared")}
-                          </span>
-                        )}
-                        {isEditor && (
-                          <span className="st-apple-trip-card__badge st-apple-trip-card__badge--collab">
-                            <Share2 className="h-3 w-3" />
-                            {t("collaborate")}
-                          </span>
-                        )}
-                        {isViewer && (
-                          <span className="st-apple-trip-card__badge st-apple-trip-card__badge--readonly">
-                            <Share2 className="h-3 w-3" />
-                            {t("readOnly")}
-                          </span>
-                        )}
                         {trip.bucketList.length > 0 && (
-                          <span className="st-apple-trip-card__badge">
-                            <BookmarkPlus className="h-3 w-3" />
-                            {t("pois", { count: trip.bucketList.length })}
+                          <span className="inline-flex items-center gap-1 text-xs text-white/80 bg-white/15 px-2 py-0.5 rounded-full">
+                            <BookmarkPlus className="w-3 h-3" />
+                            {trip.bucketList.length} POIs
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex flex-1 flex-col p-5">
+                  {/* Card Body */}
+                  <div className="p-5">
+                    {/* Dates */}
                     {trip.startDate && (
-                      <div className="mb-3 flex items-center gap-2 text-sm text-[var(--bcn-muted)]">
-                        <Calendar className="h-4 w-4" />
+                      <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
+                        <Calendar className="w-4 h-4 text-gray-400" />
                         {formatDate(trip.startDate)}
                         {trip.endDate && ` – ${formatDate(trip.endDate)}`}
                       </div>
                     )}
 
-                    <div className="mb-3 flex items-center gap-2 text-sm text-[var(--bcn-muted)]">
-                      <Users className="h-4 w-4" />
-                      {trip.travelers === 1
-                        ? t("person")
-                        : t("persons", { count: trip.travelers })}
+                    {/* Travelers */}
+                    <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
+                      <Users className="w-4 h-4 text-gray-400" />
+                      {trip.travelers}{" "}
+                      {trip.travelers === 1 ? "Person" : "Personen"}
                     </div>
 
+                    {/* Stops Preview */}
                     {stopsCount > 0 && (
-                      <div className="mb-3 flex items-center gap-2 text-sm text-[var(--bcn-muted)]">
-                        <MapPin className="h-4 w-4" />
-                        {stopsCount === 1
-                          ? t("stopovers", { count: stopsCount })
-                          : t("stopoversMany", { count: stopsCount })}
+                      <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
+                        <MapPin className="w-4 h-4 text-gray-400" />
+                        {stopsCount} Zwischenstopp
+                        {stopsCount > 1 ? "s" : ""}
                       </div>
                     )}
 
+                    {/* Route Preview – Start → End only */}
                     {filledStops.length >= 2 && (
-                      <div className="mt-auto border-t border-black/5 pt-3">
+                      <div className="mt-3 pt-3 border-t border-gray-50">
                         <div className="flex items-center gap-2 text-xs">
-                          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[var(--bcn-blue)]" />
-                          <span className="truncate text-[var(--bcn-muted)]">
-                            {filledStops[0].name}
-                          </span>
-                          <ArrowRight className="h-3 w-3 flex-shrink-0 text-black/25" />
-                          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#ff3b30]" />
-                          <span className="truncate text-[var(--bcn-muted)]">
-                            {filledStops[filledStops.length - 1].name}
-                          </span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+                          <span className="text-gray-600 truncate">{filledStops[0].name}</span>
+                          <ArrowRight className="w-3 h-3 text-gray-300 flex-shrink-0" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+                          <span className="text-gray-600 truncate">{filledStops[filledStops.length - 1].name}</span>
                         </div>
                       </div>
                     )}
 
-                    {shareEmails.length > 0 && (
-                      <div className="st-apple-trip-card__share-emails">
-                        <p className="st-apple-trip-card__share-emails-label">{t("sharedWith")}</p>
-                        {shareEmails.slice(0, 4).map((inv) => (
-                          <span key={inv.id} className="st-apple-trip-card__share-email">
-                            <Mail className="mr-1 inline h-3 w-3 shrink-0" />
-                            {inv.email}
-                            <span className="st-apple-trip-card__share-email-meta">
-                              {" "}
-                              · {inv.role === "editor" ? t("roleWrite") : t("roleRead")}
-                              {!inv.accepted_at ? ` · ${t("pending")}` : ""}
-                            </span>
-                          </span>
-                        ))}
-                        {shareEmails.length > 4 && (
-                          <span className="st-apple-trip-card__share-email st-apple-trip-card__share-email-more">
-                            {t("more", { count: shareEmails.length - 4 })}
-                          </span>
-                        )}
-                      </div>
-                    )}
-
-                    <div className="mt-4 flex items-center justify-between border-t border-black/5 pt-3">
-                      <span className="text-xs text-[var(--bcn-muted)]">
-                        {t("lastEdited", { date: formatDate(trip.updatedAt) })}
+                    {/* Actions */}
+                    <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-50">
+                      <span className="text-xs text-gray-400">
+                        Zuletzt bearbeitet:{" "}
+                        {formatDate(trip.updatedAt)}
                       </span>
-                      <div className="flex items-center gap-1">
-                        {!shared && (
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setShareTrip(trip);
-                            }}
-                            className="rounded-lg p-1.5 text-black/25 transition-all hover:bg-blue-50 hover:text-[var(--bcn-blue)]"
-                            aria-label={t("shareAria")}
-                            title={t("share")}
-                          >
-                            <Share2 className="h-4 w-4" />
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            void handleDelete(trip);
-                          }}
-                          className="rounded-lg p-1.5 text-black/25 transition-all hover:bg-red-50 hover:text-red-500"
-                          aria-label={shared ? t("leave") : t("deleteAria")}
-                          title={shared ? t("leave") : t("delete")}
-                        >
-                          {shared ? <UserMinus className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
-                        </button>
-                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDelete(trip.id);
+                        }}
+                        className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 </Link>
@@ -479,23 +257,6 @@ export default function MeineReisenPage() {
           </div>
         )}
       </div>
-
-      {shareTrip && (
-        <TripShareModal
-          tripId={shareTrip.id}
-          tripName={getTripDisplayName(shareTrip)}
-          userId={user.id}
-          open={!!shareTrip}
-          onClose={() => setShareTrip(null)}
-          onEnsureCloudSaved={async () => {
-            const { ensureTripInCloudForShare } = await import("@/lib/cloudSync");
-            const { saveTrip, setActiveTripId } = await import("@/lib/tripStorage");
-            saveTrip(shareTrip);
-            setActiveTripId(shareTrip.id);
-            return ensureTripInCloudForShare(shareTrip, user.id);
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -155,3 +155,14 @@ export function formatDateShort(dateStr: string): string {
     month: "short",
   });
 }
+
+export function setTripEndDestination(trip: Trip, destination: string): Trip {
+  const stops = trip.stops.map((stop) =>
+    stop.type === "end" ? { ...stop, name: destination } : stop,
+  );
+  return {
+    ...trip,
+    stops,
+    updatedAt: new Date().toISOString(),
+  };
+}
