@@ -16,7 +16,7 @@ type Props = {
   hero?: "default" | "immersive";
 };
 
-export default function V2HomePage({ homeHref = "/v2", hero = "default" }: Props) {
+export default function V2HomePage({ homeHref = "/", hero = "default" }: Props) {
   return (
     <div className="v2-home min-h-screen">
       <V2Navigation homeHref={homeHref} />

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowRight, Menu, X } from "lucide-react";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { Link } from "@/i18n/navigation";
 import {
   V2_DESTINATIONS_HREF,
@@ -22,7 +23,7 @@ type Props = {
   homeHref?: string;
 };
 
-export default function V2Navigation({ homeHref = "/v2" }: Props) {
+export default function V2Navigation({ homeHref = "/" }: Props) {
   const [open, setOpen] = useState(false);
   const [stuck, setStuck] = useState(false);
 
@@ -54,7 +55,7 @@ export default function V2Navigation({ homeHref = "/v2" }: Props) {
           />
         </Link>
 
-        <nav className="hidden items-center gap-7 lg:flex" aria-label="Hauptnavigation">
+        <nav className="hidden items-center gap-7 md:flex" aria-label="Hauptnavigation">
           {LINKS.map((item) => (
             <Link
               key={item.href}
@@ -67,19 +68,20 @@ export default function V2Navigation({ homeHref = "/v2" }: Props) {
         </nav>
 
         <div className="flex items-center gap-3">
+          <LanguageSwitcher className="hidden text-xs sm:inline-flex" compact />
           <Link
             href={V2_TRIPS_HREF}
             className="hidden text-[0.9375rem] text-[var(--v2-muted)] transition-colors hover:text-[var(--v2-ink)] sm:inline"
           >
             Meine Reisen
           </Link>
-          <Link href={V2_PLAN_HREF} className="v2-btn !hidden lg:!inline-flex">
+          <Link href={V2_PLAN_HREF} className="v2-btn !hidden md:!inline-flex">
             Reise planen
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
           <button
             type="button"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full lg:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full md:hidden"
             aria-expanded={open}
             aria-controls="v2-mobile-nav"
             aria-label={open ? "Menü schliessen" : "Menü öffnen"}
@@ -91,8 +93,11 @@ export default function V2Navigation({ homeHref = "/v2" }: Props) {
       </div>
 
       {open && (
-        <div id="v2-mobile-nav" className="border-t border-[var(--v2-line)] bg-[var(--v2-bg)] lg:hidden">
+        <div id="v2-mobile-nav" className="border-t border-[var(--v2-line)] bg-[var(--v2-bg)] md:hidden">
           <nav className="v2-wrap flex flex-col gap-1 py-4" aria-label="Mobiles Menü">
+            <div className="px-2 py-2">
+              <LanguageSwitcher className="text-xs" />
+            </div>
             {LINKS.map((item) => (
               <Link
                 key={item.href}

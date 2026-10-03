@@ -5,7 +5,7 @@ type Props = {
   homeHref?: string;
 };
 
-export default function V2Footer({ homeHref = "/v2" }: Props) {
+export default function V2Footer({ homeHref = "/" }: Props) {
   return (
     <footer className="border-t border-[var(--v2-line)] py-8 bg-[var(--v2-bg)]">
       <div className="v2-wrap flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">

@@ -1,8 +1,5 @@
-import V2HomePage from "@/components/v2/V2HomePage";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+import { redirect } from "next/navigation";
 
 export default function V3Page() {
-  return <V2HomePage homeHref="/v3" hero="immersive" />;
+  redirect("/");
 }

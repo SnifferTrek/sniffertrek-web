@@ -4,6 +4,9 @@
   --v2-surface: #ffffff;
   --v2-ink: #1d1d1f;
   --v2-muted: #6e6e73;
+  --bcn-blue: var(--v2-accent);
+  --bcn-muted: var(--v2-muted);
+  --bcn-black: var(--v2-ink);
   --v2-line: rgba(0, 0, 0, 0.07);
   --v2-accent: #0071e3;
   --v2-accent-hover: #0077ed;
@@ -187,15 +190,25 @@
   flex-direction: column;
   gap: 1.25rem;
   max-width: none;
-  padding: 0 1rem 1.5rem;
+  padding: 0 0 1.5rem;
 }
 
 .v3-hero-content {
   position: relative;
   z-index: 2;
-  width: min(100%, 34rem);
-  margin-inline: auto;
+  width: 100%;
+  max-width: 34rem;
+  margin-inline: 0;
   padding-top: 1.5rem;
+  padding-left: max(1rem, calc((100vw - min(100vw - 2rem, var(--v2-max))) / 2));
+  padding-right: 1rem;
+}
+
+@media (min-width: 768px) {
+  .v3-hero-content {
+    padding-left: max(2rem, calc((100vw - min(100vw - 4rem, var(--v2-max))) / 2));
+    padding-right: 2rem;
+  }
 }
 
 .v3-hero .v2-hero-sub {
@@ -286,7 +299,7 @@
     grid-template-columns: minmax(19rem, 0.44fr) minmax(0, 0.56fr);
     gap: 1.75rem 2rem;
     align-items: center;
-    padding: clamp(1rem, 1.8vh, 1.5rem) clamp(1.75rem, 3.5vw, 3rem) clamp(1.25rem, 2vh, 1.75rem);
+    padding: clamp(1rem, 1.8vh, 1.5rem) 0 clamp(1.25rem, 2vh, 1.75rem);
   }
 
   .v3-hero-content {
@@ -294,6 +307,7 @@
     width: 100%;
     max-width: 29rem;
     padding-top: 0;
+    padding-right: 0;
   }
 
   .v3-hero .v2-display-hero {
