@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function LegacyHomePage({ params }: Props) {
+export default async function LegacyHomeRoute({ params }: Props) {
   const { locale } = await params;
   if (!hasLocale(routing.locales, locale)) {
     return null;
