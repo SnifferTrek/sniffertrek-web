@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   MapPin,
   Hotel,
@@ -76,7 +76,7 @@ import {
 } from "@/lib/tripStorage";
 import { saveTripToCloud, deleteTripFromCloud } from "@/lib/cloudSync";
 import { useAuth } from "@/components/AuthProvider";
-import GoogleMap, { useGoogleAutocomplete } from "@/components/GoogleMap";
+import GoogleMap, { useGoogleAutocomplete, type MapHighlightPoi } from "@/components/GoogleMap";
 import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
 import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
@@ -84,6 +84,7 @@ import WikiThumb from "@/components/WikiThumb";
 import DateRangePicker from "@/components/DateRangePicker";
 import AirportSelect from "@/components/AirportSelect";
 import { generateTripPDF } from "@/lib/pdfService";
+import { isCatalogModuleActive } from "@/lib/tripModuleCatalog";
 import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
@@ -263,6 +264,8 @@ export default function PlanerPage() {
   const [draggingPhotoSlotByEtappe, setDraggingPhotoSlotByEtappe] = useState<Record<number, number | null>>({});
   const [photoAspectByUrl, setPhotoAspectByUrl] = useState<Record<string, number>>({});
   const [quickStopDrafts, setQuickStopDrafts] = useState<Array<{ id: string; name: string; lat?: number; lng?: number }>>([]);
+  const [showBucketOnMap, setShowBucketOnMap] = useState(false);
+  const [bucketGeocoded, setBucketGeocoded] = useState<Record<string, { lat: number; lng: number }>>({});
 
   const checkTabScroll = useCallback(() => {
     const el = tabsRef.current;
@@ -603,7 +606,7 @@ export default function PlanerPage() {
       type: "stop",
       lat,
       lng,
-      discoverySource: "custom",
+      discoverySource: "google",
       discoveryCategory: "Karten-POI",
       discoveryEtappeIndex,
       discoveryAddedAt: new Date().toISOString(),
@@ -967,7 +970,7 @@ export default function PlanerPage() {
     { id: "auto" as TravelMode, label: "Auto", icon: Car },
   ];
 
-  const defaultModules: string[] = ["route", "hotels", "poi", "report", "bucket"];
+  const defaultModules: string[] = ["route", "hotels", "report", "bucket"];
   const activeModules = trip.modules?.length ? trip.modules : defaultModules;
 
   const allTabs = [
@@ -984,7 +987,9 @@ export default function PlanerPage() {
     { id: "insurance" as const, label: "Versicherung", icon: Shield, module: "insurance" },
   ];
 
-  const tabs = allTabs.filter((t) => activeModules.includes(t.module));
+  const tabs = allTabs.filter(
+    (t) => activeModules.includes(t.module) && isCatalogModuleActive(t.module)
+  );
   const isHotelOnlyMode = tabs.length === 1 && tabs[0].id === "hotels";
 
   useEffect(() => {
@@ -994,7 +999,7 @@ export default function PlanerPage() {
   }, [tabs, activeTab]);
 
   const toggleModule = (mod: string) => {
-    const current = trip.modules?.length ? [...trip.modules] : ["route", "hotels", "poi", "report", "bucket"];
+    const current = trip.modules?.length ? [...trip.modules] : defaultModules;
     const updated = current.includes(mod)
       ? current.filter((m) => m !== mod)
       : [...current, mod];
@@ -1467,6 +1472,67 @@ export default function PlanerPage() {
   const isInBucketList = (name: string) =>
     trip.bucketList.some((b) => b.name === name);
 
+  const addMapPoiToBucket = useCallback(
+    (poi: { name: string; lat: number; lng: number; category?: string }) => {
+      if (isInBucketList(poi.name)) return;
+      addToBucketList({
+        name: poi.name,
+        category: poi.category || "Karten-POI",
+        rating: 0,
+        description: "",
+        lat: poi.lat,
+        lng: poi.lng,
+      });
+    },
+    [addToBucketList, isInBucketList]
+  );
+
+  useEffect(() => {
+    if (!showBucketOnMap || !autocompleteReady) return;
+    let cancelled = false;
+    void (async () => {
+      for (const item of trip.bucketList) {
+        if (item.lat != null && item.lng != null) continue;
+        if (bucketGeocoded[item.id]) continue;
+        if (!window.google?.maps) continue;
+        try {
+          const geocoder = new google.maps.Geocoder();
+          const res = await geocoder.geocode({ address: item.name });
+          const loc = res.results?.[0]?.geometry?.location;
+          if (loc && !cancelled) {
+            setBucketGeocoded((prev) => ({
+              ...prev,
+              [item.id]: { lat: loc.lat(), lng: loc.lng() },
+            }));
+          }
+        } catch {
+          // ignore geocode errors
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showBucketOnMap, trip.bucketList, autocompleteReady]);
+
+  const bucketListMapMarkers = useMemo((): MapHighlightPoi[] => {
+    if (!showBucketOnMap) return [];
+    const markers: MapHighlightPoi[] = [];
+    for (const item of trip.bucketList) {
+      const lat = item.lat ?? bucketGeocoded[item.id]?.lat;
+      const lng = item.lng ?? bucketGeocoded[item.id]?.lng;
+      if (lat == null || lng == null) continue;
+      markers.push({
+        id: item.id,
+        name: item.name,
+        lat,
+        lng,
+        category: item.category,
+      });
+    }
+    return markers;
+  }, [showBucketOnMap, trip.bucketList, bucketGeocoded]);
+
   const isInCurrentRoute = useCallback(
     (name: string) => {
       const key = normalizePlaceKey(name);
@@ -1549,6 +1615,8 @@ export default function PlanerPage() {
         category: poi.category,
         rating: 0,
         description: poi.description,
+        lat: poi.lat,
+        lng: poi.lng,
       });
     },
     [addToBucketList, isInBucketList]
@@ -2451,7 +2519,9 @@ export default function PlanerPage() {
                         Module ein/aus
                       </h3>
                       <div className="space-y-1.5">
-                        {allTabs.map((tab) => {
+                        {allTabs
+                          .filter((tab) => isCatalogModuleActive(tab.module))
+                          .map((tab) => {
                           const isActive = activeModules.includes(tab.module);
                           return (
                             <button
@@ -2843,6 +2913,11 @@ export default function PlanerPage() {
                     onMapClick={addStopFromMap}
                     onViaPointsChange={updateCurrentViaPoints}
                     onRemoveStop={removeStop}
+                    bucketListPois={bucketListMapMarkers}
+                    showBucketListOnMap={showBucketOnMap}
+                    onToggleBucketListOnMap={() => setShowBucketOnMap((v) => !v)}
+                    onAddToBucketList={addMapPoiToBucket}
+                    isInBucketList={isInBucketList}
                   />
                 </div>
 
@@ -4126,7 +4201,23 @@ export default function PlanerPage() {
                               <div className="flex items-center gap-3 mt-1.5">
                                 {!isStop ? (
                                   <button
-                                    onClick={() => addStopSmart(item.name)}
+                                    onClick={() => {
+                                      const endIdx = currentRouteStops.findIndex((s) => s.type === "end");
+                                      const insertIdx = endIdx >= 0 ? endIdx : currentRouteStops.length;
+                                      const discoveryEtappeIndex = Math.max(
+                                        0,
+                                        currentRouteStops
+                                          .slice(0, insertIdx)
+                                          .filter((s) => s.type === "stop" && !!s.isHotel).length
+                                      );
+                                      void addStopSmart(item.name, item.lat, item.lng, {
+                                        discoverySource: "bucket",
+                                        discoveryCategory: item.category || "Bucket List",
+                                        discoveryEtappeIndex,
+                                        discoveryAddedAt: new Date().toISOString(),
+                                        discoveryWikipediaTitle: item.wikipediaTitle,
+                                      });
+                                    }}
                                     className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
                                   >
                                     <Plus className="w-3 h-3" />
@@ -4256,6 +4347,9 @@ export default function PlanerPage() {
                                             category: lm.category,
                                             rating: 0,
                                             description: lm.description,
+                                            lat: lm.latitude,
+                                            lng: lm.longitude,
+                                            wikipediaTitle: lm.wikipediaTitleDe || lm.wikipediaTitle,
                                           })
                                         }
                                         className="flex items-center gap-1 text-[11px] font-medium text-green-600 hover:text-green-700"

@@ -25,7 +25,6 @@ export const PLANER_DEFAULT_MODULES: TripModule[] = [
   "route",
   "car",
   "hotels",
-  "poi",
   "report",
   "bucket",
 ];
@@ -134,7 +133,7 @@ export const MODULE_CATALOG: ModuleCatalogItem[] = [
  name: "Entdecken",
  desc: "KI-Empfehlungen & POIs",
  icon: Compass,
- active: true,
+ active: false,
  img: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=600&q=80",
  },
  {
@@ -262,6 +261,12 @@ export function sanitizeTripModules(raw: unknown): TripModule[] | undefined {
  }
  if (out.length === 0) return undefined;
  return sortTripModulesByJourney(out);
+}
+
+/** Modul in der Katalog-Kachel aktiv (z. B. Entdecken vorübergehend deaktiviert). */
+export function isCatalogModuleActive(id: TripModule | string): boolean {
+ const item = MODULE_CATALOG.find((m) => m.id === id);
+ return item?.active ?? true;
 }
 
 /** Effektive Module einer Reise (gespeichert oder Planer-Standard). */
