@@ -582,7 +582,13 @@ export default function PlanerPage() {
     }
   };
 
-  const addStopFromMap = (placeName: string, lat: number, lng: number, insertAtIndex?: number) => {
+  const addStopFromMap = (
+    placeName: string,
+    lat: number,
+    lng: number,
+    insertAtIndex?: number,
+    photoUrl?: string
+  ) => {
     const baseName = (placeName || "Ort").trim();
     const baseKey = normalizePlaceKey(baseName);
     const hasSameName = currentRouteStops.some((s) => normalizePlaceKey(s.name) === baseKey);
@@ -610,6 +616,7 @@ export default function PlanerPage() {
       discoveryCategory: "Karten-POI",
       discoveryEtappeIndex,
       discoveryAddedAt: new Date().toISOString(),
+      discoveryPhotoUrl: photoUrl,
     };
     const newStops = [...currentRouteStops];
     if (insertAtIndex != null && insertAtIndex >= 0 && insertAtIndex <= newStops.length) {
@@ -1491,29 +1498,43 @@ export default function PlanerPage() {
     if (!showBucketOnMap || !autocompleteReady) return;
     let cancelled = false;
     void (async () => {
-      for (const item of trip.bucketList) {
-        if (item.lat != null && item.lng != null) continue;
-        if (bucketGeocoded[item.id]) continue;
-        if (!window.google?.maps) continue;
+      const pending = trip.bucketList.filter((item) => item.lat == null && item.lng == null);
+      if (pending.length === 0 || !window.google?.maps) return;
+
+      const resolved: Array<{ id: string; lat: number; lng: number }> = [];
+      for (const item of pending) {
         try {
           const geocoder = new google.maps.Geocoder();
           const res = await geocoder.geocode({ address: item.name });
           const loc = res.results?.[0]?.geometry?.location;
-          if (loc && !cancelled) {
-            setBucketGeocoded((prev) => ({
-              ...prev,
-              [item.id]: { lat: loc.lat(), lng: loc.lng() },
-            }));
+          if (loc) {
+            resolved.push({ id: item.id, lat: loc.lat(), lng: loc.lng() });
           }
         } catch {
           // ignore geocode errors
         }
       }
+
+      if (cancelled || resolved.length === 0) return;
+
+      setBucketGeocoded((prev) => {
+        const next = { ...prev };
+        for (const row of resolved) next[row.id] = { lat: row.lat, lng: row.lng };
+        return next;
+      });
+
+      updateTrip((prev) => ({
+        ...prev,
+        bucketList: prev.bucketList.map((item) => {
+          const hit = resolved.find((row) => row.id === item.id);
+          return hit ? { ...item, lat: hit.lat, lng: hit.lng } : item;
+        }),
+      }));
     })();
     return () => {
       cancelled = true;
     };
-  }, [showBucketOnMap, trip.bucketList, autocompleteReady]);
+  }, [showBucketOnMap, trip.bucketList, autocompleteReady, updateTrip]);
 
   const bucketListMapMarkers = useMemo((): MapHighlightPoi[] => {
     if (!showBucketOnMap) return [];

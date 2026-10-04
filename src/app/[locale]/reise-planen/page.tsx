@@ -125,7 +125,7 @@ export default function ReisePlanenPage() {
                   type="button"
                   onClick={startTrip}
                   disabled={selectedModules.length === 0}
-                  className="st-btn-primary shrink-0 px-3 py-2 text-xs disabled:cursor-not-allowed disabled:opacity-40 sm:px-6 sm:py-3 sm:text-sm"
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#0071e3] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#0077ed] disabled:cursor-not-allowed disabled:opacity-40 sm:gap-2 sm:px-6 sm:py-3 sm:text-sm"
                 >
                   <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   <span className="whitespace-nowrap">{t("start")}</span>

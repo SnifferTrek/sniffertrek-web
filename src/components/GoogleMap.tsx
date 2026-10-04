@@ -38,7 +38,7 @@ interface GoogleMapProps {
   onRouteCalculated?: (info: RouteInfo) => void;
   onStopsReordered?: (orderedStopIds: string[]) => void;
   onError?: (message: string) => void;
-  onMapClick?: (placeName: string, lat: number, lng: number, insertAtIndex?: number) => void;
+  onMapClick?: (placeName: string, lat: number, lng: number, insertAtIndex?: number, photoUrl?: string) => void;
   onViaPointsChange?: (points: ViaPoint[]) => void;
   onRemoveStop?: (stopId: string) => void;
 }
@@ -128,8 +128,10 @@ export default function GoogleMap({
   onViaPointsChange,
   onRemoveStop,
 }: GoogleMapProps) {
+  const mapShellRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const renderers = useRef<google.maps.DirectionsRenderer[]>([]);
   const markers = useRef<google.maps.Marker[]>([]);
   const viaMarkers = useRef<google.maps.Marker[]>([]);
@@ -226,7 +228,7 @@ export default function GoogleMap({
             mapTypeIds: ["roadmap", "satellite", "hybrid"],
           },
           streetViewControl: false,
-          fullscreenControl: true,
+          fullscreenControl: false,
           zoomControl: true,
           scaleControl: true,
         });
@@ -262,7 +264,9 @@ export default function GoogleMap({
                 !["point_of_interest", "establishment", "geocode"].includes(type)
               );
               const category = categoryType ? categoryType.replace(/_/g, " ") : "Sehenswürdigkeit";
-              const inBucket = isInBucketListRef.current?.(routeName) ?? false;
+              const inBucket =
+                (isInBucketListRef.current?.(poiName) ?? false) ||
+                (isInBucketListRef.current?.(routeName) ?? false);
               const bucketBtnLabel = inBucket ? "Auf Bucket List" : "Zur Bucket List";
               const bucketBtnStyle = inBucket
                 ? "border:1px solid #86efac;background:#ecfdf5;color:#15803d;cursor:default;"
@@ -276,14 +280,14 @@ export default function GoogleMap({
               google.maps.event.addListenerOnce(poiInfoWindowRef.current, "domready", () => {
                 const btn = document.getElementById(addBtnId);
                 btn?.addEventListener("click", () => {
-                  onMapClickRef.current?.(routeName, e.latLng!.lat(), e.latLng!.lng(), bestInsertIdx);
+                  onMapClickRef.current?.(poiName, e.latLng!.lat(), e.latLng!.lng(), bestInsertIdx, photo);
                   poiInfoWindowRef.current?.close();
                 });
                 const bucketBtn = document.getElementById(bucketBtnId);
                 if (!inBucket) {
                   bucketBtn?.addEventListener("click", () => {
                     onAddToBucketListRef.current?.({
-                      name: routeName,
+                      name: poiName,
                       lat: e.latLng!.lat(),
                       lng: e.latLng!.lng(),
                       category,
@@ -847,11 +851,15 @@ export default function GoogleMap({
     clearBucketListMarkers();
     if (!showBucketListOnMap) return;
 
+    const bounds = new google.maps.LatLngBounds();
+    let markerCount = 0;
+
     for (const poi of bucketListPois) {
       if (!Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) continue;
+      const pos = { lat: poi.lat, lng: poi.lng };
       const marker = new google.maps.Marker({
         map,
-        position: { lat: poi.lat, lng: poi.lng },
+        position: pos,
         title: poi.name,
         zIndex: 90,
         icon: {
@@ -872,8 +880,40 @@ export default function GoogleMap({
       });
       marker.addListener("click", () => info.open(map, marker));
       bucketListMarkers.current.push(marker);
+      bounds.extend(pos);
+      markerCount += 1;
+    }
+
+    if (markerCount > 0) {
+      map.fitBounds(bounds, 56);
+      google.maps.event.addListenerOnce(map, "idle", () => {
+        const zoom = map.getZoom();
+        if (zoom != null && zoom > 15) map.setZoom(15);
+      });
     }
   }, [loaded, bucketListPois, showBucketListOnMap, clearBucketListMarkers]);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      const active = document.fullscreenElement === mapShellRef.current;
+      setIsFullscreen(active);
+      if (mapInstance.current) {
+        google.maps.event.trigger(mapInstance.current, "resize");
+      }
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const shell = mapShellRef.current;
+    if (!shell) return;
+    if (document.fullscreenElement === shell) {
+      void document.exitFullscreen();
+      return;
+    }
+    void shell.requestFullscreen?.();
+  }, []);
 
   if (!GOOGLE_MAPS_KEY) {
     return (
@@ -899,10 +939,16 @@ export default function GoogleMap({
     );
   }
 
+  const mapHeightClass = isFullscreen ? "h-[calc(100vh-4.5rem)]" : "h-[400px]";
+
   return (
-    <div className="relative">
+    <div
+      ref={mapShellRef}
+      className={`relative ${isFullscreen ? "bg-white p-3" : ""}`}
+    >
       {onMapClick && (
-        <div className="flex justify-end gap-2 mb-2">
+        <div className="pointer-events-none absolute top-2 right-2 z-20 flex justify-end gap-2">
+          <div className="pointer-events-auto flex flex-wrap justify-end gap-2">
           {onViaPointsChange && (
             <button
               type="button"
@@ -949,11 +995,20 @@ export default function GoogleMap({
               {showBucketListOnMap ? "Bucket List aus" : "Bucket List"}
             </button>
           )}
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white/95 px-3 py-2 text-xs font-medium text-gray-700 shadow-sm backdrop-blur-sm transition-all hover:bg-white"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            {isFullscreen ? "Vollbild beenden" : "Vollbild"}
+          </button>
+          </div>
         </div>
       )}
       <div
         ref={mapRef}
-        className={`h-[400px] w-full rounded-2xl ${addMode ? "ring-2 ring-orange-400" : addViaMode ? "ring-2 ring-cyan-400" : ""}`}
+        className={`${mapHeightClass} w-full rounded-2xl ${addMode ? "ring-2 ring-orange-400" : addViaMode ? "ring-2 ring-cyan-400" : ""}`}
         style={addMode || addViaMode ? { cursor: "crosshair" } : undefined}
       />
       {calculating && (

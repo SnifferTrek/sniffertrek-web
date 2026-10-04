@@ -513,6 +513,7 @@ function buildDiscoveryQueryCandidates(name: string): string[] {
   const separatorParts = base.split(/\s*,\s*|\s[-–]\s/).map((p) => p.trim()).filter(Boolean);
   if (separatorParts.length >= 2) {
     pushUnique(separatorParts.slice(1).join(", "));
+    pushUnique(separatorParts[separatorParts.length - 1]);
   }
   pushUnique(base);
 
@@ -522,7 +523,9 @@ function buildDiscoveryQueryCandidates(name: string): string[] {
     .trim();
   pushUnique(strippedCategory);
   const beforeSeparator = strippedCategory.split(/\s*,\s*|\s[-–]\s/)[0]?.trim();
-  if (beforeSeparator && beforeSeparator.length >= 3) pushUnique(beforeSeparator);
+  if (beforeSeparator && beforeSeparator.length >= 3 && separatorParts.length < 2) {
+    pushUnique(beforeSeparator);
+  }
   return candidates;
 }
 

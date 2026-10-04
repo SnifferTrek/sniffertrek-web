@@ -137,9 +137,14 @@ export function getTripDisplayName(trip: Trip): string {
   return trip.name || "Neue Reise";
 }
 
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 export function formatDate(dateStr: string): string {
   if (!dateStr) return "";
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   return d.toLocaleDateString("de-CH", {
     day: "2-digit",
     month: "2-digit",
@@ -149,7 +154,7 @@ export function formatDate(dateStr: string): string {
 
 export function formatDateShort(dateStr: string): string {
   if (!dateStr) return "";
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   return d.toLocaleDateString("de-CH", {
     day: "numeric",
     month: "short",
