@@ -218,7 +218,7 @@ export default function ReisePlanenPage() {
                 type="button"
                 onClick={startTrip}
                 disabled={selectedModules.length === 0}
-                className="st-btn-primary px-6 py-3 disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0071e3] px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-[#0077ed] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Sparkles className="h-4 w-4" />
                 {t("start")}
@@ -235,7 +235,7 @@ export default function ReisePlanenPage() {
             type="button"
             onClick={startTrip}
             disabled={selectedModules.length === 0}
-            className="st-btn-primary w-full px-6 py-3.5 text-base disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#0071e3] px-6 py-3.5 text-base font-medium text-white transition-colors hover:bg-[#0077ed] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Sparkles className="h-5 w-5" />
             {t("start")}
