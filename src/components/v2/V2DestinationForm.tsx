@@ -2,6 +2,7 @@
 
 import { ArrowRight } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useRouter } from "@/i18n/navigation";
 import { savePlanIntent } from "@/lib/planIntent";
 import { V2_PLAN_HREF } from "@/lib/v2HomeData";
@@ -16,13 +17,18 @@ type Props = {
 };
 
 export default function V2DestinationForm({
-  label = "Wohin möchtest du reisen?",
+  label: labelProp,
   hideLabel = false,
-  placeholder = "z.B. Sardinien, Südfrankreich oder Japan",
-  buttonLabel = "Reise planen",
+  placeholder: placeholderProp,
+  buttonLabel: buttonLabelProp,
   className = "",
   id = "v2-destination",
 }: Props) {
+  const t = useTranslations("v2Home");
+  const tFooter = useTranslations("footer");
+  const label = labelProp ?? t("formLabel");
+  const placeholder = placeholderProp ?? t("formPlaceholder");
+  const buttonLabel = buttonLabelProp ?? tFooter("planTrip");
   const router = useRouter();
   const [destination, setDestination] = useState("");
 

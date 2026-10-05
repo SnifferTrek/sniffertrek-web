@@ -104,6 +104,8 @@ export const V2_EXAMPLE_TRIP = {
 
 export const V2_INSPIRATION = [
   {
+    slug: "provence",
+    travelTypeKey: "roadtrip",
     href: "/unsere-reisen#provence",
     label: "Provence",
     tagline: "Avignon · Luberon · Aix & Verdon",
@@ -113,6 +115,8 @@ export const V2_INSPIRATION = [
     photoAlt: "Provence · Landschaft und Lavendel",
   },
   {
+    slug: "venedig",
+    travelTypeKey: "cityTrip",
     href: "/unsere-reisen#venedig",
     label: "Venedig",
     tagline: "Ruhige Gassen · Vaporetto · Lagune",
@@ -122,6 +126,8 @@ export const V2_INSPIRATION = [
     photoAlt: "Venedig · Kanal und Fassaden",
   },
   {
+    slug: "grandes-alpes",
+    travelTypeKey: "roadtrip",
     href: "/unsere-reisen#grandes-alpes",
     label: "Grandes Alpes",
     tagline: "Genf → Cannes · Pässe statt Autobahn",
