@@ -2,6 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { RouteStop, RouteLegInfo, ViaPoint } from "@/lib/types";
+import {
+  bucketMarkerDomId,
+  buildBucketPoiInfoHtml,
+  resolvePoiImageUrl,
+  wireBucketPoiInfoWindow,
+} from "@/lib/bucketMapPoi";
 
 const GOOGLE_MAPS_KEY = "AIzaSyDTcV42T-ZkriZOB8RtNZMtGR8gZq3Izi0";
 
@@ -21,6 +27,10 @@ export type MapHighlightPoi = {
   lat: number;
   lng: number;
   category?: string;
+  description?: string;
+  imageUrl?: string;
+  wikipediaTitle?: string;
+  inMyBucketList?: boolean;
 };
 
 const EMPTY_BUCKET_POIS: MapHighlightPoi[] = [];
@@ -865,7 +875,9 @@ export default function GoogleMap({
     for (const poi of bucketListPois) {
       if (!Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) continue;
       const pos = { lat: poi.lat, lng: poi.lng };
-      const markerId = (poi.id || poi.name).replace(/[^a-zA-Z0-9_-]/g, "_");
+      const markerId = bucketMarkerDomId(poi, "route");
+      const inMyBucketList =
+        poi.inMyBucketList ?? isInBucketListRef.current?.(poi.name) ?? false;
       const alreadyInRoute = isInRouteRef.current?.(poi.name) ?? false;
       const marker = new google.maps.Marker({
         map,
@@ -881,28 +893,30 @@ export default function GoogleMap({
           strokeWeight: 2,
         },
       });
-      const info = new google.maps.InfoWindow({
-        content: `<div style="font-family:system-ui;padding:4px 2px;max-width:240px"><div style="font-size:12px;font-weight:600;color:#18181b">${escapeHtml(poi.name)}</div>${
-          poi.category
-            ? `<div style="font-size:11px;color:#71717a;margin-top:2px">${escapeHtml(String(poi.category))}</div>`
-            : ""
-        }<div style="font-size:10px;color:#ef4444;margin-top:4px;font-weight:600">Bucket List</div>${
-          alreadyInRoute
-            ? `<div style="margin-top:8px;font-size:11px;color:#16a34a;font-weight:600">Bereits in Route</div>`
-            : `<div style="margin-top:8px"><button id="bucket-add-stop-${markerId}" style="padding:6px 10px;font-size:11px;font-weight:600;color:#fff;background:#0071e3;border:0;border-radius:7px;cursor:pointer">Als Stopp übernehmen</button></div>`
-        }</div>`,
-      });
+      const info = new google.maps.InfoWindow({ maxWidth: 340 });
       marker.addListener("click", () => {
-        info.open(map, marker);
-        if (!alreadyInRoute) {
-          info.addListener("domready", () => {
-            const btn = document.getElementById(`bucket-add-stop-${markerId}`);
-            btn?.addEventListener("click", () => {
-              onAddBucketPoiAsStopRef.current?.(poi);
-              info.close();
-            });
+        void (async () => {
+          const imageUrl = await resolvePoiImageUrl(poi);
+          info.setContent(
+            buildBucketPoiInfoHtml(poi, {
+              imageUrl,
+              inMyBucketList,
+              inRoute: alreadyInRoute,
+              markerId,
+              addBucketPrefix: "bucket-add-list",
+              addStopPrefix: "bucket-add-stop",
+            })
+          );
+          info.open(map, marker);
+          wireBucketPoiInfoWindow(info, poi, markerId, {
+            addBucketPrefix: "bucket-add-list",
+            addStopPrefix: "bucket-add-stop",
+            inMyBucketList,
+            inRoute: alreadyInRoute,
+            onAddToBucketList: (p) => onAddToBucketListRef.current?.(p),
+            onAddAsStop: (p) => onAddBucketPoiAsStopRef.current?.(p),
           });
-        }
+        })();
       });
       bucketListMarkers.current.push(marker);
       bounds.extend(pos);

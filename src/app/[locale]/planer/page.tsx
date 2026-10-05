@@ -80,6 +80,7 @@ import GoogleMap, { useGoogleAutocomplete, type MapHighlightPoi } from "@/compon
 import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
 import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
+import { landmarkToMapPoi } from "@/lib/bucketMapPoi";
 import WikiThumb from "@/components/WikiThumb";
 import DateRangePicker from "@/components/DateRangePicker";
 import BucketListMap from "@/components/BucketListMap";
@@ -286,13 +287,13 @@ export default function PlanerPage() {
   }, [checkTabScroll]);
 
   useEffect(() => {
-    if (activeTab === "bucket" && !landmarksLoaded) {
+    if ((activeTab === "bucket" || showBucketOnMap) && !landmarksLoaded) {
       loadLandmarks().then((data) => {
         setLandmarks(data);
         setLandmarksLoaded(true);
       });
     }
-  }, [activeTab, landmarksLoaded]);
+  }, [activeTab, showBucketOnMap, landmarksLoaded]);
 
   useEffect(() => {
     if (activeTab === "flights") {
@@ -1480,16 +1481,17 @@ export default function PlanerPage() {
   const isInBucketList = (name: string) =>
     trip.bucketList.some((b) => b.name === name);
 
-  const addMapPoiToBucket = useCallback(
-    (poi: { name: string; lat: number; lng: number; category?: string }) => {
+  const addLandmarkPoiToBucket = useCallback(
+    (poi: MapHighlightPoi) => {
       if (isInBucketList(poi.name)) return;
       addToBucketList({
         name: poi.name,
         category: poi.category || "Karten-POI",
         rating: 0,
-        description: "",
+        description: poi.description || "",
         lat: poi.lat,
         lng: poi.lng,
+        wikipediaTitle: poi.wikipediaTitle,
       });
     },
     [addToBucketList, isInBucketList]
@@ -1559,72 +1561,34 @@ export default function PlanerPage() {
     };
   }, [showBucketOnMap, activeTab, trip.bucketList, autocompleteReady, updateTrip]);
 
-  const filteredBucketListForMap = useMemo(() => {
-    const landmarkByName = new globalThis.Map(landmarks.map((l) => [l.name, l]));
-    return trip.bucketList.filter((item) => {
-      const lm = landmarkByName.get(item.name);
-      if (lm) {
-        return filterLandmarks([lm], {
-          query: landmarkQuery,
-          category: landmarkCategory,
-          continent: landmarkContinent,
-          unescoOnly: landmarkUnescoOnly,
-        }).length > 0;
-      }
-      if (landmarkUnescoOnly) return false;
-      if (landmarkCategory && item.category !== landmarkCategory) return false;
-      if (landmarkContinent) return false;
-      if (landmarkQuery) {
-        const q = landmarkQuery.toLowerCase();
-        if (!item.name.toLowerCase().includes(q) && !item.description.toLowerCase().includes(q)) {
-          return false;
-        }
-      }
-      return true;
+  const filteredCatalogLandmarks = useMemo(() => {
+    if (!landmarksLoaded) return [];
+    return filterLandmarks(landmarks, {
+      query: landmarkQuery,
+      category: landmarkCategory,
+      continent: landmarkContinent,
+      unescoOnly: landmarkUnescoOnly,
     });
   }, [
-    trip.bucketList,
     landmarks,
+    landmarksLoaded,
     landmarkQuery,
     landmarkCategory,
     landmarkContinent,
     landmarkUnescoOnly,
   ]);
 
-  const bucketTabMapMarkers = useMemo((): MapHighlightPoi[] => {
-    const markers: MapHighlightPoi[] = [];
-    for (const item of filteredBucketListForMap) {
-      const lat = item.lat ?? bucketGeocoded[item.id]?.lat;
-      const lng = item.lng ?? bucketGeocoded[item.id]?.lng;
-      if (lat == null || lng == null) continue;
-      markers.push({
-        id: item.id,
-        name: item.name,
-        lat,
-        lng,
-        category: item.category,
-      });
-    }
-    return markers;
-  }, [filteredBucketListForMap, bucketGeocoded]);
+  const catalogLandmarkMapMarkers = useMemo((): MapHighlightPoi[] => {
+    const inBucketNames = new Set(trip.bucketList.map((b) => b.name));
+    return filteredCatalogLandmarks
+      .filter((lm) => Number.isFinite(lm.latitude) && Number.isFinite(lm.longitude))
+      .map((lm) => landmarkToMapPoi(lm, inBucketNames.has(lm.name)));
+  }, [filteredCatalogLandmarks, trip.bucketList]);
 
   const bucketListMapMarkers = useMemo((): MapHighlightPoi[] => {
     if (!showBucketOnMap) return [];
-    const markers: MapHighlightPoi[] = [];
-    for (const item of trip.bucketList) {
-      const lat = item.lat ?? bucketGeocoded[item.id]?.lat;
-      const lng = item.lng ?? bucketGeocoded[item.id]?.lng;
-      if (lat == null || lng == null) continue;
-      markers.push({
-        id: item.id,
-        name: item.name,
-        lat,
-        lng,
-        category: item.category,
-      });
-    }
-    return markers;
-  }, [showBucketOnMap, trip.bucketList, bucketGeocoded]);
+    return catalogLandmarkMapMarkers;
+  }, [showBucketOnMap, catalogLandmarkMapMarkers]);
 
   const isInCurrentRoute = useCallback(
     (name: string) => {
@@ -3009,7 +2973,7 @@ export default function PlanerPage() {
                     bucketListPois={bucketListMapMarkers}
                     showBucketListOnMap={showBucketOnMap}
                     onToggleBucketListOnMap={() => setShowBucketOnMap((v) => !v)}
-                    onAddToBucketList={addMapPoiToBucket}
+                    onAddToBucketList={addLandmarkPoiToBucket}
                     onAddBucketPoiAsStop={addBucketPoiAsStop}
                     isInBucketList={isInBucketList}
                     isInRoute={isInCurrentRoute}
@@ -4252,12 +4216,6 @@ export default function PlanerPage() {
             {/* Bucket List Tab */}
             {activeTab === "bucket" && (
               <div className="space-y-6">
-                <BucketListMap
-                  markers={bucketTabMapMarkers}
-                  onAddAsStop={addBucketPoiAsStop}
-                  isInRoute={isInCurrentRoute}
-                />
-
                 {/* My Bucket List */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
@@ -4399,14 +4357,17 @@ export default function PlanerPage() {
                     </select>
                   </div>
 
+                  <BucketListMap
+                    markers={catalogLandmarkMapMarkers}
+                    onAddAsStop={addBucketPoiAsStop}
+                    onAddToBucketList={addLandmarkPoiToBucket}
+                    isInRoute={isInCurrentRoute}
+                    isInBucketList={isInBucketList}
+                  />
+
                   {/* Results */}
                   {(() => {
-                    const filtered = filterLandmarks(landmarks, {
-                      query: landmarkQuery,
-                      category: landmarkCategory,
-                      continent: landmarkContinent,
-                      unescoOnly: landmarkUnescoOnly,
-                    });
+                    const filtered = filteredCatalogLandmarks;
                     const shown = filtered.slice(0, 30);
                     const inBucketNames = new Set(trip.bucketList.map((b) => b.name));
 
