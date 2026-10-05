@@ -3149,15 +3149,50 @@ export default function PlanerPage() {
 
                 {/* Etappen Breakdown */}
                 {etappen.length > 1 && (
-                  <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                    <div className="flex items-center gap-3 mb-4">
+                  <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-3 mb-3">
                       <Route className="w-5 h-5 text-purple-500" />
                       <h3 className="font-semibold text-gray-900">
                         Tagesetappen ({etappen.length})
                       </h3>
                     </div>
-                    <div className="space-y-3">
+                    <div>
                       {(() => {
+                        const addDaysLocal = (dateStr: string, days: number) => {
+                          const [y, m, d] = dateStr.split("-").map(Number);
+                          const dt = new Date(y, m - 1, d + days);
+                          return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+                        };
+                        // Same date rules as the hotels tab, so stage dates match hotel check-in/out.
+                        const departureDates: string[] = [trip.startDate || ""];
+                        const dayOffsets: number[] = [0];
+                        let dateCursor = trip.startDate || "";
+                        currentRouteStops
+                          .filter((s) => s.name.trim() && s.type === "stop" && !!s.isHotel)
+                          .forEach((stop) => {
+                            const nights = Math.max(1, Number(stop.hotelNights) || 2);
+                            const isBookedAnchor = !!stop.bookingConfirmation && !!stop.hotelCheckIn;
+                            const checkIn = isBookedAnchor ? (stop.hotelCheckIn || "") : (dateCursor || stop.hotelCheckIn || "");
+                            const checkOut = checkIn ? addDaysLocal(checkIn, nights) : "";
+                            dateCursor = checkOut || dateCursor;
+                            departureDates.push(checkOut);
+                            dayOffsets.push(dayOffsets[dayOffsets.length - 1] + nights);
+                          });
+                        const dayInfo = (index: number) => {
+                          const date = departureDates[index] || "";
+                          let day = (dayOffsets[index] ?? index) + 1;
+                          if (date && trip.startDate) {
+                            const [y1, m1, d1] = trip.startDate.split("-").map(Number);
+                            const [y2, m2, d2] = date.split("-").map(Number);
+                            day = Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000) + 1;
+                          }
+                          const [y, m, d] = date ? date.split("-").map(Number) : [];
+                          const dateLabel = date
+                            ? new Date(y, m - 1, d).toLocaleDateString("de-DE", { day: "numeric", month: "short" })
+                            : "";
+                          return { day, dateLabel };
+                        };
+
                         let carryHotelName = "";
                         let carryHotelAddress = "";
                         let carryHotelPlace = "";
@@ -3200,13 +3235,16 @@ export default function PlanerPage() {
                           };
                         });
 
-                        return etappenWithCarry.map((etappe) => (
+                        return etappenWithCarry.map((etappe) => {
+                        const { day, dateLabel } = dayInfo(etappe.index);
+                        const isLast = etappe.index === etappen.length - 1;
+                        return (
                         <div
                           key={etappe.index}
                           className="relative flex items-stretch gap-3"
                         >
                           <div className="flex flex-col items-center">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                            <div className={`w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-white text-xs font-bold ${
                               etappe.index === 0
                                 ? "bg-blue-500"
                                 : etappe.index === etappen.length - 1
@@ -3215,53 +3253,50 @@ export default function PlanerPage() {
                                 ? "bg-green-500"
                                 : "bg-purple-500"
                             }`}>
-                              {etappe.hotelBookedForDisplay ? <Check className="w-4 h-4" /> : etappe.index + 1}
+                              {etappe.hotelBookedForDisplay ? <Check className="w-3.5 h-3.5" /> : etappe.index + 1}
                             </div>
-                            {etappe.index < etappen.length - 1 && (
-                              <div className="w-0.5 flex-1 bg-gray-200 mt-1" />
+                            {!isLast && (
+                              <div className="w-0.5 flex-1 bg-gray-200 my-1" />
                             )}
                           </div>
-                          <div className="flex-1 pb-4">
-                            <div className="text-sm font-semibold text-gray-900">
-                              {etappe.label}
+                          <div className={`flex-1 min-w-0 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 ${isLast ? "" : "pb-3"}`}>
+                            <div className="sm:w-28 flex-shrink-0 text-sm leading-7">
+                              <span className="font-semibold text-gray-900">Tag {day}</span>
+                              {dateLabel && <span className="text-gray-400"> · {dateLabel}</span>}
                             </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
-                              {etappe.from} → {etappe.to}
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm text-gray-800 truncate" title={`${etappe.from} → ${etappe.to}`}>
+                                {etappe.from} → {etappe.to}
+                              </div>
+                              <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                                <Navigation className="w-3 h-3 text-blue-500" />
+                                <span>{etappe.distanceKm.toLocaleString("de-CH")} km</span>
+                                <span className="text-gray-300">·</span>
+                                <Clock className="w-3 h-3 text-gray-400" />
+                                <span>{etappe.durationFormatted}</span>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-3 mt-1.5">
-                              <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                                <Navigation className="w-3 h-3" />
-                                {etappe.distanceKm.toLocaleString("de-CH")} km
-                              </span>
-                              <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded-full">
-                                <Clock className="w-3 h-3" />
-                                {etappe.durationFormatted}
-                              </span>
-                            </div>
-                            {etappe.index < etappen.length - 1 && (
+                            {!isLast && (
                               etappe.hotelBookedForDisplay ? (
-                                <div className="mt-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <BedDouble className="w-3.5 h-3.5 text-green-600" />
-                                    <span className="text-xs font-semibold text-green-800">
-                                      {etappe.hotelNameForDisplay}
-                                    </span>
-                                    <span className="text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full ml-auto">Gebucht</span>
-                                  </div>
-                                  {etappe.hotelAddressForDisplay && (
-                                    <p className="text-[11px] text-green-700 mt-1">{etappe.hotelAddressForDisplay}</p>
-                                  )}
+                                <div
+                                  className="self-start sm:self-auto inline-flex max-w-full sm:max-w-[45%] items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs"
+                                  title={etappe.hotelAddressForDisplay || undefined}
+                                >
+                                  <BedDouble className="w-3.5 h-3.5 flex-shrink-0 text-green-600" />
+                                  <span className="truncate font-semibold text-green-800">{etappe.hotelNameForDisplay}</span>
+                                  <span className="flex-shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-green-600">Gebucht</span>
                                 </div>
                               ) : (
-                                <div className="mt-2 inline-flex items-center gap-1.5 text-xs text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">
-                                  <BedDouble className="w-3 h-3" />
-                                  Übernachtung in {etappe.hotelPlaceForDisplay}
+                                <div className="self-start sm:self-auto inline-flex max-w-full sm:max-w-[45%] items-center gap-1.5 rounded-full bg-purple-50 px-2.5 py-1 text-xs text-purple-600">
+                                  <BedDouble className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate">Übernachtung in {etappe.hotelPlaceForDisplay}</span>
                                 </div>
                               )
                             )}
                           </div>
                         </div>
-                      ));
+                        );
+                      });
                       })()}
                     </div>
                   </div>
