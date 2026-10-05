@@ -3644,15 +3644,6 @@ export default function PlanerPage() {
                     };
                   }
 
-                  function handleDateSelect(stopId: string, newCheckIn: string, newNights: number) {
-                    const selected = hotelStops.find((s) => s.id === stopId);
-                    if (selected?.bookingConfirmation) {
-                      updateStopField(stopId, { hotelCheckIn: newCheckIn, hotelNights: newNights });
-                    } else {
-                      updateStopField(stopId, { hotelCheckIn: "", hotelNights: newNights });
-                    }
-                  }
-
                   if (allStopsWithHotelOption.length === 0) {
                     return (
                       <div className="bg-purple-50 border border-purple-100 rounded-2xl p-6">
@@ -3812,40 +3803,6 @@ export default function PlanerPage() {
 
                                   {panel === "search" && (
                                   <div className="mt-4 border-t border-gray-100 pt-4">
-                                  {/* Date + Guests/Rooms on one row */}
-                                  <div className="flex flex-wrap items-center gap-3 mb-3">
-                                    <div className="flex-1 min-w-[240px]">
-                                      <HotelDatePicker
-                                        checkIn={checkIn}
-                                        checkOut={checkOut}
-                                        nights={nights}
-                                        onSelect={(ci, n) => handleDateSelect(stop.id, ci, n)}
-                                      />
-                                    </div>
-                                    <div className="flex items-center gap-2.5 text-xs text-gray-600 shrink-0">
-                                      <label className="flex items-center gap-1">
-                                        <Users className="w-3 h-3 text-gray-400" />
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={guests}
-                                          onChange={(e) => updateStopField(stop.id, { hotelGuests: parseInt(e.target.value) || 1 })}
-                                          className="w-8 px-0.5 py-0.5 text-xs text-center bg-white border border-gray-200 rounded focus:ring-1 focus:ring-purple-300 focus:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        />
-                                      </label>
-                                      <label className="flex items-center gap-1">
-                                        <BedDouble className="w-3 h-3 text-gray-400" />
-                                        <input
-                                          type="number"
-                                          min={1}
-                                          value={rooms}
-                                          onChange={(e) => updateStopField(stop.id, { hotelRooms: parseInt(e.target.value) || 1 })}
-                                          className="w-8 px-0.5 py-0.5 text-xs text-center bg-white border border-gray-200 rounded focus:ring-1 focus:ring-purple-300 focus:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                        />
-                                      </label>
-                                    </div>
-                                  </div>
-
                                   <div className="flex flex-wrap gap-2">
                                     <a
                                       href={buildHotelsComLink(stopSearchParams)}
