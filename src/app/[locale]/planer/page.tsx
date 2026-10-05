@@ -1560,7 +1560,7 @@ export default function PlanerPage() {
   }, [showBucketOnMap, activeTab, trip.bucketList, autocompleteReady, updateTrip]);
 
   const filteredBucketListForMap = useMemo(() => {
-    const landmarkByName = new Map(landmarks.map((l) => [l.name, l]));
+    const landmarkByName = new globalThis.Map(landmarks.map((l) => [l.name, l]));
     return trip.bucketList.filter((item) => {
       const lm = landmarkByName.get(item.name);
       if (lm) {
