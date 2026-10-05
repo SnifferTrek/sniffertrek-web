@@ -1,7 +1,11 @@
-import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { Globe, Mail, MapPin, Phone } from "lucide-react";
+import { Link } from "@/i18n/navigation";
 
 export default function Footer() {
+  const t = useTranslations("footer");
+  const tChrome = useTranslations("chrome");
+
   return (
     <footer className="bg-gray-900 text-gray-400 pt-16 pb-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -19,54 +23,51 @@ export default function Footer() {
                 </span>
               </span>
             </div>
-            <p className="text-sm leading-relaxed">
-              Dein All-in-One Reiseplaner. Route, Hotels, Flüge und Aktivitäten
-              – alles vergleichen und direkt buchen.
-            </p>
+            <p className="text-sm leading-relaxed">{t("plannerTagline")}</p>
           </div>
 
           {/* Produkt */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Produkt</h4>
+            <h4 className="text-white font-semibold mb-4">{t("product")}</h4>
             <ul className="space-y-2.5 text-sm">
               <li>
                 <Link href="/" className="hover:text-white transition-colors">
-                  Reise planen
+                  {t("planTrip")}
                 </Link>
               </li>
               <li>
                 <Link href="/info#features" className="hover:text-white transition-colors">
-                  Features
+                  {tChrome("features")}
                 </Link>
               </li>
               <li>
                 <Link href="/info#how-it-works" className="hover:text-white transition-colors">
-                  So funktioniert&apos;s
+                  {tChrome("howItWorks")}
                 </Link>
               </li>
               <li>
-                <span className="text-gray-600">iOS App (bald verfügbar)</span>
+                <span className="text-gray-600">{t("iosSoon")}</span>
               </li>
             </ul>
           </div>
 
           {/* Rechtliches */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Rechtliches</h4>
+            <h4 className="text-white font-semibold mb-4">{t("legal")}</h4>
             <ul className="space-y-2.5 text-sm">
               <li>
                 <Link href="/impressum" className="hover:text-white transition-colors">
-                  Impressum
+                  {t("imprint")}
                 </Link>
               </li>
               <li>
                 <Link href="/datenschutz" className="hover:text-white transition-colors">
-                  Datenschutz
+                  {t("privacy")}
                 </Link>
               </li>
               <li>
                 <Link href="/agb" className="hover:text-white transition-colors">
-                  AGB
+                  {t("terms")}
                 </Link>
               </li>
             </ul>
@@ -74,7 +75,7 @@ export default function Footer() {
 
           {/* Kontakt */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Kontakt</h4>
+            <h4 className="text-white font-semibold mb-4">{t("contact")}</h4>
             <ul className="space-y-2.5 text-sm">
               <li className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-blue-400" />
@@ -84,11 +85,11 @@ export default function Footer() {
               </li>
               <li className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-blue-400" />
-                <span>Schweiz</span>
+                <span>{t("switzerland")}</span>
               </li>
               <li className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-blue-400" />
-                <span>Auf Anfrage</span>
+                <span>{t("onRequest")}</span>
               </li>
             </ul>
           </div>
@@ -96,10 +97,8 @@ export default function Footer() {
 
         {/* Bottom */}
         <div className="pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-sm">
-          <p>© {new Date().getFullYear()} SnifferTrek. Alle Rechte vorbehalten.</p>
-          <p className="text-xs text-gray-600">
-            Made with ♥ in Switzerland
-          </p>
+          <p>© {new Date().getFullYear()} SnifferTrek. {t("allRights")}</p>
+          <p className="text-xs text-gray-600">{t("madeIn", { heart: "♥" })}</p>
         </div>
       </div>
     </footer>

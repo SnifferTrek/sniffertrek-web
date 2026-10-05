@@ -43,7 +43,11 @@
     "switzerland": "Suiza",
     "onRequest": "Bajo petición",
     "allRights": "Todos los derechos reservados.",
-    "madeIn": "Hecho con {heart} en Suiza"
+    "madeIn": "Hecho con {heart} en Suiza",
+    "plannerTagline": "Tu planificador de viajes todo en uno. Ruta, hoteles, vuelos y actividades: compáralo todo y reserva directamente.",
+    "iosSoon": "App para iOS (próximamente)",
+    "legal": "Legal",
+    "contact": "Contacto"
   },
   "cookies": {
     "title": "Usamos cookies",

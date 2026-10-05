@@ -43,7 +43,11 @@
     "switzerland": "Switzerland",
     "onRequest": "On request",
     "allRights": "All rights reserved.",
-    "madeIn": "Made with {heart} in Switzerland"
+    "madeIn": "Made with {heart} in Switzerland",
+    "plannerTagline": "Your all-in-one travel planner. Route, hotels, flights and activities – compare everything and book directly.",
+    "iosSoon": "iOS app (coming soon)",
+    "legal": "Legal",
+    "contact": "Contact"
   },
   "cookies": {
     "title": "We use cookies",
