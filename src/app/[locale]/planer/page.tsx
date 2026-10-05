@@ -3644,6 +3644,15 @@ export default function PlanerPage() {
                     };
                   }
 
+                  function handleDateSelect(stopId: string, newCheckIn: string, newNights: number) {
+                    const selected = hotelStops.find((s) => s.id === stopId);
+                    if (selected?.bookingConfirmation) {
+                      updateStopField(stopId, { hotelCheckIn: newCheckIn, hotelNights: newNights });
+                    } else {
+                      updateStopField(stopId, { hotelCheckIn: "", hotelNights: newNights });
+                    }
+                  }
+
                   if (allStopsWithHotelOption.length === 0) {
                     return (
                       <div className="bg-purple-50 border border-purple-100 rounded-2xl p-6">
@@ -3736,11 +3745,42 @@ export default function PlanerPage() {
                                       </div>
                                       <div className="min-w-0 flex-1">
                                         <h4 className="font-semibold text-gray-900 truncate">{stop.name}</h4>
-                                        <p className="text-sm text-gray-600 mt-0.5">{dateLine}</p>
-                                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
-                                          <Users className="w-3.5 h-3.5 text-gray-400" />
-                                          {guests} {guests === 1 ? "Gast" : "Gäste"} · {rooms} Zimmer
-                                        </p>
+                                        <div className="mt-1.5 max-w-xs" title={dateLine}>
+                                          <HotelDatePicker
+                                            checkIn={checkIn}
+                                            checkOut={checkOut}
+                                            nights={nights}
+                                            onSelect={(ci, n) => handleDateSelect(stop.id, ci, n)}
+                                          />
+                                        </div>
+                                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                                          <label className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1">
+                                            <Users className="w-3.5 h-3.5 text-gray-400" />
+                                            <select
+                                              aria-label={`Gäste in ${stop.name}`}
+                                              value={guests}
+                                              onChange={(e) => updateStopField(stop.id, { hotelGuests: parseInt(e.target.value) || 1 })}
+                                              className="cursor-pointer bg-transparent text-xs font-medium text-gray-900 focus:outline-none"
+                                            >
+                                              {Array.from(new Set([...Array.from({ length: 10 }, (_, i) => i + 1), guests])).sort((a, b) => a - b).map((n) => (
+                                                <option key={n} value={n}>{n} {n === 1 ? "Gast" : "Gäste"}</option>
+                                              ))}
+                                            </select>
+                                          </label>
+                                          <label className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1">
+                                            <BedDouble className="w-3.5 h-3.5 text-gray-400" />
+                                            <select
+                                              aria-label={`Zimmer in ${stop.name}`}
+                                              value={rooms}
+                                              onChange={(e) => updateStopField(stop.id, { hotelRooms: parseInt(e.target.value) || 1 })}
+                                              className="cursor-pointer bg-transparent text-xs font-medium text-gray-900 focus:outline-none"
+                                            >
+                                              {Array.from(new Set([...Array.from({ length: 6 }, (_, i) => i + 1), rooms])).sort((a, b) => a - b).map((n) => (
+                                                <option key={n} value={n}>{n} Zimmer</option>
+                                              ))}
+                                            </select>
+                                          </label>
+                                        </div>
                                         <div className="mt-3 flex flex-wrap gap-2">
                                           <button
                                             type="button"
