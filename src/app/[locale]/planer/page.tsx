@@ -210,6 +210,8 @@ export default function PlanerPage() {
   const [activeTab, setActiveTab] = useState<
     "route" | "hotels" | "flights" | "car" | "poi" | "report" | "bucket" | "esim" | "droneMaps" | "train" | "insurance"
   >("route");
+  const [expandedEtappen, setExpandedEtappen] = useState<number[]>([]);
+  const [hotelFocus, setHotelFocus] = useState<{ stopId: string; openBooking: boolean } | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [optimizeRoute, setOptimizeRoute] = useState(false);
@@ -1008,6 +1010,28 @@ export default function PlanerPage() {
       setActiveTab(tabs[0].id);
     }
   }, [tabs, activeTab]);
+
+  const hasHotelsTab = tabs.some((t) => t.id === "hotels");
+
+  const openHotelStop = (stopId: string, openBooking: boolean) => {
+    setHotelFocus({ stopId, openBooking });
+    setActiveTab("hotels");
+  };
+
+  useEffect(() => {
+    if (activeTab !== "hotels" || !hotelFocus) return;
+    const scrollTimer = window.setTimeout(() => {
+      const card = document.getElementById(`hotel-stop-${hotelFocus.stopId}`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (hotelFocus.openBooking) card.querySelector("details")?.setAttribute("open", "");
+    }, 50);
+    const clearTimer = window.setTimeout(() => setHotelFocus(null), 2500);
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearTimer);
+    };
+  }, [activeTab, hotelFocus]);
 
   const toggleModule = (mod: string) => {
     const current = trip.modules?.length ? [...trip.modules] : defaultModules;
@@ -3155,6 +3179,25 @@ export default function PlanerPage() {
                       <h3 className="font-semibold text-gray-900">
                         Tagesetappen ({etappen.length})
                       </h3>
+                      {(() => {
+                        const expandableCount = Math.min(
+                          etappen.length - 1,
+                          currentRouteStops.filter((s) => s.name.trim() && s.type === "stop" && !!s.isHotel).length
+                        );
+                        if (expandableCount < 1) return null;
+                        const expandableIndices = Array.from({ length: expandableCount }, (_, i) => i);
+                        const allExpanded = expandableIndices.every((i) => expandedEtappen.includes(i));
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedEtappen(allExpanded ? [] : expandableIndices)}
+                            className="ml-auto inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800"
+                          >
+                            {allExpanded ? "Alle Etappen zuklappen" : "Alle Etappen aufklappen"}
+                            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${allExpanded ? "rotate-180" : ""}`} />
+                          </button>
+                        );
+                      })()}
                     </div>
                     <div>
                       {(() => {
@@ -3166,6 +3209,7 @@ export default function PlanerPage() {
                         // Same date rules as the hotels tab, so stage dates match hotel check-in/out.
                         const departureDates: string[] = [trip.startDate || ""];
                         const dayOffsets: number[] = [0];
+                        const hotelStays: { stop: RouteStop; checkIn: string; checkOut: string; nights: number }[] = [];
                         let dateCursor = trip.startDate || "";
                         currentRouteStops
                           .filter((s) => s.name.trim() && s.type === "stop" && !!s.isHotel)
@@ -3177,7 +3221,18 @@ export default function PlanerPage() {
                             dateCursor = checkOut || dateCursor;
                             departureDates.push(checkOut);
                             dayOffsets.push(dayOffsets[dayOffsets.length - 1] + nights);
+                            hotelStays.push({ stop, checkIn, checkOut, nights });
                           });
+                        const shortDate = (dateStr: string) => {
+                          const [y, m, d] = dateStr.split("-").map(Number);
+                          return new Date(y, m - 1, d).toLocaleDateString("de-DE", { day: "numeric", month: "short" });
+                        };
+                        const stayRange = (checkIn: string, checkOut: string) => {
+                          if (!checkIn || !checkOut) return "";
+                          const sameMonth = checkIn.slice(0, 7) === checkOut.slice(0, 7);
+                          const from = sameMonth ? `${Number(checkIn.slice(8, 10))}.` : shortDate(checkIn);
+                          return `${from} → ${shortDate(checkOut)}`;
+                        };
                         const dayInfo = (index: number) => {
                           const date = departureDates[index] || "";
                           let day = (dayOffsets[index] ?? index) + 1;
@@ -3238,28 +3293,10 @@ export default function PlanerPage() {
                         return etappenWithCarry.map((etappe) => {
                         const { day, dateLabel } = dayInfo(etappe.index);
                         const isLast = etappe.index === etappen.length - 1;
-                        return (
-                        <div
-                          key={etappe.index}
-                          className="relative flex items-stretch gap-3"
-                        >
-                          <div className="flex flex-col items-center">
-                            <div className={`w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-                              etappe.index === 0
-                                ? "bg-blue-500"
-                                : etappe.index === etappen.length - 1
-                                ? "bg-red-500"
-                                : etappe.hotelBookedForDisplay
-                                ? "bg-green-500"
-                                : "bg-purple-500"
-                            }`}>
-                              {etappe.hotelBookedForDisplay ? <Check className="w-3.5 h-3.5" /> : etappe.index + 1}
-                            </div>
-                            {!isLast && (
-                              <div className="w-0.5 flex-1 bg-gray-200 my-1" />
-                            )}
-                          </div>
-                          <div className={`flex-1 min-w-0 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 ${isLast ? "" : "pb-3"}`}>
+                        const stay = isLast ? undefined : hotelStays[etappe.index];
+                        const isExpanded = !!stay && expandedEtappen.includes(etappe.index);
+                        const rowContent = (
+                          <>
                             <div className="sm:w-28 flex-shrink-0 text-sm leading-7">
                               <span className="font-semibold text-gray-900">Tag {day}</span>
                               {dateLabel && <span className="text-gray-400"> · {dateLabel}</span>}
@@ -3292,6 +3329,103 @@ export default function PlanerPage() {
                                   <span className="truncate">Übernachtung in {etappe.hotelPlaceForDisplay}</span>
                                 </div>
                               )
+                            )}
+                          </>
+                        );
+                        const stayHotelName = stay?.stop.bookingHotelName?.trim() || "";
+                        const stayHasHotel = !!stay && (!!stayHotelName || !!stay.stop.bookingConfirmation?.trim());
+                        const stayGuests = stay ? (stay.stop.hotelGuests || trip.travelers || 2) : 0;
+                        return (
+                        <div
+                          key={etappe.index}
+                          className="relative flex items-stretch gap-3"
+                        >
+                          <div className="flex flex-col items-center">
+                            <div className={`w-7 h-7 flex-shrink-0 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                              etappe.index === 0
+                                ? "bg-blue-500"
+                                : etappe.index === etappen.length - 1
+                                ? "bg-red-500"
+                                : etappe.hotelBookedForDisplay
+                                ? "bg-green-500"
+                                : "bg-purple-500"
+                            }`}>
+                              {etappe.hotelBookedForDisplay ? <Check className="w-3.5 h-3.5" /> : etappe.index + 1}
+                            </div>
+                            {!isLast && (
+                              <div className="w-0.5 flex-1 bg-gray-200 my-1" />
+                            )}
+                          </div>
+                          <div className={`flex-1 min-w-0 ${isLast ? "" : "pb-3"}`}>
+                            {stay ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedEtappen((prev) =>
+                                    isExpanded ? prev.filter((i) => i !== etappe.index) : [...prev, etappe.index]
+                                  )
+                                }
+                                aria-expanded={isExpanded}
+                                className="relative w-full text-left flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4 rounded-lg -mx-2 px-2 pr-8 transition-colors hover:bg-gray-50"
+                              >
+                                {rowContent}
+                                <ChevronDown className={`absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                              </button>
+                            ) : (
+                              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+                                {rowContent}
+                              </div>
+                            )}
+                            {isExpanded && stay && (
+                              <div className="mt-2 rounded-xl border border-purple-100 bg-purple-50/50 px-4 py-3">
+                                <div className="text-sm font-semibold text-gray-900">Übernachtung in {stay.stop.name}</div>
+                                <div className="text-xs text-gray-500 mt-0.5">
+                                  {[
+                                    stayRange(stay.checkIn, stay.checkOut),
+                                    `${stay.nights} ${stay.nights === 1 ? "Nacht" : "Nächte"}`,
+                                    `${stayGuests} ${stayGuests === 1 ? "Person" : "Personen"}`,
+                                  ].filter(Boolean).join(" · ")}
+                                </div>
+                                {stayHasHotel ? (
+                                  <div className="mt-3 border-t border-purple-100 pt-3">
+                                    <div className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+                                      <BedDouble className="w-3.5 h-3.5 flex-shrink-0 text-purple-500" />
+                                      <span className="truncate">{stayHotelName || `Unterkunft in ${stay.stop.name}`}</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                      {stay.nights} {stay.nights === 1 ? "Nacht" : "Nächte"} · {stay.stop.bookingConfirmation?.trim() ? "gebucht" : "vorgemerkt"}
+                                    </div>
+                                    {(stay.stop.bookingLink || hasHotelsTab) && (
+                                      <div className="mt-2 flex items-center gap-2 text-xs font-medium">
+                                        {stay.stop.bookingLink && (
+                                          <a href={stay.stop.bookingLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">
+                                            Hotel ansehen
+                                          </a>
+                                        )}
+                                        {stay.stop.bookingLink && hasHotelsTab && <span className="text-gray-300">·</span>}
+                                        {hasHotelsTab && (
+                                          <button type="button" onClick={() => openHotelStop(stay.stop.id, true)} className="text-blue-600 hover:text-blue-800 hover:underline">
+                                            Ändern
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="mt-3 border-t border-purple-100 pt-3">
+                                    <div className="text-xs text-gray-500">Noch keine Unterkunft ausgewählt</div>
+                                    {hasHotelsTab && (
+                                      <button
+                                        type="button"
+                                        onClick={() => openHotelStop(stay.stop.id, false)}
+                                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-purple-700 hover:text-purple-900"
+                                      >
+                                        Hotel finden <ArrowRight className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -3518,7 +3652,10 @@ export default function PlanerPage() {
                               return (
                                 <div
                                   key={stop.id}
-                                  className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-5 border border-purple-100"
+                                  id={`hotel-stop-${stop.id}`}
+                                  className={`bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-5 border border-purple-100 scroll-mt-24 transition-shadow ${
+                                    hotelFocus?.stopId === stop.id ? "ring-2 ring-purple-400 ring-offset-2" : ""
+                                  }`}
                                 >
                                   <div className="flex items-center gap-3 mb-4">
                                     <div className={`w-8 h-8 ${stop.bookingConfirmation ? "bg-green-500" : "bg-purple-500"} rounded-full flex items-center justify-center text-white text-sm font-bold`}>
