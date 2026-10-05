@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
-import { ArrowLeft, Check, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, Sparkles } from "lucide-react";
 import { TripModule } from "@/lib/types";
 import {
   createNewTrip,
   saveTrip,
   getAllTrips,
+  deleteTrip,
+  getTripDisplayName,
   setActiveTripId,
   setTripEndDestination,
 } from "@/lib/tripStorage";
@@ -16,6 +18,7 @@ import {
   consumePlanIntent,
   PLAN_DESTINATION_PARAM,
   readPlanIntent,
+  savePlanIntent,
 } from "@/lib/planIntent";
 import { useAuth } from "@/components/AuthProvider";
 import { isMasterUser } from "@/lib/isMasterUser";
@@ -24,12 +27,13 @@ import { Link, useRouter } from "@/i18n/navigation";
 export default function ReisePlanenPage() {
   const t = useTranslations("planStart");
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const isMaster = isMasterUser(user);
   const visibleModules = isMaster ? MODULE_CATALOG : MODULE_CATALOG.filter((item) => item.active);
   const [selectedModules, setSelectedModules] = useState<string[]>(["hotels"]);
-  const [showLoginHint, setShowLoginHint] = useState(false);
+  const [replaceTripNames, setReplaceTripNames] = useState<string[] | null>(null);
   const [destination, setDestination] = useState("");
+  const showReplaceWarning = replaceTripNames !== null;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -46,19 +50,8 @@ export default function ReisePlanenPage() {
     );
   };
 
-  const startTrip = () => {
-    if (selectedModules.length === 0) return;
+  const createAndOpenTrip = () => {
     const dest = destination.trim();
-    const localTrips = getAllTrips();
-    if (!user && localTrips.length >= 1) {
-      if (showLoginHint) {
-        setActiveTripId(localTrips[0].id);
-        router.push("/planer");
-      } else {
-        setShowLoginHint(true);
-      }
-      return;
-    }
     let newTrip = createNewTrip(dest || undefined);
     if (dest) {
       newTrip = setTripEndDestination(newTrip, dest);
@@ -69,6 +62,28 @@ export default function ReisePlanenPage() {
     saveTrip(newTrip);
     setActiveTripId(newTrip.id);
     router.push("/planer");
+  };
+
+  const startTrip = () => {
+    if (selectedModules.length === 0 || authLoading) return;
+    const localTrips = getAllTrips();
+    if (!user && localTrips.length >= 1) {
+      setReplaceTripNames(
+        localTrips.map((existing) => {
+          const name = getTripDisplayName(existing);
+          return name === "Neue Reise" ? t("eyebrow") : name;
+        }),
+      );
+      return;
+    }
+    createAndOpenTrip();
+  };
+
+  const confirmReplaceTrip = () => {
+    for (const existing of getAllTrips()) {
+      deleteTrip(existing.id);
+    }
+    createAndOpenTrip();
   };
 
   const selectionLabel =
@@ -89,30 +104,36 @@ export default function ReisePlanenPage() {
           {t("backHome")}
         </Link>
 
-        {showLoginHint ? (
-          <div className="mb-8 rounded-2xl border border-amber-200/80 bg-amber-50/90 p-6 sm:p-7">
-            <p className="mb-2 text-lg font-semibold tracking-tight text-amber-950">
-              {t("loginTitle")}
+        {replaceTripNames ? (
+          <div
+            role="alertdialog"
+            aria-labelledby="replace-trip-title"
+            className="mb-8 rounded-2xl border border-amber-200/80 bg-amber-50/90 p-6 sm:p-7"
+          >
+            <p
+              id="replace-trip-title"
+              className="mb-2 flex items-center gap-2 text-lg font-semibold tracking-tight text-amber-950"
+            >
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+              {t("replaceTitle")}
             </p>
             <p className="mb-5 max-w-xl text-sm leading-relaxed text-amber-900/80">
-              {t("loginBody")}
+              {t("replaceBody", { name: replaceTripNames.join(", ") })}
             </p>
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/login" className="st-btn-primary px-5 py-2.5">
-                {t("signInNow")}
+              <Link
+                href={{ pathname: "/login", query: { next: "/reise-planen" } }}
+                onClick={() => savePlanIntent(destination)}
+                className="st-btn-primary px-5 py-2.5"
+              >
+                {t("signInKeep")}
               </Link>
               <button
                 type="button"
-                onClick={() => {
-                  const trips = getAllTrips();
-                  if (trips.length > 0) {
-                    setActiveTripId(trips[0].id);
-                    router.push("/planer");
-                  }
-                }}
-                className="text-sm font-medium text-amber-900 transition-colors hover:text-amber-950"
+                onClick={confirmReplaceTrip}
+                className="rounded-full border border-red-200 bg-white px-5 py-2.5 text-sm font-medium text-red-700 transition-colors hover:border-red-300 hover:bg-red-50"
               >
-                {t("planWithout")}
+                {t("replaceConfirm")}
               </button>
             </div>
           </div>
@@ -127,7 +148,7 @@ export default function ReisePlanenPage() {
                 <button
                   type="button"
                   onClick={startTrip}
-                  disabled={selectedModules.length === 0}
+                  disabled={selectedModules.length === 0 || authLoading}
                   className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#0071e3] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#0077ed] disabled:cursor-not-allowed disabled:opacity-40 sm:gap-2 sm:px-6 sm:py-3 sm:text-sm"
                 >
                   <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -220,7 +241,7 @@ export default function ReisePlanenPage() {
               <button
                 type="button"
                 onClick={startTrip}
-                disabled={selectedModules.length === 0}
+                disabled={selectedModules.length === 0 || authLoading}
                 className="inline-flex items-center justify-center gap-2 rounded-full bg-[#0071e3] px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-[#0077ed] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Sparkles className="h-4 w-4" />
@@ -231,13 +252,13 @@ export default function ReisePlanenPage() {
         )}
       </div>
 
-      {!showLoginHint && (
+      {!showReplaceWarning && (
         <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[var(--st-border)] bg-[rgba(245,245,247,0.88)] px-4 py-4 backdrop-blur-xl sm:hidden">
           <p className="mb-2 text-center text-xs text-[var(--st-muted)]">{selectionLabel}</p>
           <button
             type="button"
             onClick={startTrip}
-            disabled={selectedModules.length === 0}
+            disabled={selectedModules.length === 0 || authLoading}
             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#0071e3] px-6 py-3.5 text-base font-medium text-white transition-colors hover:bg-[#0077ed] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Sparkles className="h-5 w-5" />

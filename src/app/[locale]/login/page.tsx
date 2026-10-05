@@ -40,6 +40,13 @@ const errorMessages: Record<string, string> = {
   "NetworkError": "Netzwerkfehler. Bitte versuche es erneut oder nutze einen anderen Browser.",
 };
 
+/** Only same-site paths, so `?next=` cannot redirect to another domain. */
+function getRedirectAfterLogin(): string {
+  if (typeof window === "undefined") return "/planer";
+  const next = new URLSearchParams(window.location.search).get("next") || "";
+  return /^\/(?![\/\\])/.test(next) ? next : "/planer";
+}
+
 function translateError(msg: string): string {
   for (const [key, value] of Object.entries(errorMessages)) {
     if (msg.toLowerCase().includes(key.toLowerCase())) return value;
@@ -84,7 +91,7 @@ export default function LoginPage() {
         if (result.error) {
           setError(translateError(result.error));
         } else {
-          router.push("/planer");
+          router.push(getRedirectAfterLogin());
         }
       } else {
         if (password.length < 6) {
