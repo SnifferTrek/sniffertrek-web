@@ -34,7 +34,9 @@ interface GoogleMapProps {
   showBucketListOnMap?: boolean;
   onToggleBucketListOnMap?: () => void;
   onAddToBucketList?: (poi: { name: string; lat: number; lng: number; category?: string }) => void;
+  onAddBucketPoiAsStop?: (poi: MapHighlightPoi) => void;
   isInBucketList?: (name: string) => boolean;
+  isInRoute?: (name: string) => boolean;
   onRouteCalculated?: (info: RouteInfo) => void;
   onStopsReordered?: (orderedStopIds: string[]) => void;
   onError?: (message: string) => void;
@@ -120,7 +122,9 @@ export default function GoogleMap({
   showBucketListOnMap = false,
   onToggleBucketListOnMap,
   onAddToBucketList,
+  onAddBucketPoiAsStop,
   isInBucketList,
+  isInRoute,
   onRouteCalculated,
   onStopsReordered,
   onError,
@@ -156,7 +160,9 @@ export default function GoogleMap({
   const onViaPointsChangeRef = useRef(onViaPointsChange);
   const onRemoveStopRef = useRef(onRemoveStop);
   const onAddToBucketListRef = useRef(onAddToBucketList);
+  const onAddBucketPoiAsStopRef = useRef(onAddBucketPoiAsStop);
   const isInBucketListRef = useRef(isInBucketList);
+  const isInRouteRef = useRef(isInRoute);
   const addModeRef = useRef(addMode);
   const addViaModeRef = useRef(addViaMode);
   const viaPointsRef = useRef(viaPoints);
@@ -167,7 +173,9 @@ export default function GoogleMap({
   onViaPointsChangeRef.current = onViaPointsChange;
   onRemoveStopRef.current = onRemoveStop;
   onAddToBucketListRef.current = onAddToBucketList;
+  onAddBucketPoiAsStopRef.current = onAddBucketPoiAsStop;
   isInBucketListRef.current = isInBucketList;
+  isInRouteRef.current = isInRoute;
   addModeRef.current = addMode;
   addViaModeRef.current = addViaMode;
   viaPointsRef.current = viaPoints;
@@ -857,6 +865,8 @@ export default function GoogleMap({
     for (const poi of bucketListPois) {
       if (!Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) continue;
       const pos = { lat: poi.lat, lng: poi.lng };
+      const markerId = (poi.id || poi.name).replace(/[^a-zA-Z0-9_-]/g, "_");
+      const alreadyInRoute = isInRouteRef.current?.(poi.name) ?? false;
       const marker = new google.maps.Marker({
         map,
         position: pos,
@@ -865,20 +875,35 @@ export default function GoogleMap({
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
           scale: 11,
-          fillColor: "#16a34a",
+          fillColor: "#ef4444",
           fillOpacity: 1,
           strokeColor: "#fff",
           strokeWeight: 2,
         },
       });
       const info = new google.maps.InfoWindow({
-        content: `<div style="font-family:system-ui;padding:2px 0;max-width:220px"><div style="font-size:12px;font-weight:600;color:#18181b">${poi.name.replace(/</g, "&lt;")}</div>${
+        content: `<div style="font-family:system-ui;padding:4px 2px;max-width:240px"><div style="font-size:12px;font-weight:600;color:#18181b">${escapeHtml(poi.name)}</div>${
           poi.category
-            ? `<div style="font-size:11px;color:#71717a;margin-top:2px">${String(poi.category).replace(/</g, "&lt;")}</div>`
+            ? `<div style="font-size:11px;color:#71717a;margin-top:2px">${escapeHtml(String(poi.category))}</div>`
             : ""
-        }<div style="font-size:10px;color:#16a34d;margin-top:4px">Bucket List</div></div>`,
+        }<div style="font-size:10px;color:#ef4444;margin-top:4px;font-weight:600">Bucket List</div>${
+          alreadyInRoute
+            ? `<div style="margin-top:8px;font-size:11px;color:#16a34a;font-weight:600">Bereits in Route</div>`
+            : `<div style="margin-top:8px"><button id="bucket-add-stop-${markerId}" style="padding:6px 10px;font-size:11px;font-weight:600;color:#fff;background:#0071e3;border:0;border-radius:7px;cursor:pointer">Als Stopp übernehmen</button></div>`
+        }</div>`,
       });
-      marker.addListener("click", () => info.open(map, marker));
+      marker.addListener("click", () => {
+        info.open(map, marker);
+        if (!alreadyInRoute) {
+          info.addListener("domready", () => {
+            const btn = document.getElementById(`bucket-add-stop-${markerId}`);
+            btn?.addEventListener("click", () => {
+              onAddBucketPoiAsStopRef.current?.(poi);
+              info.close();
+            });
+          });
+        }
+      });
       bucketListMarkers.current.push(marker);
       bounds.extend(pos);
       markerCount += 1;
@@ -987,8 +1012,8 @@ export default function GoogleMap({
               onClick={onToggleBucketListOnMap}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                 showBucketListOnMap
-                  ? "bg-green-600 text-white shadow-lg ring-2 ring-green-300"
-                  : "bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 shadow-sm"
+                  ? "bg-red-600 text-white shadow-lg ring-2 ring-red-300"
+                  : "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 shadow-sm"
               }`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>

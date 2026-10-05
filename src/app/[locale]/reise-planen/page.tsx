@@ -18,12 +18,15 @@ import {
   readPlanIntent,
 } from "@/lib/planIntent";
 import { useAuth } from "@/components/AuthProvider";
+import { isMasterUser } from "@/lib/isMasterUser";
 import { Link, useRouter } from "@/i18n/navigation";
 
 export default function ReisePlanenPage() {
   const t = useTranslations("planStart");
   const router = useRouter();
   const { user } = useAuth();
+  const isMaster = isMasterUser(user);
+  const visibleModules = isMaster ? MODULE_CATALOG : MODULE_CATALOG.filter((item) => item.active);
   const [selectedModules, setSelectedModules] = useState<string[]>(["hotels"]);
   const [showLoginHint, setShowLoginHint] = useState(false);
   const [destination, setDestination] = useState("");
@@ -151,7 +154,7 @@ export default function ReisePlanenPage() {
             </header>
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-              {MODULE_CATALOG.map((item) => {
+              {visibleModules.map((item) => {
                 const isSelected = selectedModules.includes(item.id);
                 const Icon = item.icon;
                 return (

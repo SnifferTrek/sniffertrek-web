@@ -82,6 +82,7 @@ import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
 import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
 import WikiThumb from "@/components/WikiThumb";
 import DateRangePicker from "@/components/DateRangePicker";
+import BucketListMap from "@/components/BucketListMap";
 import AirportSelect from "@/components/AirportSelect";
 import { generateTripPDF } from "@/lib/pdfService";
 import { isCatalogModuleActive } from "@/lib/tripModuleCatalog";
@@ -1494,8 +1495,30 @@ export default function PlanerPage() {
     [addToBucketList, isInBucketList]
   );
 
+  const addBucketPoiAsStop = useCallback(
+    (poi: MapHighlightPoi) => {
+      const endIdx = currentRouteStops.findIndex((s) => s.type === "end");
+      const insertIdx = endIdx >= 0 ? endIdx : currentRouteStops.length;
+      const discoveryEtappeIndex = Math.max(
+        0,
+        currentRouteStops
+          .slice(0, insertIdx)
+          .filter((s) => s.type === "stop" && !!s.isHotel).length
+      );
+      const bucketItem = trip.bucketList.find((b) => b.id === poi.id || b.name === poi.name);
+      void addStopSmart(poi.name, poi.lat, poi.lng, {
+        discoverySource: "bucket",
+        discoveryCategory: poi.category || bucketItem?.category || "Bucket List",
+        discoveryEtappeIndex,
+        discoveryAddedAt: new Date().toISOString(),
+        discoveryWikipediaTitle: bucketItem?.wikipediaTitle,
+      });
+    },
+    [addStopSmart, currentRouteStops, trip.bucketList]
+  );
+
   useEffect(() => {
-    if (!showBucketOnMap || !autocompleteReady) return;
+    if ((!showBucketOnMap && activeTab !== "bucket") || !autocompleteReady) return;
     let cancelled = false;
     void (async () => {
       const pending = trip.bucketList.filter((item) => item.lat == null && item.lng == null);
@@ -1534,7 +1557,56 @@ export default function PlanerPage() {
     return () => {
       cancelled = true;
     };
-  }, [showBucketOnMap, trip.bucketList, autocompleteReady, updateTrip]);
+  }, [showBucketOnMap, activeTab, trip.bucketList, autocompleteReady, updateTrip]);
+
+  const filteredBucketListForMap = useMemo(() => {
+    const landmarkByName = new Map(landmarks.map((l) => [l.name, l]));
+    return trip.bucketList.filter((item) => {
+      const lm = landmarkByName.get(item.name);
+      if (lm) {
+        return filterLandmarks([lm], {
+          query: landmarkQuery,
+          category: landmarkCategory,
+          continent: landmarkContinent,
+          unescoOnly: landmarkUnescoOnly,
+        }).length > 0;
+      }
+      if (landmarkUnescoOnly) return false;
+      if (landmarkCategory && item.category !== landmarkCategory) return false;
+      if (landmarkContinent) return false;
+      if (landmarkQuery) {
+        const q = landmarkQuery.toLowerCase();
+        if (!item.name.toLowerCase().includes(q) && !item.description.toLowerCase().includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [
+    trip.bucketList,
+    landmarks,
+    landmarkQuery,
+    landmarkCategory,
+    landmarkContinent,
+    landmarkUnescoOnly,
+  ]);
+
+  const bucketTabMapMarkers = useMemo((): MapHighlightPoi[] => {
+    const markers: MapHighlightPoi[] = [];
+    for (const item of filteredBucketListForMap) {
+      const lat = item.lat ?? bucketGeocoded[item.id]?.lat;
+      const lng = item.lng ?? bucketGeocoded[item.id]?.lng;
+      if (lat == null || lng == null) continue;
+      markers.push({
+        id: item.id,
+        name: item.name,
+        lat,
+        lng,
+        category: item.category,
+      });
+    }
+    return markers;
+  }, [filteredBucketListForMap, bucketGeocoded]);
 
   const bucketListMapMarkers = useMemo((): MapHighlightPoi[] => {
     if (!showBucketOnMap) return [];
@@ -2938,7 +3010,9 @@ export default function PlanerPage() {
                     showBucketListOnMap={showBucketOnMap}
                     onToggleBucketListOnMap={() => setShowBucketOnMap((v) => !v)}
                     onAddToBucketList={addMapPoiToBucket}
+                    onAddBucketPoiAsStop={addBucketPoiAsStop}
                     isInBucketList={isInBucketList}
+                    isInRoute={isInCurrentRoute}
                   />
                 </div>
 
@@ -4178,6 +4252,12 @@ export default function PlanerPage() {
             {/* Bucket List Tab */}
             {activeTab === "bucket" && (
               <div className="space-y-6">
+                <BucketListMap
+                  markers={bucketTabMapMarkers}
+                  onAddAsStop={addBucketPoiAsStop}
+                  isInRoute={isInCurrentRoute}
+                />
+
                 {/* My Bucket List */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                   <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">

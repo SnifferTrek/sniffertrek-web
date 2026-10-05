@@ -526,6 +526,14 @@ function buildDiscoveryQueryCandidates(name: string): string[] {
   if (beforeSeparator && beforeSeparator.length >= 3 && separatorParts.length < 2) {
     pushUnique(beforeSeparator);
   }
+  const words = strippedCategory
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 4);
+  if (words.length >= 2) {
+    pushUnique(words.slice(0, 3).join(" "));
+    pushUnique(words.slice(0, 2).join(" "));
+  }
   return candidates;
 }
 
@@ -669,7 +677,19 @@ function pickBestWikipediaTitle(query: string, titles: string[]): string | undef
       bestTitle = title;
     }
   }
+  if (bestScore < 25) return undefined;
   return bestTitle ?? titles[0];
+}
+
+function wikipediaTitleMatchesQuery(query: string, title: string): boolean {
+  const nq = normalizeWikiKey(query);
+  const nt = normalizeWikiKey(title);
+  if (!nq || !nt) return false;
+  if (nt === nq || nt.includes(nq) || nq.includes(nt)) return true;
+  const qTokens = nq.split(" ").filter((t) => t.length >= 4);
+  if (!qTokens.length) return false;
+  const shared = qTokens.filter((t) => nt.includes(t)).length;
+  return shared >= Math.min(2, qTokens.length);
 }
 
 async function fetchWikipediaTitleByCoords(lat?: number, lng?: number): Promise<string | undefined> {
@@ -695,10 +715,12 @@ async function fetchWikipediaTitleByCoords(lat?: number, lng?: number): Promise<
 async function fetchWikipediaDiscoveryInfo(
   name: string,
   lat?: number,
-  lng?: number
+  lng?: number,
+  options?: { allowGeoFallback?: boolean }
 ): Promise<{ text?: string; photo?: string }> {
   const candidates = buildDiscoveryQueryCandidates(name);
   if (candidates.length === 0) return {};
+  const allowGeoFallback = options?.allowGeoFallback ?? false;
 
   for (const query of candidates) {
     const exact = await fetchWikipediaSummaryByTitle(query);
@@ -720,9 +742,11 @@ async function fetchWikipediaDiscoveryInfo(
     }
   }
 
-  // Fallback: nearest coordinate-based title.
+  // Avoid nearest-article fallback for named POIs — it often picks unrelated nearby articles.
+  if (!allowGeoFallback) return {};
+
   const nearbyTitle = await fetchWikipediaTitleByCoords(lat, lng);
-  if (nearbyTitle) {
+  if (nearbyTitle && wikipediaTitleMatchesQuery(name, nearbyTitle)) {
     const near = await fetchWikipediaSummaryByTitle(nearbyTitle);
     if (near) {
       const intro = await fetchWikipediaIntroByTitle(near.title || nearbyTitle);
@@ -886,30 +910,7 @@ async function loadMapImage(
       else ctx.lineTo(pos.x, pos.y);
     }
     ctx.stroke();
-    if (hotelDotPoints.length > 0) {
-      const groupSizes = new Map<string, number>();
-      const groupSeen = new Map<string, number>();
-      for (const p of hotelDotPoints) {
-        const key = `${p.lat.toFixed(5)}:${p.lng.toFixed(5)}`;
-        groupSizes.set(key, (groupSizes.get(key) || 0) + 1);
-      }
-      ctx.fillStyle = "#2563eb";
-      for (const p of hotelDotPoints) {
-        const key = `${p.lat.toFixed(5)}:${p.lng.toFixed(5)}`;
-        const total = groupSizes.get(key) || 1;
-        const used = groupSeen.get(key) || 0;
-        groupSeen.set(key, used + 1);
-        const pos = toPx(p);
-        const jitterRadius = total > 1 ? 5 : 0;
-        const angle = total > 1 ? (Math.PI * 2 * used) / total : 0;
-        const dx = Math.cos(angle) * jitterRadius;
-        const dy = Math.sin(angle) * jitterRadius;
-        ctx.beginPath();
-        // Round overnights-only points.
-        ctx.arc(pos.x + dx, pos.y + dy, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
+    drawNumberedRouteMarkers(ctx, valid, toPx);
     return canvas.toDataURL("image/png", 0.95);
   } catch {
     return baseDataUrl;
@@ -1213,7 +1214,7 @@ async function loadOsmOverviewMap(
   return canvas.toDataURL("image/png", 0.95);
 }
 
-const OVERVIEW_MAP_CACHE_PREFIX = "sniffertrek_pdf_overview_map_v11:";
+const OVERVIEW_MAP_CACHE_PREFIX = "sniffertrek_pdf_overview_map_v12:";
 const overviewMapMemoryCache = new Map<string, string>();
 
 function isHotelLikeStop(s: RouteStop): boolean {
@@ -1252,12 +1253,54 @@ function buildOverviewMarkerStops(mainStops: RouteStop[]): RouteStop[] {
   const seen = new Set<string>();
   return mainStops.filter((s) => {
     if (!s.name.trim()) return false;
-    if (!(s.type === "start" || s.type === "end" || s.isHotel)) return false;
-    const key = `${normalizePlaceKey(extractCity(s.name))}:${s.lat ?? ""}:${s.lng ?? ""}`;
+    if (s.lat == null || s.lng == null) return false;
+    const key = `${normalizePlaceKey(s.name)}:${s.lat}:${s.lng}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function markerLabelForStop(stop: RouteStop, index: number, total: number): string {
+  if (index === 0) return "A";
+  if (index === total - 1) return "B";
+  return String(index);
+}
+
+function markerColorForStop(stop: RouteStop, index: number, total: number): string {
+  if (index === 0) return "#3b82f6";
+  if (index === total - 1) return "#ef4444";
+  if (stop.isHotel && stop.bookingConfirmation) return "#22c55e";
+  if (stop.isHotel) return "#a855f7";
+  return "#f97316";
+}
+
+function drawNumberedRouteMarkers(
+  ctx: CanvasRenderingContext2D,
+  stops: RouteStop[],
+  toPx: (p: { lat: number; lng: number }) => { x: number; y: number }
+): void {
+  const valid = stops.filter((s) => s.lat != null && s.lng != null);
+  if (valid.length === 0) return;
+  for (let i = 0; i < valid.length; i++) {
+    const s = valid[i];
+    const pos = toPx({ lat: Number(s.lat), lng: Number(s.lng) });
+    const color = markerColorForStop(s, i, valid.length);
+    const label = markerLabelForStop(s, i, valid.length);
+    const radius = 13;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 12px Helvetica, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, pos.x, pos.y + 0.5);
+  }
 }
 
 function buildOverviewHotelMarkerStops(mainStops: RouteStop[], allHotelStops: RouteStop[]): RouteStop[] {
@@ -2673,7 +2716,10 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
               photo: exact?.photo,
             });
           } else {
-            discoveryInfoCache.set(key, await fetchWikipediaDiscoveryInfo(stop.name, stop.lat, stop.lng));
+            discoveryInfoCache.set(
+              key,
+              await fetchWikipediaDiscoveryInfo(stop.name, stop.lat, stop.lng, { allowGeoFallback: false })
+            );
           }
         }
         const info = discoveryInfoCache.get(key) || {};
