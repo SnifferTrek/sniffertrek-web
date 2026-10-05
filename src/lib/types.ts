@@ -54,6 +54,8 @@ export interface RouteLegInfo {
  to: string;
  distanceMeters: number;
  durationSeconds: number;
+ /** Countries in driving order (start, border crossings, destination), as named by Google. */
+ countries?: string[];
 }
 
 export interface Etappe {

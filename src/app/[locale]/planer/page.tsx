@@ -5192,14 +5192,78 @@ export default function PlanerPage() {
             )}
 
             {/* Drone Maps Tab */}
-            {activeTab === "droneMaps" && (
+            {activeTab === "droneMaps" && (() => {
+              const droneCountryAliases: Record<string, string> = {
+                schweiz: "CH", switzerland: "CH", suiza: "CH", suisse: "CH", svizzera: "CH",
+                italien: "IT", italy: "IT", italia: "IT", italie: "IT",
+                frankreich: "FR", france: "FR", francia: "FR",
+                spanien: "ES", spain: "ES", "españa": "ES", espagne: "ES", spagna: "ES",
+                portugal: "PT", portogallo: "PT",
+                "österreich": "AT", austria: "AT", autriche: "AT",
+                deutschland: "DE", germany: "DE", alemania: "DE", allemagne: "DE", germania: "DE",
+                liechtenstein: "LI",
+              };
+              const droneCountryNames: Record<string, string> = {
+                CH: "Schweiz", IT: "Italien", FR: "Frankreich", ES: "Spanien", PT: "Portugal",
+                AT: "Österreich", DE: "Deutschland", LI: "Liechtenstein",
+              };
+              const dronePortals: Record<string, { name: string; desc: string; link: string; color: string; bg: string }> = {
+                ES: {
+                  name: "ENAIRE Drones",
+                  desc: "Offizielle UAS-Karte für Spanien",
+                  link: "https://drones.enaire.es/",
+                  color: "text-orange-700",
+                  bg: "bg-orange-50",
+                },
+                PT: {
+                  name: "ANAC Zonenkarte",
+                  desc: "Geografische UAS-Zonen (Portugal)",
+                  link: "https://www.anac.pt/vPT/Generico/drones/zona_proibidas_condicionadas/Paginas/Zonasproibidasoucondicionadas.aspx",
+                  color: "text-emerald-700",
+                  bg: "bg-emerald-50",
+                },
+                FR: {
+                  name: "Geoportail Drones",
+                  desc: "Karte mit Drohnen-Einschränkungen",
+                  link: "https://www.geoportail.gouv.fr/donnees/restrictions-pour-drones-de-loisir",
+                  color: "text-indigo-700",
+                  bg: "bg-indigo-50",
+                },
+                CH: {
+                  name: "FOCA Drone Map",
+                  desc: "BAZL-Karte für Drohnenzonen",
+                  link: "https://map.geo.admin.ch/#/map?lang=de&topic=aviation&layers=ch.bazl.einschraenkungen-drohnen",
+                  color: "text-rose-700",
+                  bg: "bg-rose-50",
+                },
+                IT: {
+                  name: "d-flight",
+                  desc: "Offizielle UAS-Zonenkarte für Italien (ENAC/ENAV)",
+                  link: "https://www.d-flight.it/new_portal/services/mappe/",
+                  color: "text-green-700",
+                  bg: "bg-green-50",
+                },
+              };
+              const routeCountries: { key: string; label: string }[] = [];
+              for (const leg of routeInfo?.legs || []) {
+                for (const raw of leg.countries || []) {
+                  const name = raw.trim();
+                  if (!name) continue;
+                  const code = droneCountryAliases[name.toLowerCase()];
+                  const key = code || name.toLowerCase();
+                  if (routeCountries.some((c) => c.key === key)) continue;
+                  routeCountries.push({ key, label: code ? droneCountryNames[code] : name });
+                }
+              }
+
+              return (
               <div className="space-y-6">
                 <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-100 rounded-2xl p-5">
                   <div className="flex items-start gap-3">
                     <Map className="w-5 h-5 text-cyan-600 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-cyan-900">
-                        Drohnenkarten Europa
+                        Drohnenkarten für deine Route
                       </p>
                       <p className="text-sm text-cyan-700 mt-1">
                         Öffne die offiziellen Kartenportale für Flugzonen, Sperrgebiete und lokale Regeln.
@@ -5209,67 +5273,58 @@ export default function PlanerPage() {
                   </div>
                 </div>
 
-                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {[
-                    {
-                      country: "Spanien",
-                      name: "ENAIRE Drones",
-                      desc: "Offizielle UAS-Karte für Spanien",
-                      link: "https://drones.enaire.es/",
-                      color: "text-orange-700",
-                      bg: "bg-orange-50",
-                    },
-                    {
-                      country: "Portugal",
-                      name: "ANAC Zonenkarte",
-                      desc: "Geografische UAS-Zonen (Portugal)",
-                      link: "https://www.anac.pt/vPT/Generico/drones/zona_proibidas_condicionadas/Paginas/Zonasproibidasoucondicionadas.aspx",
-                      color: "text-emerald-700",
-                      bg: "bg-emerald-50",
-                    },
-                    {
-                      country: "Frankreich",
-                      name: "Geoportail Drones",
-                      desc: "Karte mit Drohnen-Einschränkungen",
-                      link: "https://www.geoportail.gouv.fr/donnees/restrictions-pour-drones-de-loisir",
-                      color: "text-indigo-700",
-                      bg: "bg-indigo-50",
-                    },
-                    {
-                      country: "Schweiz",
-                      name: "FOCA Drone Map",
-                      desc: "BAZL-Karte für Drohnenzonen",
-                      link: "https://map.geo.admin.ch/#/map?lang=de&topic=aviation&layers=ch.bazl.einschraenkungen-drohnen",
-                      color: "text-rose-700",
-                      bg: "bg-rose-50",
-                    },
-                  ].map((item) => (
-                    <a
-                      key={item.country}
-                      href={item.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => logAffiliateClick("droneMaps", item.name, item.link)}
-                      className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className={`w-12 h-12 ${item.bg} rounded-xl flex items-center justify-center`}>
-                          <Map className={`w-6 h-6 ${item.color}`} />
+                {routeCountries.length === 0 ? (
+                  <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                    <p className="text-sm text-gray-600">
+                      Noch keine Länder ermittelt. Sobald deine Route im <strong>Autoroute</strong>-Tab berechnet ist,
+                      erscheinen hier die Drohnenkarten der Länder entlang deiner Route.
+                    </p>
+                  </div>
+                ) : (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {routeCountries.map(({ key, label }) => {
+                    const portal = dronePortals[key];
+                    if (!portal) {
+                      return (
+                        <div key={key} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                          <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center mb-3">
+                            <Map className="w-6 h-6 text-gray-400" />
+                          </div>
+                          <h4 className="font-semibold text-gray-900 mb-1">{label}</h4>
+                          <p className="text-xs text-gray-500">Noch keine offizielle Karte hinterlegt</p>
                         </div>
-                        <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
-                      </div>
-                      <p className="text-xs text-gray-500 mb-1">{item.country}</p>
-                      <h4 className="font-semibold text-gray-900 mb-1">{item.name}</h4>
-                      <p className="text-xs text-gray-500 mb-3">{item.desc}</p>
-                      <div className={`inline-flex items-center gap-1 text-xs font-medium ${item.color} ${item.bg} px-2.5 py-1 rounded-full`}>
-                        <Map className="w-3 h-3" />
-                        Karte öffnen
-                      </div>
-                    </a>
-                  ))}
+                      );
+                    }
+                    return (
+                      <a
+                        key={key}
+                        href={portal.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => logAffiliateClick("droneMaps", portal.name, portal.link)}
+                        className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className={`w-12 h-12 ${portal.bg} rounded-xl flex items-center justify-center`}>
+                            <Map className={`w-6 h-6 ${portal.color}`} />
+                          </div>
+                          <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                        </div>
+                        <h4 className="font-semibold text-gray-900 mb-1">{label}</h4>
+                        <p className="text-sm text-gray-700 mb-1">{portal.name}</p>
+                        <p className="text-xs text-gray-500 mb-3">{portal.desc}</p>
+                        <div className={`inline-flex items-center gap-1 text-xs font-medium ${portal.color} ${portal.bg} px-2.5 py-1 rounded-full`}>
+                          <Map className="w-3 h-3" />
+                          Karte öffnen
+                        </div>
+                      </a>
+                    );
+                  })}
                 </div>
+                )}
               </div>
-            )}
+              );
+            })()}
 
             {/* POI Tab */}
             {activeTab === "poi" && (

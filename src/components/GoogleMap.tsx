@@ -1146,7 +1146,32 @@ function extractLegInfos(legs: google.maps.DirectionsLeg[]): RouteLegInfo[] {
     to: leg.end_address || "",
     distanceMeters: leg.distance?.value || 0,
     durationSeconds: leg.duration?.value || 0,
+    countries: extractLegCountries(leg),
   }));
+}
+
+function addressCountry(address: string | undefined): string {
+  const parts = (address || "").split(",").map((p) => p.trim()).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : "";
+}
+
+// Google only announces border crossings as localized step notes; German and English are recognized.
+function extractLegCountries(leg: google.maps.DirectionsLeg): string[] {
+  const out: string[] = [];
+  const push = (name: string) => {
+    const n = name.trim();
+    if (n && out[out.length - 1] !== n) out.push(n);
+  };
+  push(addressCountry(leg.start_address));
+  for (const step of leg.steps || []) {
+    const text = (step.instructions || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    const match =
+      text.match(/Du bist bald in (?:der |den |dem )?([^.]+?)\s*\./) ||
+      text.match(/Entering ([^.]+?)\s*(?:\.|$)/);
+    if (match) push(match[1]);
+  }
+  push(addressCountry(leg.end_address));
+  return out;
 }
 
 function sumLegs(legs: google.maps.DirectionsLeg[]): { distance: number; duration: number } {
