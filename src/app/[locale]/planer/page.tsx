@@ -3069,81 +3069,73 @@ export default function PlanerPage() {
                   </div>
                 )}
 
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                  <div className="flex items-center gap-3 mb-4">
-                    <Navigation className="w-5 h-5 text-blue-500" />
-                    <h3 className="font-semibold text-gray-900">
-                      Routendetails
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-3 gap-4 text-center">
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <div className={`text-2xl font-bold ${routeInfo?.distance ? "text-blue-600" : "text-gray-300"}`}>
-                        {routeInfo?.distance || "—"}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">Distanz</div>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <div className={`text-2xl font-bold ${routeInfo?.duration ? "text-blue-600" : "text-gray-300"}`}>
-                        {routeInfo?.duration || "—"}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        Fahrzeit
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <div className={`text-2xl font-bold ${routeInfo ? "text-blue-600" : "text-gray-300"}`}>
-                        {routeInfo?.stops ?? "—"}
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        Zwischenstopps
-                      </div>
-                    </div>
-                  </div>
-
-                  {currentOrigin && currentDestination && !routeInfo?.distance && !routeError && (
-                    <p className="text-xs text-gray-400 text-center mt-4">
-                      Wähle Start und Ziel über die Autocomplete-Vorschläge aus, damit die Route berechnet wird.
-                    </p>
-                  )}
-
+                <div className="bg-white rounded-2xl px-4 py-3 shadow-sm border border-gray-100">
                   {(() => {
                     const waypointCount = currentRouteStops.filter((s) => s.type === "stop" && s.name.trim()).length;
                     const tooMany = waypointCount >= 20;
+                    const stats = [
+                      { icon: Navigation, value: routeInfo?.distance || "—", active: !!routeInfo?.distance, label: "Distanz" },
+                      { icon: Clock, value: routeInfo?.duration || "—", active: !!routeInfo?.duration, label: "Fahrzeit" },
+                      { icon: MapPin, value: routeInfo?.stops ?? "—", active: !!routeInfo, label: "Zwischenstopps" },
+                    ];
                     return (
                       <>
-                        {currentOrigin && currentDestination && !tooMany && (
-                          <button
-                            onClick={reverseRoute}
-                            className="mt-4 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                          >
-                            <ArrowDownUp className="w-4 h-4" />
-                            Route umkehren
-                          </button>
-                        )}
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                          {stats.map(({ icon: Icon, value, active, label }) => (
+                            <div key={label} className="flex items-center gap-2">
+                              <Icon className={`w-4 h-4 flex-shrink-0 ${active ? "text-blue-500" : "text-gray-300"}`} />
+                              <div className="leading-tight">
+                                <div className={`text-sm font-semibold ${active ? "text-gray-900" : "text-gray-300"}`}>
+                                  {value}
+                                </div>
+                                <div className="text-[11px] text-gray-400">{label}</div>
+                              </div>
+                            </div>
+                          ))}
 
-                        {waypointCount >= 2 && !tooMany && (
-                          <button
-                            onClick={handleOptimizeRoute}
-                            disabled={optimizeRoute}
-                            className="mt-2 w-full flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-emerald-500/25 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-                          >
-                            {optimizeRoute ? (
-                              <>
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Wird optimiert...
-                              </>
-                            ) : (
-                              <>
-                                <Zap className="w-4 h-4" />
-                                Kürzeste Route berechnen
-                              </>
-                            )}
-                          </button>
+                          {!tooMany && ((currentOrigin && currentDestination) || waypointCount >= 2) && (
+                            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                              {currentOrigin && currentDestination && !tooMany && (
+                                <button
+                                  onClick={reverseRoute}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
+                                >
+                                  <ArrowDownUp className="w-3.5 h-3.5" />
+                                  Route umkehren
+                                </button>
+                              )}
+
+                              {waypointCount >= 2 && !tooMany && (
+                                <button
+                                  onClick={handleOptimizeRoute}
+                                  disabled={optimizeRoute}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-medium text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-50 disabled:opacity-50"
+                                >
+                                  {optimizeRoute ? (
+                                    <>
+                                      <div className="w-3.5 h-3.5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+                                      Wird optimiert...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Zap className="w-3.5 h-3.5" />
+                                      Kürzeste Route berechnen
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {currentOrigin && currentDestination && !routeInfo?.distance && !routeError && (
+                          <p className="text-xs text-gray-400 mt-2">
+                            Wähle Start und Ziel über die Autocomplete-Vorschläge aus, damit die Route berechnet wird.
+                          </p>
                         )}
 
                         {tooMany && (
-                          <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                          <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                             <p className="text-xs text-amber-700">
                               <strong>{waypointCount} Zwischenstopps</strong> — Route umkehren und optimieren sind bei 20+ Stopps deaktiviert.
                               Verwende die Pfeile oder «+ Stopp auf Karte», um die Route anzupassen.

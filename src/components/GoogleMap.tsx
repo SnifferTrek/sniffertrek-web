@@ -526,11 +526,22 @@ export default function GoogleMap({
           segmentCache.current.set(key, { result, legs: segLegs, distance: segDistance, duration: segDuration });
         }
 
+        // Light halo under the coloured line keeps the route readable on satellite imagery.
+        const outlineRenderer = new google.maps.DirectionsRenderer({
+          map: mapInstance.current,
+          suppressMarkers: true,
+          suppressInfoWindows: true,
+          polylineOptions: { strokeColor: "#ffffff", strokeWeight: 9, strokeOpacity: 0.9, clickable: false, zIndex: 1 },
+          preserveViewport: true,
+        });
+        outlineRenderer.setDirections(result);
+        renderers.current.push(outlineRenderer);
+
         const renderer = new google.maps.DirectionsRenderer({
           map: mapInstance.current,
           suppressMarkers: true,
           draggable: !!onViaPointsChangeRef.current && !optimize,
-          polylineOptions: { strokeColor: colors[e % colors.length], strokeWeight: 5, strokeOpacity: 0.8, clickable: true },
+          polylineOptions: { strokeColor: colors[e % colors.length], strokeWeight: 5, strokeOpacity: 0.8, clickable: true, zIndex: 2 },
           preserveViewport: true,
         });
         renderer.setDirections(result);
@@ -558,7 +569,9 @@ export default function GoogleMap({
             return points;
           };
           renderer.addListener("directions_changed", () => {
-            const segmentVia = extractSegmentVia(renderer.getDirections());
+            const changed = renderer.getDirections();
+            if (changed) outlineRenderer.setDirections(changed);
+            const segmentVia = extractSegmentVia(changed);
             if (segmentVia.length === 0) {
               // Keep existing shaping points when Google does not emit explicit via points.
               return;
