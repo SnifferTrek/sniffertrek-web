@@ -8,6 +8,7 @@ interface SearchParams {
   rooms?: number;
   origin?: string;
   clickRef?: string;
+  landingPage?: string;
 }
 
 function getPartnerConfig(id: string) {
