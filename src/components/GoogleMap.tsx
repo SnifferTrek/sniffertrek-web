@@ -42,6 +42,7 @@ interface GoogleMapProps {
   optimize?: boolean;
   bucketListPois?: MapHighlightPoi[];
   showBucketListOnMap?: boolean;
+  fitBucketMarkers?: boolean;
   onToggleBucketListOnMap?: () => void;
   onAddToBucketList?: (poi: { name: string; lat: number; lng: number; category?: string }) => void;
   onAddBucketPoiAsStop?: (poi: MapHighlightPoi) => void;
@@ -130,6 +131,7 @@ export default function GoogleMap({
   optimize = false,
   bucketListPois = EMPTY_BUCKET_POIS,
   showBucketListOnMap = false,
+  fitBucketMarkers = false,
   onToggleBucketListOnMap,
   onAddToBucketList,
   onAddBucketPoiAsStop,
@@ -923,14 +925,14 @@ export default function GoogleMap({
       markerCount += 1;
     }
 
-    if (markerCount > 0) {
+    if (markerCount > 0 && fitBucketMarkers) {
       map.fitBounds(bounds, 56);
       google.maps.event.addListenerOnce(map, "idle", () => {
         const zoom = map.getZoom();
         if (zoom != null && zoom > 15) map.setZoom(15);
       });
     }
-  }, [loaded, bucketListPois, showBucketListOnMap, clearBucketListMarkers]);
+  }, [loaded, bucketListPois, showBucketListOnMap, fitBucketMarkers, clearBucketListMarkers]);
 
   useEffect(() => {
     const onFullscreenChange = () => {

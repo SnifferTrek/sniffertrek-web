@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { Trip, RouteStop, Etappe, PdfPhotoPlacement, PdfPhotoLayout } from "./types";
+import { resolvePdfExportOptions } from "./pdfExportOptions";
 
 // --- Constants (matching iOS TripPrintView.swift) ---
 const PAGE_W = 595.28; // A4 pt
@@ -2020,6 +2021,7 @@ export async function prewarmOverviewMapForPdf(trip: Trip, googleApiKey?: string
 
 export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   const { trip, etappen, routeInfo, googleApiKey, onProgress } = opts;
+  const exportOpts = resolvePdfExportOptions(trip);
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const hotelStops = collectAllHotelStops(trip);
   const aiDiscoveriesByEtappe = collectAiDiscoveriesByEtappe(trip);
@@ -2048,20 +2050,22 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     const preferredPolyline = getPreferredOverviewPolyline(trip);
     for (const row of legend) overviewHotelLegend.push(row);
     for (const [k, v] of labelByCityKey.entries()) overviewHotelLabelByCityKey.set(k, v);
-    const overviewCacheKey = buildOverviewMapCacheKey(mainStops, overviewHotelLegend, preferredPolyline);
-    overviewMapData = readOverviewMapCache(overviewCacheKey);
-    if (!overviewMapData) {
-      overviewMapData = await loadMapImage(
-        mainStops,
-        googleApiKey,
-        overviewRouteByNames || undefined,
-        undefined,
-        preferredPolyline || undefined,
-        overviewHotelMarkerStops.length > 0 ? overviewHotelMarkerStops : overviewMarkerStops,
-        overviewHotelLabelByCityKey,
-        false
-      );
-      if (overviewMapData) writeOverviewMapCache(overviewCacheKey, overviewMapData);
+    if (exportOpts.overviewMap) {
+      const overviewCacheKey = buildOverviewMapCacheKey(mainStops, overviewHotelLegend, preferredPolyline);
+      overviewMapData = readOverviewMapCache(overviewCacheKey);
+      if (!overviewMapData) {
+        overviewMapData = await loadMapImage(
+          mainStops,
+          googleApiKey,
+          overviewRouteByNames || undefined,
+          undefined,
+          preferredPolyline || undefined,
+          overviewHotelMarkerStops.length > 0 ? overviewHotelMarkerStops : overviewMarkerStops,
+          overviewHotelLabelByCityKey,
+          false
+        );
+        if (overviewMapData) writeOverviewMapCache(overviewCacheKey, overviewMapData);
+      }
     }
 
     for (let i = 0; i < etappen.length; i++) {
@@ -2083,7 +2087,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       }
       routedSegmentsByIndex[i] = routedSegments;
       encodedRouteByIndex[i] = encodedByNames;
-      if (etappeStops.length >= 2) {
+      if (exportOpts.etappeMaps && etappeStops.length >= 2) {
         const waypoints = waypointNames;
         etappeMapData.push(
           await loadMapImage(etappeStops, googleApiKey, {
@@ -2225,6 +2229,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   // =====================================================================
   // PAGE 2 — Gesamtroute Karte
   // =====================================================================
+  if (exportOpts.overviewMap) {
   progress(22, "Erstelle Gesamtroute-Karte...");
   doc.addPage();
   pageNumber++;
@@ -2257,10 +2262,12 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     setColor(doc, GRAY);
     doc.text("Karte konnte nicht geladen werden.", M, y + 20);
   }
+  }
 
   // =====================================================================
   // PAGE 3 — Reiseübersicht
   // =====================================================================
+  if (exportOpts.travelOverview) {
   progress(25, "Erstelle Reiseübersicht...");
   doc.addPage();
   pageNumber++;
@@ -2348,10 +2355,12 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     }
     y = Math.max(col0Y, col1Y) + 10;
   }
+  }
 
   // =====================================================================
   // PAGE 4 — Hotelliste (kompakt)
   // =====================================================================
+  if (exportOpts.accommodations) {
   progress(35, "Erstelle Hotelliste...");
   doc.addPage();
   pageNumber++;
@@ -2426,10 +2435,12 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       }
     }
   }
+  }
 
   // =====================================================================
   // PAGE 5 — Inhaltsverzeichnis
   // =====================================================================
+  if (exportOpts.tableOfContents) {
   progress(45, "Erstelle Inhaltsverzeichnis...");
   doc.addPage();
   pageNumber++;
@@ -2498,6 +2509,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     setColor(doc, BLACK);
     drawTocRow(routeLabel, kmLabel, pageLabel);
   }
+  }
 
   // =====================================================================
   // PAGE 5+ — Tag für Tag
@@ -2537,7 +2549,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     y += 15;
 
     // Etappe map
-    if (etappeMapData[i]) {
+    if (exportOpts.etappeMaps && etappeMapData[i]) {
       try {
         const mapH = 180;
         const aspect = await getDataUrlAspect(etappeMapData[i]!);
@@ -2637,7 +2649,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
 
     // Legs detail (after hotel, before Entdecken)
     const segmentRows = buildSegmentRows(et, etappeStopsByIndex[i] || [], routedSegmentsByIndex[i]);
-    if (segmentRows.length > 1) {
+    if (exportOpts.teilstrecken && segmentRows.length > 1) {
       if (y > PAGE_H - 120) {
         doc.addPage();
         pageNumber++;
@@ -2674,7 +2686,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     await renderManualPhotoPageIfNeeded("afterTeilstrecken");
 
     // Discoveries selected from "Entdecken"
-    if (discoveries.length > 0) {
+    if (exportOpts.entdeckenHighlights && discoveries.length > 0) {
       // Extra spacing before "Entdecken Highlights" for readability (approx. 2 blank lines).
       y += 22;
       if (y > PAGE_H - 150) {

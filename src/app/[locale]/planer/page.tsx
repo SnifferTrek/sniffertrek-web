@@ -80,7 +80,8 @@ import GoogleMap, { useGoogleAutocomplete, type MapHighlightPoi } from "@/compon
 import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
 import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
-import { landmarkToMapPoi } from "@/lib/bucketMapPoi";
+import { filterPoisNearStops, landmarkToMapPoi } from "@/lib/bucketMapPoi";
+import { PDF_EXPORT_OPTION_DEFS, isPdfExportOptionEnabled } from "@/lib/pdfExportOptions";
 import WikiThumb from "@/components/WikiThumb";
 import DateRangePicker from "@/components/DateRangePicker";
 import BucketListMap from "@/components/BucketListMap";
@@ -239,6 +240,7 @@ export default function PlanerPage() {
   const [pdfGenerating, setPdfGenerating] = useState(false);
   const [pdfProgress, setPdfProgress] = useState(0);
   const [pdfProgressMsg, setPdfProgressMsg] = useState("");
+  const [showPdfExportModal, setShowPdfExportModal] = useState(false);
   const [showModuleSettings, setShowModuleSettings] = useState(false);
   const [showTips, setShowTips] = useState(true);
   const [isEditingTripName, setIsEditingTripName] = useState(false);
@@ -1486,7 +1488,7 @@ export default function PlanerPage() {
       if (isInBucketList(poi.name)) return;
       addToBucketList({
         name: poi.name,
-        category: poi.category || "Karten-POI",
+        category: poi.category || "Sehenswürdigkeit",
         rating: 0,
         description: poi.description || "",
         lat: poi.lat,
@@ -1587,8 +1589,8 @@ export default function PlanerPage() {
 
   const bucketListMapMarkers = useMemo((): MapHighlightPoi[] => {
     if (!showBucketOnMap) return [];
-    return catalogLandmarkMapMarkers;
-  }, [showBucketOnMap, catalogLandmarkMapMarkers]);
+    return filterPoisNearStops(catalogLandmarkMapMarkers, currentRouteStops, 120);
+  }, [showBucketOnMap, catalogLandmarkMapMarkers, currentRouteStops]);
 
   const isInCurrentRoute = useCallback(
     (name: string) => {
@@ -2374,6 +2376,81 @@ export default function PlanerPage() {
         </div>
       )}
 
+      {showPdfExportModal && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowPdfExportModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">PDF exportieren</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Wähle, welche Inhalte im Reisebericht enthalten sein sollen.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPdfExportModal(false)}
+                className="w-8 h-8 rounded-full border border-gray-200 text-gray-500 hover:text-gray-800 flex items-center justify-center"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6">
+              {PDF_EXPORT_OPTION_DEFS.map((def) => (
+                <label
+                  key={def.key}
+                  className="flex items-start gap-2.5 rounded-xl border border-gray-100 bg-gray-50 p-3 cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isPdfExportOptionEnabled(trip, def.key)}
+                    onChange={(ev) => updateTrip({ [def.tripField]: ev.target.checked })}
+                    className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-gray-900">{def.label}</span>
+                    <span className="block text-[11px] text-gray-500 leading-snug mt-0.5">
+                      {def.description}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPdfExportModal(false);
+                  setActiveTab("report");
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                Deckblatt bearbeiten
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPdfExportModal(false);
+                  void handleDownloadPDF();
+                }}
+                disabled={pdfGenerating}
+                className="inline-flex items-center gap-2 rounded-full bg-[#0071e3] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0077ed] disabled:opacity-50"
+              >
+                <FileDown className="w-4 h-4" />
+                PDF erstellen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {openEtappeMapIndex != null && etappen[openEtappeMapIndex] && (
         <div className="fixed inset-0 z-[95] bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden border border-gray-200">
@@ -2485,7 +2562,7 @@ export default function PlanerPage() {
 
               {/* PDF Download */}
               <button
-                onClick={handleDownloadPDF}
+                onClick={() => setShowPdfExportModal(true)}
                 disabled={pdfGenerating}
                 className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all border border-white/20 disabled:opacity-50"
                 title="Reise als PDF herunterladen"
@@ -3678,7 +3755,51 @@ export default function PlanerPage() {
             {activeTab === "report" && (
               <div className="space-y-6">
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                  <h3 className="font-semibold text-gray-900">Reisebericht</h3>
+                  <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Reisebericht</h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Wähle die PDF-Inhalte und passe das Deckblatt an.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleDownloadPDF()}
+                      disabled={pdfGenerating}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#0071e3] px-4 py-2 text-sm font-medium text-white hover:bg-[#0077ed] disabled:opacity-50"
+                    >
+                      {pdfGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
+                      PDF erstellen
+                    </button>
+                  </div>
+
+                  <div className="mb-6">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      PDF-Inhalte
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                      {PDF_EXPORT_OPTION_DEFS.map((def) => (
+                        <label
+                          key={def.key}
+                          className="flex items-start gap-2.5 rounded-xl border border-gray-100 bg-gray-50 p-3 cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isPdfExportOptionEnabled(trip, def.key)}
+                            onChange={(ev) => updateTrip({ [def.tripField]: ev.target.checked })}
+                            className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium text-gray-900">{def.label}</span>
+                            <span className="block text-[11px] text-gray-500 leading-snug mt-0.5">
+                              {def.description}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="mt-4 flex flex-wrap items-start gap-4">
                     <div className="flex h-[236px] flex-col items-start justify-between">
                       {trip.pdfCoverPhotoDataUrl ? (
