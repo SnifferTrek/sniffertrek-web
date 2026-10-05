@@ -929,8 +929,8 @@ export default function PlanerPage() {
     const waypoints = stops.filter((s) => s.type === "stop");
     if (!start || !end) return;
 
-    const newStart: RouteStop = { ...start, name: end.name };
-    const newEnd: RouteStop = { ...end, name: start.name };
+    const newStart: RouteStop = { ...start, name: end.name, lat: end.lat, lng: end.lng };
+    const newEnd: RouteStop = { ...end, name: start.name, lat: start.lat, lng: start.lng };
     const reversedWaypoints = [...waypoints].reverse();
 
     updateCurrentStops([newStart, ...reversedWaypoints, newEnd]);
