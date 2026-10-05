@@ -47,7 +47,7 @@ export default async function UnsereReisenPage({ params }: Props) {
 
         <ul className="st-apple-hub__grid">
           {TRAVEL_REPORT_NAV.map((report) => (
-            <li key={report.slug}>
+            <li key={report.slug} id={report.slug}>
               <Link href={report.href} className="st-apple-hub__card">
                 <div className="st-apple-hub__media">
                   {/* eslint-disable-next-line @next/next/no-img-element */}

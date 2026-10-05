@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ArrowRight, Menu, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { Link } from "@/i18n/navigation";
 import {
@@ -12,20 +13,22 @@ import {
   V2_TRIPS_HREF,
 } from "@/lib/v2HomeData";
 
-const LINKS = [
-  { href: V2_PLAN_HREF, label: "Reise planen" },
-  { href: V2_IDEAS_HREF, label: "Reiseideen" },
-  { href: V2_DESTINATIONS_HREF, label: "Reiseziele" },
-  { href: V2_HOW_HREF, label: "So funktioniert's" },
-] as const;
-
 type Props = {
   homeHref?: string;
 };
 
 export default function V2Navigation({ homeHref = "/" }: Props) {
+  const tChrome = useTranslations("chrome");
+  const tFooter = useTranslations("footer");
   const [open, setOpen] = useState(false);
   const [stuck, setStuck] = useState(false);
+
+  const links = [
+    { href: V2_PLAN_HREF, label: tFooter("planTrip") },
+    { href: V2_IDEAS_HREF, label: tChrome("travelIdeas") },
+    { href: V2_DESTINATIONS_HREF, label: tChrome("destinations") },
+    { href: V2_HOW_HREF, label: tChrome("howItWorks") },
+  ];
 
   useEffect(() => {
     const onScroll = () => setStuck(window.scrollY > 8);
@@ -44,7 +47,7 @@ export default function V2Navigation({ homeHref = "/" }: Props) {
   return (
     <header className={`v2-nav ${stuck ? "is-stuck" : ""}`}>
       <div className="v2-wrap flex h-[4.25rem] items-center justify-between gap-4">
-        <Link href={homeHref} className="flex shrink-0 items-center" aria-label="SnifferTrek">
+        <Link href={homeHref} className="flex shrink-0 items-center" aria-label={tChrome("homeAria")}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/images/sniffertrek-logo.svg"
@@ -56,7 +59,7 @@ export default function V2Navigation({ homeHref = "/" }: Props) {
         </Link>
 
         <nav className="hidden items-center gap-7 md:flex" aria-label="Hauptnavigation">
-          {LINKS.map((item) => (
+          {links.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -73,10 +76,10 @@ export default function V2Navigation({ homeHref = "/" }: Props) {
             href={V2_TRIPS_HREF}
             className="hidden text-[0.9375rem] text-[var(--v2-muted)] transition-colors hover:text-[var(--v2-ink)] sm:inline"
           >
-            Meine Reisen
+            {tChrome("myTrips")}
           </Link>
           <Link href={V2_PLAN_HREF} className="v2-btn !hidden md:!inline-flex">
-            Reise planen
+            {tFooter("planTrip")}
             <ArrowRight className="h-4 w-4" aria-hidden />
           </Link>
           <button
@@ -84,7 +87,7 @@ export default function V2Navigation({ homeHref = "/" }: Props) {
             className="inline-flex h-10 w-10 items-center justify-center rounded-full md:hidden"
             aria-expanded={open}
             aria-controls="v2-mobile-nav"
-            aria-label={open ? "Menü schliessen" : "Menü öffnen"}
+            aria-label={open ? tChrome("closeMenu") : tChrome("openMenu")}
             onClick={() => setOpen((v) => !v)}
           >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -98,7 +101,7 @@ export default function V2Navigation({ homeHref = "/" }: Props) {
             <div className="px-2 py-2">
               <LanguageSwitcher className="text-xs" />
             </div>
-            {LINKS.map((item) => (
+            {links.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -113,10 +116,10 @@ export default function V2Navigation({ homeHref = "/" }: Props) {
               className="rounded-xl px-2 py-3 text-base text-[var(--v2-ink)]"
               onClick={() => setOpen(false)}
             >
-              Meine Reisen
+              {tChrome("myTrips")}
             </Link>
             <Link href={V2_PLAN_HREF} className="v2-btn mt-3 justify-center" onClick={() => setOpen(false)}>
-              Reise planen
+              {tFooter("planTrip")}
               <ArrowRight className="h-4 w-4" aria-hidden />
             </Link>
           </nav>

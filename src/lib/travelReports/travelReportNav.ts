@@ -20,7 +20,7 @@ export const TRAVEL_REPORT_NAV: {
 }[] = [
   {
     slug: "venedig",
-    href: "/reisebericht/venedig",
+    href: "/unsere-reisen#venedig",
     label: "Venedig",
     tagline: "Ruhige Gassen · Vaporetto · Lagune",
     duration: "3 Tage",
@@ -29,7 +29,7 @@ export const TRAVEL_REPORT_NAV: {
   },
   {
     slug: "cinque-terre",
-    href: "/reisebericht/cinque-terre",
+    href: "/unsere-reisen#cinque-terre",
     label: "Cinque Terre",
     tagline: "Basis Porto Venere · Zug, Trail & Boot",
     duration: "4 Nächte",
@@ -38,7 +38,7 @@ export const TRAVEL_REPORT_NAV: {
   },
   {
     slug: "barcelona",
-    href: "/reisebericht/barcelona",
+    href: "/unsere-reisen#barcelona",
     label: "Barcelona",
     tagline: "Flug · Metro · Gaudí & Meer",
     duration: "4 Tage",
@@ -47,7 +47,7 @@ export const TRAVEL_REPORT_NAV: {
   },
   {
     slug: "cote-dazur",
-    href: "/reisebericht/cote-dazur",
+    href: "/unsere-reisen#cote-dazur",
     label: "Côte d'Azur",
     tagline: "Drei Basen · Küste statt Autobahn",
     duration: "5 Nächte",
@@ -56,7 +56,7 @@ export const TRAVEL_REPORT_NAV: {
   },
   {
     slug: "provence",
-    href: "/reisebericht/provence",
+    href: "/unsere-reisen#provence",
     label: "Provence",
     tagline: "Avignon · Luberon · Aix & Verdon",
     duration: "5 Nächte",
@@ -65,7 +65,7 @@ export const TRAVEL_REPORT_NAV: {
   },
   {
     slug: "grandes-alpes",
-    href: "/reisebericht/grandes-alpes",
+    href: "/unsere-reisen#grandes-alpes",
     label: "Grandes Alpes",
     tagline: "Genf → Cannes · Pässe statt Autobahn",
     duration: "7 Nächte",

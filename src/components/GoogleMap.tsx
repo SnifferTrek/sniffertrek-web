@@ -405,6 +405,10 @@ export default function GoogleMap({
 
     if (!start || !end) {
       onRouteCalculatedRef.current?.({ distance: "", duration: "", stops: 0, legs: [] });
+      if (showBucketListOnMap) {
+        mapInstance.current.setCenter({ lat: 20, lng: 0 });
+        mapInstance.current.setZoom(2);
+      }
       return;
     }
 
@@ -839,6 +843,21 @@ export default function GoogleMap({
             viaMarkers.current.push(marker);
           });
         }
+
+        if (markers.current.length > 0) {
+          const routeBounds = new google.maps.LatLngBounds();
+          for (const marker of markers.current) {
+            const pos = marker.getPosition();
+            if (pos) routeBounds.extend(pos);
+          }
+          if (!routeBounds.isEmpty()) {
+            mapInstance.current!.fitBounds(routeBounds, 56);
+            google.maps.event.addListenerOnce(mapInstance.current!, "idle", () => {
+              const zoom = mapInstance.current?.getZoom();
+              if (zoom != null && zoom > 15) mapInstance.current?.setZoom(15);
+            });
+          }
+        }
       }
 
       setError(null);
@@ -858,7 +877,7 @@ export default function GoogleMap({
     } finally {
       setCalculating(false);
     }
-  }, [loaded, stops, viaPoints, travelMode, optimize, clearRenderers, stopLocation, segmentKey]);
+  }, [loaded, stops, viaPoints, travelMode, optimize, showBucketListOnMap, clearRenderers, stopLocation, segmentKey]);
 
   useEffect(() => {
     const timer = setTimeout(calculateRoute, 800);
@@ -931,8 +950,17 @@ export default function GoogleMap({
         const zoom = map.getZoom();
         if (zoom != null && zoom > 15) map.setZoom(15);
       });
+      return;
     }
-  }, [loaded, bucketListPois, showBucketListOnMap, fitBucketMarkers, clearBucketListMarkers]);
+
+    const filledStops = stops.filter((s) => s.name.trim() !== "");
+    const hasRoute =
+      filledStops.some((s) => s.type === "start") && filledStops.some((s) => s.type === "end");
+    if (!hasRoute && markerCount > 0) {
+      map.setCenter({ lat: 20, lng: 0 });
+      map.setZoom(2);
+    }
+  }, [loaded, bucketListPois, showBucketListOnMap, fitBucketMarkers, stops, clearBucketListMarkers]);
 
   useEffect(() => {
     const onFullscreenChange = () => {

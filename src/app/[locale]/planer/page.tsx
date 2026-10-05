@@ -80,7 +80,7 @@ import GoogleMap, { useGoogleAutocomplete, type MapHighlightPoi } from "@/compon
 import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
 import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
-import { filterPoisNearStops, landmarkToMapPoi } from "@/lib/bucketMapPoi";
+import { landmarkToMapPoi } from "@/lib/bucketMapPoi";
 import { PDF_EXPORT_OPTION_DEFS, isPdfExportOptionEnabled } from "@/lib/pdfExportOptions";
 import WikiThumb from "@/components/WikiThumb";
 import DateRangePicker from "@/components/DateRangePicker";
@@ -1589,8 +1589,8 @@ export default function PlanerPage() {
 
   const bucketListMapMarkers = useMemo((): MapHighlightPoi[] => {
     if (!showBucketOnMap) return [];
-    return filterPoisNearStops(catalogLandmarkMapMarkers, currentRouteStops, 120);
-  }, [showBucketOnMap, catalogLandmarkMapMarkers, currentRouteStops]);
+    return catalogLandmarkMapMarkers;
+  }, [showBucketOnMap, catalogLandmarkMapMarkers]);
 
   const isInCurrentRoute = useCallback(
     (name: string) => {

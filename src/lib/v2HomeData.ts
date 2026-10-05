@@ -25,7 +25,7 @@ export const V2_TRIPS_HREF = "/meine-reisen";
 export const V2_IDEAS_HREF = "/unsere-reisen";
 export const V2_DESTINATIONS_HREF = "/inspiration";
 export const V2_HOW_HREF = "/info#how-it-works";
-export const V2_EXAMPLE_HREF = "/reisebericht/cote-dazur";
+export const V2_EXAMPLE_HREF = "/unsere-reisen#cote-dazur";
 
 const STOP_PHOTOS = {
   Zurich: inspirationPhoto("1524661132064-de39d336c57d", 240),
@@ -104,7 +104,7 @@ export const V2_EXAMPLE_TRIP = {
 
 export const V2_INSPIRATION = [
   {
-    href: "/reisebericht/provence",
+    href: "/unsere-reisen#provence",
     label: "Provence",
     tagline: "Avignon · Luberon · Aix & Verdon",
     duration: "5 Nächte",
@@ -113,7 +113,7 @@ export const V2_INSPIRATION = [
     photoAlt: "Provence · Landschaft und Lavendel",
   },
   {
-    href: "/reisebericht/venedig",
+    href: "/unsere-reisen#venedig",
     label: "Venedig",
     tagline: "Ruhige Gassen · Vaporetto · Lagune",
     duration: "3 Tage",
@@ -122,7 +122,7 @@ export const V2_INSPIRATION = [
     photoAlt: "Venedig · Kanal und Fassaden",
   },
   {
-    href: "/reisebericht/grandes-alpes",
+    href: "/unsere-reisen#grandes-alpes",
     label: "Grandes Alpes",
     tagline: "Genf → Cannes · Pässe statt Autobahn",
     duration: "7 Nächte",
