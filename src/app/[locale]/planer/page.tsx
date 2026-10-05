@@ -212,6 +212,7 @@ export default function PlanerPage() {
   >("route");
   const [expandedEtappen, setExpandedEtappen] = useState<number[]>([]);
   const [hotelFocus, setHotelFocus] = useState<{ stopId: string; openBooking: boolean } | null>(null);
+  const [hotelPanels, setHotelPanels] = useState<Record<string, "search" | "booking">>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [optimizeRoute, setOptimizeRoute] = useState(false);
@@ -1013,18 +1014,43 @@ export default function PlanerPage() {
 
   const hasHotelsTab = tabs.some((t) => t.id === "hotels");
 
+  const hotelTabStops = (() => {
+    const seen = new Set<string>();
+    return [
+      ...trip.stops,
+      ...(trip.routes?.flights?.stops || []),
+      ...(trip.routes?.car?.stops || []),
+      ...(trip.routes?.train?.stops || []),
+    ].filter((s) => {
+      if ((s.type !== "stop" && s.type !== "end") || !s.name.trim()) return false;
+      const key = `${s.id}:${s.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).filter((s) => s.isHotel);
+  })();
+  const hotelRoomValues = Array.from(new Set(hotelTabStops.map((s) => s.hotelRooms || 1)));
+  const commonHotelRooms = hotelRoomValues.length === 1 ? hotelRoomValues[0] : null;
+
+  const toggleHotelPanel = (stopId: string, panel: "search" | "booking") => {
+    setHotelPanels((prev) => {
+      const next = { ...prev };
+      if (next[stopId] === panel) delete next[stopId];
+      else next[stopId] = panel;
+      return next;
+    });
+  };
+
   const openHotelStop = (stopId: string, openBooking: boolean) => {
     setHotelFocus({ stopId, openBooking });
+    setHotelPanels((prev) => ({ ...prev, [stopId]: openBooking ? "booking" : "search" }));
     setActiveTab("hotels");
   };
 
   useEffect(() => {
     if (activeTab !== "hotels" || !hotelFocus) return;
     const scrollTimer = window.setTimeout(() => {
-      const card = document.getElementById(`hotel-stop-${hotelFocus.stopId}`);
-      if (!card) return;
-      card.scrollIntoView({ behavior: "smooth", block: "center" });
-      if (hotelFocus.openBooking) card.querySelector("details")?.setAttribute("open", "");
+      document.getElementById(`hotel-stop-${hotelFocus.stopId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
     const clearTimer = window.setTimeout(() => setHotelFocus(null), 2500);
     return () => {
@@ -2962,7 +2988,7 @@ export default function PlanerPage() {
             {!isHotelOnlyMode && (
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  Reisedaten
+                  {activeTab === "hotels" ? "Hotel-Suche für diese Reise" : "Reisedaten"}
                 </h3>
                 <DateRangePicker
                   startDate={trip.startDate}
@@ -2993,13 +3019,53 @@ export default function PlanerPage() {
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
                 </div>
+                {activeTab === "hotels" && (
+                  <>
+                    <div className="mt-3">
+                      <label className="text-xs text-gray-500 mb-1 block">
+                        Zimmer
+                      </label>
+                      <div className="relative">
+                        <BedDouble className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <select
+                          value={commonHotelRooms ?? ""}
+                          disabled={hotelTabStops.length === 0}
+                          onChange={(e) => {
+                            const rooms = Number(e.target.value);
+                            if (!rooms) return;
+                            hotelTabStops.forEach((s) => updateStopField(s.id, { hotelRooms: rooms }));
+                          }}
+                          className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none disabled:opacity-60"
+                        >
+                          {commonHotelRooms === null && hotelTabStops.length > 0 && (
+                            <option value="" disabled>Unterschiedlich</option>
+                          )}
+                          {[1, 2, 3, 4, 5, 6].map((n) => (
+                            <option key={n} value={n}>
+                              {n} Zimmer
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </div>
+                    </div>
+                    <div className="mt-4 flex items-start gap-2 rounded-xl bg-blue-50 px-3 py-2.5 text-xs text-blue-800">
+                      <MapPin className="w-4 h-4 flex-shrink-0 text-blue-500" />
+                      <span>
+                        {hotelTabStops.length === 0
+                          ? "Noch keine Übernachtungsorte entlang deiner Route"
+                          : `${hotelTabStops.length} ${hotelTabStops.length === 1 ? "Übernachtungsort" : "Übernachtungsorte"} entlang deiner Route`}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
             
 
             {/* Bucket List Shortcut */}
-            {trip.bucketList.length > 0 && (
+            {trip.bucketList.length > 0 && activeTab !== "hotels" && (
               <button
                 onClick={() => setActiveTab("bucket")}
                 className="w-full flex items-center justify-between bg-green-50 border border-green-100 rounded-2xl px-5 py-3 hover:bg-green-100 transition-colors"
@@ -3316,17 +3382,19 @@ export default function PlanerPage() {
                             {!isLast && (
                               etappe.hotelBookedForDisplay ? (
                                 <div
-                                  className="self-start sm:self-auto inline-flex max-w-full sm:max-w-[45%] items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs"
-                                  title={etappe.hotelAddressForDisplay || undefined}
+                                  className="self-start sm:self-auto inline-flex max-w-full sm:w-44 flex-shrink-0 items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs text-green-700"
+                                  title={`Gebucht: ${[etappe.hotelNameForDisplay, etappe.hotelAddressForDisplay].filter(Boolean).join(" – ")}`}
                                 >
-                                  <BedDouble className="w-3.5 h-3.5 flex-shrink-0 text-green-600" />
-                                  <span className="truncate font-semibold text-green-800">{etappe.hotelNameForDisplay}</span>
-                                  <span className="flex-shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] text-green-600">Gebucht</span>
+                                  <BedDouble className="w-3 h-3 flex-shrink-0" />
+                                  <span className="truncate">{etappe.hotelPlaceForDisplay}</span>
                                 </div>
                               ) : (
-                                <div className="self-start sm:self-auto inline-flex max-w-full sm:max-w-[45%] items-center gap-1.5 rounded-full bg-purple-50 px-2.5 py-1 text-xs text-purple-600">
+                                <div
+                                  className="self-start sm:self-auto inline-flex max-w-full sm:w-44 flex-shrink-0 items-center gap-1.5 rounded-full bg-purple-50 px-2.5 py-1 text-xs text-purple-600"
+                                  title={`Übernachtung in ${etappe.hotelPlaceForDisplay}`}
+                                >
                                   <BedDouble className="w-3 h-3 flex-shrink-0" />
-                                  <span className="truncate">Übernachtung in {etappe.hotelPlaceForDisplay}</span>
+                                  <span className="truncate">{etappe.hotelPlaceForDisplay}</span>
                                 </div>
                               )
                             )}
@@ -3440,8 +3508,8 @@ export default function PlanerPage() {
 
             {/* Hotels Tab */}
             {activeTab === "hotels" && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <div className="flex flex-col gap-6">
+                <div className={`bg-white rounded-2xl p-6 shadow-sm border border-gray-100 ${isHotelOnlyMode ? "" : "order-last"}`}>
                   <div className="flex items-center gap-3 mb-4">
                     <Hotel className="w-5 h-5 text-blue-500" />
                     <h3 className="font-semibold text-gray-900">Hotel direkt suchen (ohne Autoroute)</h3>
@@ -3593,7 +3661,7 @@ export default function PlanerPage() {
                           <div>
                             <p className="text-sm font-semibold text-purple-800">Noch keine Hotel-Orte</p>
                             <p className="text-sm text-purple-600 mt-1">
-                              Nutze oben die direkte Hotelsuche oder markiere im <strong>Autoroute</strong>-Tab Zwischenstopps/Ziel mit dem
+                              Nutze {isHotelOnlyMode ? "oben" : "unten"} die direkte Hotelsuche oder markiere im <strong>Autoroute</strong>-Tab Zwischenstopps/Ziel mit dem
                               <BedDouble className="w-3.5 h-3.5 inline mx-1 text-purple-500" />
                               Symbol als Hotel-Ort.
                             </p>
@@ -3630,14 +3698,19 @@ export default function PlanerPage() {
                       )}
 
                       {hotelStops.length > 0 && (
-                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                          <div className="flex items-center gap-3 mb-5">
-                            <BedDouble className="w-5 h-5 text-purple-500" />
-                            <h3 className="font-semibold text-gray-900">
-                              Übernachtungen ({hotelStops.length})
-                            </h3>
+                        <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-100">
+                          <div className="mb-4">
+                            <div className="flex items-center gap-3">
+                              <BedDouble className="w-5 h-5 text-purple-500" />
+                              <h3 className="font-semibold text-gray-900">
+                                Übernachtungen ({hotelStops.length})
+                              </h3>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Finde die passenden Hotels für deine Übernachtungsorte entlang der Route oder trage bestehende Buchungen ein.
+                            </p>
                           </div>
-                          <div className="space-y-5">
+                          <div className="space-y-3">
                             {hotelStops.map((stop, idx) => {
                               const { checkIn, checkOut, nights } = getHotelDates(stop);
                               const guests = stop.hotelGuests || trip.travelers || 2;
@@ -3649,32 +3722,99 @@ export default function PlanerPage() {
                                 travelers: guests,
                                 rooms,
                               };
+                              const panel = hotelPanels[stop.id];
+                              const hotelName = stop.bookingHotelName?.trim() || "";
+                              const isBooked = !!stop.bookingConfirmation?.trim();
+                              const hasHotel = isBooked || !!hotelName;
+                              const dateLine = [
+                                checkIn && checkOut ? `${formatDate(checkIn)} – ${formatDate(checkOut)}` : "",
+                                `${nights} ${nights === 1 ? "Nacht" : "Nächte"}`,
+                              ].filter(Boolean).join(" · ");
                               return (
                                 <div
                                   key={stop.id}
                                   id={`hotel-stop-${stop.id}`}
-                                  className={`bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-5 border border-purple-100 scroll-mt-24 transition-shadow ${
+                                  className={`rounded-xl border border-gray-100 bg-white p-4 sm:p-5 scroll-mt-24 transition-shadow ${
                                     hotelFocus?.stopId === stop.id ? "ring-2 ring-purple-400 ring-offset-2" : ""
                                   }`}
                                 >
-                                  <div className="flex items-center gap-3 mb-4">
-                                    <div className={`w-8 h-8 ${stop.bookingConfirmation ? "bg-green-500" : "bg-purple-500"} rounded-full flex items-center justify-center text-white text-sm font-bold`}>
-                                      {stop.bookingConfirmation ? <Check className="w-4 h-4" /> : idx + 1}
+                                  <div className="flex flex-col gap-4 md:flex-row md:items-start">
+                                    <div className="flex min-w-0 flex-1 gap-3">
+                                      <div className={`w-8 h-8 flex-shrink-0 ${isBooked ? "bg-green-500" : stop.type === "end" ? "bg-red-500" : "bg-purple-500"} rounded-full flex items-center justify-center text-white text-sm font-bold`}>
+                                        {isBooked ? <Check className="w-4 h-4" /> : idx + 1}
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <h4 className="font-semibold text-gray-900 truncate">{stop.name}</h4>
+                                        <p className="text-sm text-gray-600 mt-0.5">{dateLine}</p>
+                                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-gray-500">
+                                          <Users className="w-3.5 h-3.5 text-gray-400" />
+                                          {guests} {guests === 1 ? "Gast" : "Gäste"} · {rooms} Zimmer
+                                        </p>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleHotelPanel(stop.id, "search")}
+                                            aria-expanded={panel === "search"}
+                                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
+                                          >
+                                            <Search className="w-3.5 h-3.5" />
+                                            Hotel suchen
+                                            <ArrowRight className={`w-3.5 h-3.5 transition-transform ${panel === "search" ? "rotate-90" : ""}`} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleHotelPanel(stop.id, "booking")}
+                                            aria-expanded={panel === "booking"}
+                                            className={`inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-xs font-semibold transition-colors ${
+                                              panel === "booking"
+                                                ? "border-blue-300 bg-blue-50 text-blue-700"
+                                                : "border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
+                                            }`}
+                                          >
+                                            <Calendar className="w-3.5 h-3.5" />
+                                            Buchung eintragen
+                                          </button>
+                                        </div>
+                                      </div>
                                     </div>
-                                    <div className="flex-1">
-                                      <h4 className="font-semibold text-gray-900">{stop.name}</h4>
-                                      <p className="text-xs text-gray-500">
-                                        {nights} {nights === 1 ? "Nacht" : "Nächte"} · {guests} {guests === 1 ? "Gast" : "Gäste"} · {rooms} {rooms === 1 ? "Zimmer" : "Zimmer"}
-                                      </p>
+                                    <div className={`flex items-start gap-3 rounded-xl px-4 py-3 md:w-72 md:flex-shrink-0 ${hasHotel ? (isBooked ? "bg-green-50" : "bg-purple-50/60") : "bg-gray-50"}`}>
+                                      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full ${isBooked ? "bg-green-100 text-green-600" : "bg-purple-100 text-purple-500"}`}>
+                                        {isBooked ? <Check className="w-4 h-4" /> : <BedDouble className="w-4 h-4" />}
+                                      </div>
+                                      <div className="min-w-0 text-xs">
+                                        {hasHotel ? (
+                                          <>
+                                            <p className="font-semibold text-gray-900 truncate">{hotelName || `Unterkunft in ${stop.name}`}</p>
+                                            <p className={`mt-0.5 ${isBooked ? "text-green-700" : "text-purple-600"}`}>
+                                              {isBooked ? "Gebucht" : "Vorgemerkt"}
+                                              {stop.bookingPrice ? ` · ${stop.bookingPrice}` : ""}
+                                            </p>
+                                            {stop.bookingAddress && <p className="mt-0.5 text-gray-500 truncate">{stop.bookingAddress}</p>}
+                                            {stop.bookingLink && (
+                                              <a href={stop.bookingLink} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800">
+                                                Hotel ansehen <ExternalLink className="w-3 h-3" />
+                                              </a>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <>
+                                            <p className="font-semibold text-gray-900">Noch kein Hotel ausgewählt</p>
+                                            <p className="mt-0.5 text-gray-500">
+                                              {stop.type === "end"
+                                                ? `Optionale Übernachtung in ${stop.name} oder trage eine bestehende Buchung ein.`
+                                                : `Finde das passende Hotel in ${stop.name} oder trage eine bestehende Buchung ein.`}
+                                            </p>
+                                          </>
+                                        )}
+                                      </div>
                                     </div>
-                                    {stop.bookingConfirmation && (
-                                      <span className="text-[10px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Gebucht</span>
-                                    )}
                                   </div>
 
+                                  {panel === "search" && (
+                                  <div className="mt-4 border-t border-gray-100 pt-4">
                                   {/* Date + Guests/Rooms on one row */}
-                                  <div className="flex items-center gap-3 mb-3">
-                                    <div className="flex-1 min-w-0">
+                                  <div className="flex flex-wrap items-center gap-3 mb-3">
+                                    <div className="flex-1 min-w-[240px]">
                                       <HotelDatePicker
                                         checkIn={checkIn}
                                         checkOut={checkOut}
@@ -3790,26 +3930,11 @@ export default function PlanerPage() {
                                       <ExternalLink className="w-3 h-3 text-teal-400" />
                                     </a>
                                   </div>
+                                  </div>
+                                  )}
 
-                                  {/* Booking details section */}
-                                  <details className="mt-3 group">
-                                    <summary className={`text-[11px] cursor-pointer transition-colors list-none flex items-center gap-1.5 ${stop.bookingConfirmation ? "text-green-600 font-semibold" : "text-gray-400 hover:text-green-600"}`}>
-                                      <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
-                                      {stop.bookingConfirmation ? (
-                                        <>
-                                          Buchung: {stop.bookingHotelName || stop.bookingConfirmation}
-                                          {stop.bookingPrice && <span className="ml-1 text-gray-500 font-normal">· {stop.bookingPrice}</span>}
-                                          {stop.bookingLink && (
-                                            <a href={stop.bookingLink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-auto text-blue-500 hover:text-blue-700">
-                                              <ExternalLink className="w-3 h-3" />
-                                            </a>
-                                          )}
-                                        </>
-                                      ) : (
-                                        <>Buchung eintragen</>
-                                      )}
-                                    </summary>
-                                    <div className="mt-2 bg-white border border-gray-200 rounded-lg p-3 space-y-2">
+                                  {panel === "booking" && (
+                                    <div className="mt-4 border-t border-gray-100 pt-4 space-y-2">
                                       <input
                                         type="text"
                                         placeholder="Hotelname"
@@ -3872,7 +3997,7 @@ export default function PlanerPage() {
                                         </button>
                                       )}
                                     </div>
-                                  </details>
+                                  )}
                                 </div>
                               );
                             })}
