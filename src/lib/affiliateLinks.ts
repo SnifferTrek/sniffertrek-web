@@ -63,10 +63,45 @@ export function buildExpediaHotelLink(params: SearchParams): string {
   return url.toString();
 }
 
+// Hotels.com expects one adult count per room ("2,1" = 3 adults in 2 rooms); a plain total ignores rooms.
+function hotelsComAdultsPerRoom(travelers: number, rooms: number): string {
+  const roomCount = Math.max(1, Math.floor(rooms));
+  const adults = Math.max(roomCount, Math.floor(travelers));
+  return Array.from({ length: roomCount }, (_, i) =>
+    String(Math.floor(adults / roomCount) + (i < adults % roomCount ? 1 : 0))
+  ).join(",");
+}
+
+// Expedia Group affiliate redirect: tracking stays fixed, the search is passed as landingPage.
+// Hotel detail paths (params.landingPage) currently 404 on ch.hotels.com, so only destination searches are built.
 export function buildHotelsComLink(params: SearchParams): string {
-  void params;
-  // Safe tracking-first link (no destination/date prefill).
-  return "https://www.hotels.com/affiliates/hotelscom-home.10ZQa9h";
+  let landingPage = "https://www.hotels.com/";
+  const destination = params.destination?.trim();
+  if (destination) {
+    const search = new URL("https://www.hotels.com/Hotel-Search");
+    search.searchParams.set("destination", destination);
+    search.searchParams.set("flexibility", "0_DAY");
+    if (params.checkIn) {
+      search.searchParams.set("d1", params.checkIn);
+      search.searchParams.set("startDate", params.checkIn);
+    }
+    if (params.checkOut) {
+      search.searchParams.set("d2", params.checkOut);
+      search.searchParams.set("endDate", params.checkOut);
+    }
+    const rooms = params.rooms && params.rooms > 0 ? params.rooms : 1;
+    const travelers = params.travelers && params.travelers > 0 ? params.travelers : 2;
+    search.searchParams.set("adults", hotelsComAdultsPerRoom(travelers, rooms));
+    search.searchParams.set("rooms", String(Math.max(1, Math.floor(rooms))));
+    search.searchParams.set("sort", "RECOMMENDED");
+    landingPage = search.toString();
+  }
+  const url = new URL("https://www.hotels.com/affiliate");
+  url.searchParams.set("landingPage", landingPage);
+  url.searchParams.set("camref", "1101l5ofQq");
+  url.searchParams.set("creativeref", "1011l66481");
+  url.searchParams.set("adref", "PZxQ_DHN1o");
+  return url.toString();
 }
 
 export function buildHotelsComDeeplink(params: SearchParams): string {

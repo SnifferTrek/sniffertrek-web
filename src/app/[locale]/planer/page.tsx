@@ -92,7 +92,6 @@ import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
   buildHotelsComLink,
-  buildHotelsComDeeplink,
   buildAgodaHotelLink,
   buildTrivagoLink,
   buildHostelworldLink,
@@ -1171,15 +1170,12 @@ export default function PlanerPage() {
   );
 
   const openHotelsComAffiliateLink = useCallback(
-    (params: Parameters<typeof buildHotelsComDeeplink>[0], context?: Record<string, unknown>) => {
-      const targetUrl = buildHotelsComDeeplink({
-        ...params,
-        clickRef: createAffiliateClickRef(),
-      });
+    (params: Parameters<typeof buildHotelsComLink>[0], context?: Record<string, unknown>) => {
+      const targetUrl = buildHotelsComLink(params);
       logAffiliateClick("hotels", "Hotels.com", targetUrl, context);
       window.open(targetUrl, "_blank", "noopener,noreferrer");
     },
-    [createAffiliateClickRef, logAffiliateClick]
+    [logAffiliateClick]
   );
 
   const displayPOIs: { name: string; category: string; rating: number; description: string; photoUrl?: string }[] =
