@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from "next-intl";
 import { routing, type AppLocale } from "@/i18n/routing";
-import { usePathname, useRouter } from "@/i18n/navigation";
+import { getPathname, usePathname } from "@/i18n/navigation";
 
 const LABELS: Record<AppLocale, string> = {
   de: "DE",
@@ -18,9 +18,15 @@ export default function LanguageSwitcher({
   compact?: boolean;
 }) {
   const locale = useLocale();
-  const router = useRouter();
   const pathname = usePathname();
   const t = useTranslations("chrome");
+
+  const switchLocale = (loc: AppLocale) => {
+    if (loc === locale) return;
+    const path = getPathname({ locale: loc, href: pathname });
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    window.location.assign(`${path}${search}`);
+  };
 
   return (
     <div
@@ -39,7 +45,7 @@ export default function LanguageSwitcher({
             ) : null}
             <button
               type="button"
-              onClick={() => router.replace(pathname, { locale: loc })}
+              onClick={() => switchLocale(loc)}
               className={`rounded-sm px-0.5 transition-colors ${
                 active
                   ? "text-[var(--bcn-blue,#0071e3)]"

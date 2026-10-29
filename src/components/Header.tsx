@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { useAuth } from "./AuthProvider";
+import { useKontoPanel } from "./KontoPanelContext";
 import { isMasterUser } from "@/lib/isMasterUser";
 import { TRAVEL_REPORT_NAV } from "@/lib/travelReports/travelReportNav";
 import LanguageSwitcher from "./LanguageSwitcher";
@@ -21,6 +22,7 @@ export default function Header() {
   const unsereRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
   const { user, loading } = useAuth();
+  const { openKonto } = useKontoPanel();
   const isAdmin = isMasterUser(user);
   const unsereActive =
     pathname === "/unsere-reisen" || pathname.startsWith("/unsere-reisen/") || pathname.startsWith("/reisebericht/");
@@ -138,14 +140,15 @@ export default function Header() {
             {!loading &&
               (user ? (
                 <div className="flex items-center border-l border-black/8 pl-2">
-                  <Link
-                    href="/meine-reisen"
+                  <button
+                    type="button"
+                    onClick={openKonto}
                     title={t("account")}
                     aria-label={t("openAccount")}
                     className="st-apple-nav__user-btn"
                   >
                     <User className="h-4 w-4" />
-                  </Link>
+                  </button>
                 </div>
               ) : (
                 <Link href="/login" className="bcn-apple-btn bcn-apple-btn--blue !px-4 !py-1.5 !text-sm">
@@ -225,9 +228,12 @@ export default function Header() {
 
             {!loading &&
               (user ? (
-                <Link
-                  href="/meine-reisen"
-                  onClick={() => setMenuOpen(false)}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    openKonto();
+                  }}
                   className="-mx-1 mt-2 flex w-full items-center gap-3 rounded-xl border-t border-black/6 px-1 py-3 pt-4 text-left transition-colors hover:bg-black/[0.03]"
                 >
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[rgba(0,113,227,0.1)] text-[var(--bcn-blue)]">
@@ -239,7 +245,7 @@ export default function Header() {
                       {user.name || user.email}
                     </p>
                   </div>
-                </Link>
+                </button>
               ) : (
                 <Link
                   href="/login"

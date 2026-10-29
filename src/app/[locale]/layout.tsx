@@ -8,6 +8,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import CookieBanner from "@/components/CookieBanner";
 import AuthProvider from "@/components/AuthProvider";
+import { KontoPanelProvider } from "@/components/KontoPanelContext";
 import V2HideSiteChrome from "@/components/v2/V2HideSiteChrome";
 import { routing } from "@/i18n/routing";
 
@@ -56,6 +57,7 @@ export default async function LocaleLayout({ children, params }: Props) {
       >
         <NextIntlClientProvider locale={locale} messages={messages}>
           <AuthProvider>
+            <KontoPanelProvider>
             <V2HideSiteChrome>
               <Header />
             </V2HideSiteChrome>
@@ -66,6 +68,7 @@ export default async function LocaleLayout({ children, params }: Props) {
             <V2HideSiteChrome>
               <CookieBanner />
             </V2HideSiteChrome>
+            </KontoPanelProvider>
           </AuthProvider>
         </NextIntlClientProvider>
       </body>

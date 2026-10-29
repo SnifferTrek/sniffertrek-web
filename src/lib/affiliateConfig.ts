@@ -11,6 +11,8 @@ export interface AffiliatePartner {
   statusNote: string;
   affiliateId: string;
   baseUrl: string;
+  packageLandingUrl?: string;
+  hotelCjDeepLinkBase?: string;
 }
 
 const STORAGE_KEY = "sniffertrek_affiliate_config";
@@ -110,8 +112,8 @@ export const defaultPartners: AffiliatePartner[] = [
     commission: "bis 25% der Booking-Provision",
     registrationLink: "https://affiliate.booking.com",
     status: "active",
-    statusNote: "",
-    affiliateId: "qGaAthMz3hClWbk8y9l_C32Opg",
+    statusNote: "Nur numerische Affiliate-aid aus dem Partnerprogramm (kein API-Key)",
+    affiliateId: "",
     baseUrl: "https://www.booking.com/searchresults.html",
   },
   {

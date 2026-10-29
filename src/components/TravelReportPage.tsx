@@ -4,6 +4,7 @@ import {
   buildHotelsComLink,
   buildBookingHotelLink,
 } from "@/lib/affiliateLinks";
+import { partnerLabelFromUrl } from "@/lib/partnerLabelFromUrl";
 import { TRAVEL_COUPLE } from "@/lib/travelCouple";
 import type { TravelReportConfig } from "@/lib/travelReports/types";
 import TravelReportFooterTabs from "@/components/TravelReportFooterTabs";
@@ -333,26 +334,27 @@ export default function TravelReportPage({
     clickRef: config.hotels.clickRef,
   };
 
-  const hotelLinks = [
+  const hotelLinkDefs = [
     {
       id: "booking",
-      label: "Booking.com",
       href: buildBookingHotelLink(hotelSearch),
       className: `${linkBtn} border-blue-200 bg-blue-50 text-blue-800 hover:bg-blue-100`,
     },
     {
       id: "hotels-com",
-      label: "Hotels.com",
       href: buildHotelsComLink(hotelSearch),
       className: `${linkBtn} border-red-200 bg-red-50 text-red-800 hover:bg-red-100`,
     },
     {
       id: "expedia",
-      label: "Expedia",
       href: buildExpediaHotelLink(hotelSearch),
       className: `${linkBtn} border-yellow-200 bg-yellow-50 text-yellow-900 hover:bg-yellow-100`,
     },
   ];
+  const hotelLinks = hotelLinkDefs.map((link) => ({
+    ...link,
+    label: partnerLabelFromUrl(link.href).brandName,
+  }));
 
   const faqJsonLd = {
     "@context": "https://schema.org",

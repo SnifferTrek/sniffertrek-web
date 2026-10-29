@@ -24,7 +24,7 @@ export const V2_PLAN_HREF = "/reise-planen";
 export const V2_TRIPS_HREF = "/meine-reisen";
 export const V2_IDEAS_HREF = "/unsere-reisen";
 export const V2_DESTINATIONS_HREF = "/inspiration";
-export const V2_HOW_HREF = "/info#how-it-works";
+export const V2_HOW_HREF = "/#so-funktionierts";
 export const V2_EXAMPLE_HREF = "/reisebericht/cote-dazur";
 
 const STOP_PHOTOS = {

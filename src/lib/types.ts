@@ -19,7 +19,7 @@ export interface RouteStop {
  bookingProvider?: string;
  /** Manuell vom Nutzer gesetzt – unabhängig von Buchungsformular. */
  hotelBooked?: boolean;
- discoverySource?: "ai" | "custom" | "google" | "bucket";
+ discoverySource?: "ai" | "custom" | "google" | "bucket" | "autocomplete" | "manual";
  discoveryEtappeIndex?: number;
  discoveryCategory?: string;
  discoveryDescription?: string;
@@ -29,11 +29,17 @@ export interface RouteStop {
  discoveryHighlights?: string[];
  discoveryPhotoUrl?: string;
  discoveryPhotoDataUrl?: string;
+ /** Index in der Wikipedia-Bildliste (für «Alternatives Foto»). */
+ discoveryPhotoVariantIndex?: number;
  discoveryWikipediaTitle?: string;
  discoveryIncludeInReport?: boolean;
  /** false = nur Entdecken/PDF, nicht in der Autofahrt. undefined/true = in der Route. */
  discoveryInRoute?: boolean;
  discoveryAddedAt?: string;
+ /** Herkunft/Qualität der Ortsinfo (Anzeige im Planer). */
+ discoveryBriefSource?: "wikipedia-refined" | "wikipedia" | "ai" | "manual";
+ /** Kurzer Qualitätshinweis nach «Info laden». */
+ discoveryBriefQualityHint?: string;
 }
 
 /** Start/Ziel immer; Zwischenstopps nur wenn nicht als Nur-POI markiert. */
@@ -318,6 +324,8 @@ export interface Trip {
  pdfEtappeCustomTextColorByEtappe?: Record<string, string>;
  pdfEtappeCustomTextFontStyleByEtappe?: Record<string, PdfEtappeCustomTextFontStyle>;
  pdfIncludeEntdeckenHighlights?: boolean;
+ /** Kurzinfos (Text/Bild) zu Stopps auf der Route */
+ pdfIncludeStopBriefs?: boolean;
  pdfIncludeTableOfContents?: boolean;
  pdfIncludeOverviewMap?: boolean;
  pdfIncludeTravelOverview?: boolean;

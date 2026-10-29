@@ -36,6 +36,7 @@ function loadGoogleMapsScript(): Promise<void> {
 
 interface BucketListMapProps {
   markers: MapHighlightPoi[];
+  fitPositions?: { lat: number; lng: number }[];
   onAddAsStop?: (poi: MapHighlightPoi) => void;
   onAddToBucketList?: (poi: MapHighlightPoi) => void;
   isInRoute?: (name: string) => boolean;
@@ -44,6 +45,7 @@ interface BucketListMapProps {
 
 export default function BucketListMap({
   markers,
+  fitPositions = [],
   onAddAsStop,
   onAddToBucketList,
   isInRoute,
@@ -96,9 +98,14 @@ export default function BucketListMap({
     const map = mapInstance.current;
     clearMarkers();
 
-    if (markers.length === 0) return;
-
     const bounds = new google.maps.LatLngBounds();
+    let hasBounds = false;
+    for (const pos of fitPositions) {
+      if (!Number.isFinite(pos.lat) || !Number.isFinite(pos.lng)) continue;
+      bounds.extend(pos);
+      hasBounds = true;
+    }
+
     for (const poi of markers) {
       if (!Number.isFinite(poi.lat) || !Number.isFinite(poi.lng)) continue;
       const pos = { lat: poi.lat, lng: poi.lng };
@@ -146,16 +153,17 @@ export default function BucketListMap({
       });
       markerRefs.current.push(marker);
       bounds.extend(pos);
+      hasBounds = true;
     }
 
-    if (markerRefs.current.length > 0) {
+    if (hasBounds) {
       map.fitBounds(bounds, 48);
       google.maps.event.addListenerOnce(map, "idle", () => {
         const zoom = map.getZoom();
         if (zoom != null && zoom > 8) map.setZoom(8);
       });
     }
-  }, [loaded, markers, clearMarkers]);
+  }, [loaded, markers, fitPositions, clearMarkers]);
 
   if (!GOOGLE_MAPS_KEY) {
     return (

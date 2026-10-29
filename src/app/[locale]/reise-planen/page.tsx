@@ -11,7 +11,6 @@ import {
   deleteTrip,
   getTripDisplayName,
   setActiveTripId,
-  setTripEndDestination,
 } from "@/lib/tripStorage";
 import { MODULE_CATALOG, sanitizeTripModules } from "@/lib/tripModuleCatalog";
 import {
@@ -51,10 +50,9 @@ export default function ReisePlanenPage() {
   };
 
   const createAndOpenTrip = () => {
-    const dest = destination.trim();
-    let newTrip = createNewTrip(dest || undefined);
-    if (dest) {
-      newTrip = setTripEndDestination(newTrip, dest);
+    const tripTitle = destination.trim();
+    const newTrip = createNewTrip(tripTitle || undefined);
+    if (tripTitle) {
       consumePlanIntent();
     }
     const cleaned = sanitizeTripModules(selectedModules);

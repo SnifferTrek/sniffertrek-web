@@ -1,6 +1,24 @@
 import jsPDF from "jspdf";
 import { Trip, RouteStop, Etappe, PdfPhotoPlacement, PdfPhotoLayout } from "./types";
+import { computeHotelStaysTimeline, stopHasLodgingBooking } from "./hotelStopDates";
+import { hydrateTripMedia, readStopPhotoFromSidecar } from "./tripMediaSidecar";
+import { syncTripRouteStops } from "./tripStopMerge";
 import { resolvePdfExportOptions } from "./pdfExportOptions";
+import { normalizePdfPhotoCaption } from "./pdfPhotoCaption";
+import { asAppLocale } from "@/lib/localeCopy";
+import {
+  wikipediaGeosearchUrls,
+  wikipediaIntroExtractUrls,
+  wikipediaOpenSearchUrls,
+  wikipediaSummaryUrls,
+} from "@/lib/wikipediaLocale";
+
+type PdfWikiConfig = { locale: string; allowLangFallback: boolean };
+
+function pdfWikiConfigFromLocale(contentLocale?: string): PdfWikiConfig {
+  const locale = asAppLocale(contentLocale || "de");
+  return { locale, allowLangFallback: locale === "en" };
+}
 
 // --- Constants (matching iOS TripPrintView.swift) ---
 const PAGE_W = 595.28; // A4 pt
@@ -129,11 +147,53 @@ function normalizePlaceKey(value: string): string {
     .trim();
 }
 
+function collectRouteBriefStopsForPdf(trip: Trip): RouteStop[] {
+  return trip.stops.filter(
+    (s) => s.discoveryIncludeInReport === true && s.name.trim() && !s.isHotel,
+  );
+}
+
+function resolveEtappeIndexForPlaceStop(
+  stop: RouteStop,
+  etappen: Etappe[],
+  etappeStopsByIndex: RouteStop[][],
+): number {
+  if (typeof stop.discoveryEtappeIndex === "number" && stop.discoveryEtappeIndex >= 0) {
+    return stop.discoveryEtappeIndex;
+  }
+  const pk = normalizePlaceKey(extractCity(stop.name));
+  const nameKey = normalizePlaceKey(stop.name);
+  for (let i = 0; i < etappeStopsByIndex.length; i++) {
+    const stops = etappeStopsByIndex[i] || [];
+    if (stops.some((s) => s.id === stop.id)) return i;
+    const chain = resolveEtappeStationChain(etappen[i], stops);
+    if (
+      chain.some((city) => {
+        const ck = normalizePlaceKey(city);
+        return ck === pk || (pk.length > 2 && (nameKey.includes(ck) || ck.includes(pk)));
+      })
+    ) {
+      return i;
+    }
+    if (
+      stops.some((s) => {
+        if (s.isHotel) return false;
+        const sk = normalizePlaceKey(extractCity(s.name));
+        return sk === pk || normalizePlaceKey(s.name) === nameKey;
+      })
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function collectAiDiscoveriesByEtappe(trip: Trip): Map<number, RouteStop[]> {
   const grouped = new Map<number, RouteStop[]>();
   const seen = new Set<string>();
   for (const stop of trip.stops) {
     if (stop.type !== "stop" || !stop.discoverySource) continue;
+    if (stop.discoverySource === "autocomplete") continue;
     if (typeof stop.discoveryEtappeIndex !== "number") continue;
     const dedupeKey = `${stop.discoveryEtappeIndex}:${normalizePlaceKey(stop.name)}`;
     if (seen.has(dedupeKey)) continue;
@@ -143,6 +203,359 @@ function collectAiDiscoveriesByEtappe(trip: Trip): Map<number, RouteStop[]> {
     grouped.set(stop.discoveryEtappeIndex, current);
   }
   return grouped;
+}
+
+function collectRouteBriefsByEtappe(
+  trip: Trip,
+  etappen: Etappe[],
+  etappeStopsByIndex: RouteStop[][],
+): Map<number, RouteStop[]> {
+  const grouped = new Map<number, RouteStop[]>();
+  for (const stop of collectRouteBriefStopsForPdf(trip)) {
+    const idx = resolveEtappeIndexForPlaceStop(stop, etappen, etappeStopsByIndex);
+    if (idx < 0) continue;
+    const list = grouped.get(idx) || [];
+    list.push(stop);
+    grouped.set(idx, list);
+  }
+  return grouped;
+}
+
+function findLodgingForEtappe(
+  et: Etappe,
+  hotelStops: RouteStop[],
+  etappeStops: RouteStop[],
+): RouteStop | undefined {
+  const toKey = normalizePlaceKey(extractCity(et.to));
+  const byCity = hotelStops.find((s) => {
+    const cityKey = normalizePlaceKey(extractCity(s.name));
+    return cityKey === toKey || (toKey && cityKey.includes(toKey)) || (toKey && toKey.includes(cityKey));
+  });
+  if (byCity) return byCity;
+
+  const routeHotel = [...etappeStops].reverse().find((s) => s.isHotel);
+  if (routeHotel) {
+    return hotelStops.find((h) => h.id === routeHotel.id) ?? routeHotel;
+  }
+
+  if (et.hotelName) {
+    const hn = normalizePlaceKey(et.hotelName);
+    return hotelStops.find(
+      (s) =>
+        normalizePlaceKey(s.bookingHotelName || "") === hn || normalizePlaceKey(s.name) === hn,
+    );
+  }
+  return undefined;
+}
+
+function stopOnEtappeChain(stop: RouteStop, etappeStops: RouteStop[]): boolean {
+  if (stop.isHotel) return false;
+  const nameKey = normalizePlaceKey(stop.name);
+  const idKey = `${nameKey}:${stop.lat ?? ""}:${stop.lng ?? ""}`;
+  for (const s of etappeStops) {
+    if (s.isHotel) continue;
+    if (s.id === stop.id) return true;
+    const chainKey = `${normalizePlaceKey(s.name)}:${s.lat ?? ""}:${s.lng ?? ""}`;
+    if (chainKey === idKey) return true;
+    if (normalizePlaceKey(s.name) === nameKey) return true;
+  }
+  return false;
+}
+
+function resolveEtappeStationChain(et: Etappe, etappeStops: RouteStop[]): string[] {
+  const fromStops = etappeStops.map((s) => extractCity(s.name)).filter(Boolean);
+  const fromLegs: string[] = [];
+  const pushLeg = (name: string) => {
+    const city = extractCity(name);
+    if (!city) return;
+    const key = normalizePlaceKey(city);
+    const last = fromLegs[fromLegs.length - 1];
+    if (!last || normalizePlaceKey(last) !== key) fromLegs.push(city);
+  };
+  pushLeg(et.from);
+  for (const leg of et.legs) pushLeg(leg.to);
+
+  if (fromLegs.length > fromStops.length) return fromLegs;
+  if (fromStops.length > 0) return fromStops;
+  return fromLegs;
+}
+
+function enrichEtappeStopsFromLegChain(
+  et: Etappe,
+  etappeStops: RouteStop[],
+  allStops: RouteStop[],
+): RouteStop[] {
+  if (etappeStops.length >= 2) return etappeStops;
+  const chain = resolveEtappeStationChain(et, etappeStops);
+  if (chain.length < 2) return etappeStops;
+
+  const out: RouteStop[] = [];
+  const seen = new Set<string>();
+  for (const city of chain) {
+    const key = normalizePlaceKey(city);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const fromSlice = etappeStops.find((s) => normalizePlaceKey(extractCity(s.name)) === key);
+    const fromTrip = allStops.find((s) => {
+      const sk = normalizePlaceKey(extractCity(s.name));
+      return sk === key || (key.length > 2 && (sk.includes(key) || key.includes(sk)));
+    });
+    out.push(fromSlice || fromTrip || { id: `etappe-leg-${key}`, name: city, type: "stop" });
+  }
+  return out.length >= 2 ? out : etappeStops;
+}
+
+function etappeRouteNamesForMap(et: Etappe, etappeStops: RouteStop[]): {
+  origin: string;
+  destination: string;
+  waypoints: string[];
+} {
+  const chain = resolveEtappeStationChain(et, etappeStops);
+  const origin = chain[0] || et.from;
+  const destination = chain[chain.length - 1] || et.to;
+  const waypointFromChain = chain.length > 2 ? chain.slice(1, -1) : [];
+  const waypointFromLegs = et.legs.slice(0, -1).map((l) => extractCity(l.to)).filter(Boolean);
+  const waypoints = waypointFromChain.length > 0 ? waypointFromChain : waypointFromLegs;
+  return { origin, destination, waypoints };
+}
+
+function formatStationOverviewLabel(
+  city: string,
+  isLast: boolean,
+  et: Etappe,
+  matchedHotel?: RouteStop,
+): string {
+  if (isLast && (matchedHotel || et.hotelName)) {
+    return `${city} / Hotel`;
+  }
+  return city;
+}
+
+type StationOverviewRow = {
+  index: number;
+  label: string;
+  isStart: boolean;
+  distanceMeters?: number;
+  durationSeconds?: number;
+};
+
+function buildStationOverviewRows(
+  et: Etappe,
+  etappeStops: RouteStop[],
+  routedSegments?: RoutedSegment[] | null,
+  matchedHotel?: RouteStop,
+): StationOverviewRow[] {
+  const chain = resolveEtappeStationChain(et, etappeStops);
+  if (chain.length === 0) return [];
+  const segments = buildSegmentRows(et, etappeStops, routedSegments);
+  const rows: StationOverviewRow[] = [];
+  for (let i = 0; i < chain.length; i++) {
+    const isLast = i === chain.length - 1;
+    const label = formatStationOverviewLabel(chain[i], isLast, et, matchedHotel);
+    if (i === 0) {
+      rows.push({ index: 1, label, isStart: true });
+      continue;
+    }
+    const seg = segments[i - 1];
+    rows.push({
+      index: i + 1,
+      label,
+      isStart: false,
+      distanceMeters: seg?.distanceMeters,
+      durationSeconds: seg?.durationSeconds,
+    });
+  }
+  return rows;
+}
+
+function etappePlaceKeys(et: Etappe, etappeStops: RouteStop[]): Set<string> {
+  const keys = new Set<string>();
+  for (const n of resolveEtappeStationChain(et, etappeStops)) {
+    keys.add(normalizePlaceKey(n));
+  }
+  for (const s of etappeStops) {
+    if (!s.isHotel) keys.add(normalizePlaceKey(s.name));
+  }
+  return keys;
+}
+
+function isRestaurantOrMealStop(stop: RouteStop): boolean {
+  const cat = (stop.discoveryCategory || "").toLowerCase();
+  const name = stop.name.toLowerCase();
+  return (
+    cat.includes("restaurant") ||
+    cat.includes("essen") ||
+    cat.includes("gastro") ||
+    name.includes("restaurant")
+  );
+}
+
+function filterPlacesToEtappeDay(
+  places: RouteStop[],
+  et: Etappe,
+  etappeStops: RouteStop[],
+  etappeIndex: number,
+): RouteStop[] {
+  const keys = etappePlaceKeys(et, etappeStops);
+  const seen = new Set<string>();
+  const out: RouteStop[] = [];
+  const accept = (p: RouteStop) => {
+    if (p.isHotel || seen.has(p.id)) return;
+    seen.add(p.id);
+    out.push(p);
+  };
+
+  for (const p of places) {
+    if (p.isHotel) continue;
+    if (stopOnEtappeChain(p, etappeStops)) {
+      accept(p);
+      continue;
+    }
+    const pk = normalizePlaceKey(p.name);
+    if (keys.has(pk) || [...keys].some((k) => k.length > 2 && (pk.includes(k) || k.includes(pk)))) {
+      accept(p);
+      continue;
+    }
+    if (
+      p.discoveryIncludeInReport === true &&
+      p.discoveryEtappeIndex === etappeIndex &&
+      (p.discoveryInRoute === false || isRestaurantOrMealStop(p))
+    ) {
+      accept(p);
+    }
+  }
+  return out;
+}
+
+function mergeEtappePlaceStops(briefs: RouteStop[], discoveries: RouteStop[]): RouteStop[] {
+  const seen = new Set<string>();
+  const out: RouteStop[] = [];
+  const push = (s: RouteStop) => {
+    const key = `${normalizePlaceKey(s.name)}:${s.lat ?? ""}:${s.lng ?? ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(s);
+  };
+  for (const s of briefs) push(s);
+  for (const s of discoveries) push(s);
+  return out;
+}
+
+function drawHotelTabPanel(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  panelH: number,
+  opts: {
+    isBooked: boolean;
+    matchedHotel?: RouteStop;
+    et: Etappe;
+    hotelStops: RouteStop[];
+    trip: Trip;
+  },
+): void {
+  const pad = 14;
+  const innerX = x + pad;
+  const innerW = w - pad * 2;
+  const accent = opts.isBooked ? GREEN : RED;
+  const headerH = 28;
+
+  doc.setFillColor(255, 255, 255);
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.75);
+  doc.rect(x, y, w, panelH, "FD");
+
+  doc.setFillColor(accent[0], accent[1], accent[2]);
+  doc.rect(x, y, w, headerH, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text(opts.isBooked ? "Hotel gebucht" : "Hotel offen", innerX, y + 18);
+
+  let cy = y + headerH + 12;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  setColor(doc, GRAY);
+  doc.text("ÜBERNACHTUNG", innerX, cy);
+  cy += 14;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  setColor(doc, BLACK);
+
+  const { matchedHotel, et, hotelStops, trip } = opts;
+  if (matchedHotel) {
+    const hIdx = hotelStops.indexOf(matchedHotel);
+    const { checkIn, checkOut, nights } = getHotelDates(matchedHotel, hIdx, hotelStops, trip.startDate);
+    const guests = matchedHotel.hotelGuests || trip.travelers || 2;
+    const rooms = matchedHotel.hotelRooms || 1;
+    const displayName = matchedHotel.bookingHotelName || matchedHotel.name;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    setColor(doc, BLACK);
+    const nameLines = splitTextLines(doc, displayName, innerW);
+    doc.text(nameLines, innerX, cy);
+    cy += nameLines.length * 13;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+
+    if (matchedHotel.bookingAddress) {
+      const addrLines = splitTextLines(doc, matchedHotel.bookingAddress, innerW);
+      setColor(doc, GRAY);
+      doc.text(addrLines, innerX, cy);
+      cy += addrLines.length * 11 + 4;
+      setColor(doc, BLACK);
+    }
+
+    if (checkIn) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      setColor(doc, GRAY);
+      doc.text("Check-in", innerX, cy);
+      cy += 11;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      setColor(doc, BLACK);
+      doc.text(`${formatDateDE(checkIn)} – ${formatDateDE(checkOut)}`, innerX, cy);
+      cy += 12;
+      doc.text(
+        `${guests} Pers., ${rooms} Zi., ${nights} Nacht${nights !== 1 ? "e" : ""}`,
+        innerX,
+        cy,
+      );
+      cy += 14;
+    }
+
+    if (matchedHotel.bookingPrice) {
+      doc.text(`Preis: ${matchedHotel.bookingPrice}`, innerX, cy);
+      cy += 12;
+    }
+    if (matchedHotel.bookingConfirmation) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      setColor(doc, GRAY);
+      doc.text("Buchungsnummer", innerX, cy);
+      cy += 11;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      setColor(doc, BLACK);
+      doc.text(matchedHotel.bookingConfirmation, innerX, cy);
+    }
+  } else if (et.hotelName) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(et.hotelName, innerX, cy);
+    cy += 13;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    if (et.hotelAddress) {
+      setColor(doc, GRAY);
+      const addrLines = splitTextLines(doc, et.hotelAddress, innerW);
+      doc.text(addrLines, innerX, cy);
+    }
+  }
 }
 
 function getEtappeStopsForMap(etappe: Etappe, allStops: RouteStop[]): RouteStop[] {
@@ -305,14 +718,12 @@ function buildSegmentRows(
   routedSegments?: RoutedSegment[] | null
 ): SegmentRow[] {
   const rows: SegmentRow[] = [];
-  const hasStopChain = etappeStops.length > 1;
+  const chain = resolveEtappeStationChain(etappe, etappeStops);
 
-  if (hasStopChain) {
-    for (let i = 0; i < etappeStops.length - 1; i++) {
-      const fromStop = etappeStops[i];
-      const toStop = etappeStops[i + 1];
-      const fromCity = extractCity(fromStop.name);
-      const toCity = extractCity(toStop.name);
+  if (chain.length > 1) {
+    for (let i = 0; i < chain.length - 1; i++) {
+      const fromCity = chain[i];
+      const toCity = chain[i + 1];
       const fromKey = normalizePlaceKey(fromCity);
       const toKey = normalizePlaceKey(toCity);
       const matchedLeg = etappe.legs.find((leg) => {
@@ -576,14 +987,12 @@ function isWeakWikipediaText(text?: string): boolean {
 }
 
 async function fetchWikipediaSummaryByTitle(
-  title: string
+  title: string,
+  wiki: PdfWikiConfig,
 ): Promise<{ title: string; text?: string; photo?: string; lat?: number; lng?: number } | null> {
   const q = normalizeDiscoveryQuery(title);
   if (!q) return null;
-  const endpoints = [
-    `https://de.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`,
-    `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`,
-  ];
+  const endpoints = wikipediaSummaryUrls(q, wiki.locale, wiki.allowLangFallback);
   for (const url of endpoints) {
     try {
       const resp = await fetch(url);
@@ -605,13 +1014,10 @@ async function fetchWikipediaSummaryByTitle(
   return null;
 }
 
-async function fetchWikipediaIntroByTitle(title: string): Promise<string | undefined> {
+async function fetchWikipediaIntroByTitle(title: string, wiki: PdfWikiConfig): Promise<string | undefined> {
   const q = normalizeDiscoveryQuery(title);
   if (!q) return undefined;
-  const endpoints = [
-    `https://de.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=1&redirects=1&titles=${encodeURIComponent(q)}&format=json&origin=*`,
-    `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=1&redirects=1&titles=${encodeURIComponent(q)}&format=json&origin=*`,
-  ];
+  const endpoints = wikipediaIntroExtractUrls(q, wiki.locale, wiki.allowLangFallback);
   for (const url of endpoints) {
     try {
       const resp = await fetch(url);
@@ -632,13 +1038,10 @@ async function fetchWikipediaIntroByTitle(title: string): Promise<string | undef
   return undefined;
 }
 
-async function fetchWikipediaOpenSearchTitles(query: string): Promise<string[]> {
+async function fetchWikipediaOpenSearchTitles(query: string, wiki: PdfWikiConfig): Promise<string[]> {
   const q = normalizeDiscoveryQuery(query);
   if (!q) return [];
-  const endpoints = [
-    `https://de.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}&limit=8&namespace=0&format=json&origin=*`,
-    `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}&limit=8&namespace=0&format=json&origin=*`,
-  ];
+  const endpoints = wikipediaOpenSearchUrls(q, wiki.locale, wiki.allowLangFallback);
   const out: string[] = [];
   for (const url of endpoints) {
     try {
@@ -693,12 +1096,14 @@ function wikipediaTitleMatchesQuery(query: string, title: string): boolean {
   return shared >= Math.min(2, qTokens.length);
 }
 
-async function fetchWikipediaTitleByCoords(lat?: number, lng?: number): Promise<string | undefined> {
+async function fetchWikipediaTitleByCoords(
+  lat?: number,
+  lng?: number,
+  wiki?: PdfWikiConfig,
+): Promise<string | undefined> {
   if (typeof lat !== "number" || typeof lng !== "number") return undefined;
-  const endpoints = [
-    `https://de.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lng}&gsradius=10000&gslimit=1&format=json&origin=*`,
-    `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lng}&gsradius=10000&gslimit=1&format=json&origin=*`,
-  ];
+  const cfg = wiki ?? pdfWikiConfigFromLocale("de");
+  const endpoints = wikipediaGeosearchUrls(lat, lng, cfg.locale, cfg.allowLangFallback);
   for (const url of endpoints) {
     try {
       const resp = await fetch(url);
@@ -717,26 +1122,27 @@ async function fetchWikipediaDiscoveryInfo(
   name: string,
   lat?: number,
   lng?: number,
-  options?: { allowGeoFallback?: boolean }
+  options?: { allowGeoFallback?: boolean; wiki?: PdfWikiConfig },
 ): Promise<{ text?: string; photo?: string }> {
   const candidates = buildDiscoveryQueryCandidates(name);
   if (candidates.length === 0) return {};
   const allowGeoFallback = options?.allowGeoFallback ?? false;
+  const wiki = options?.wiki ?? pdfWikiConfigFromLocale("de");
 
   for (const query of candidates) {
-    const exact = await fetchWikipediaSummaryByTitle(query);
+    const exact = await fetchWikipediaSummaryByTitle(query, wiki);
     if (exact) {
-      const intro = await fetchWikipediaIntroByTitle(exact.title || query);
+      const intro = await fetchWikipediaIntroByTitle(exact.title || query, wiki);
       const picked = cleanWikipediaText(intro || exact.text || "");
       if (!isWeakWikipediaText(picked)) return { text: picked, photo: exact.photo };
     }
 
-    const titles = await fetchWikipediaOpenSearchTitles(query);
+    const titles = await fetchWikipediaOpenSearchTitles(query, wiki);
     const bestTitle = pickBestWikipediaTitle(query, titles);
     if (bestTitle) {
-      const best = await fetchWikipediaSummaryByTitle(bestTitle);
+      const best = await fetchWikipediaSummaryByTitle(bestTitle, wiki);
       if (best) {
-        const intro = await fetchWikipediaIntroByTitle(best.title || bestTitle);
+        const intro = await fetchWikipediaIntroByTitle(best.title || bestTitle, wiki);
         const picked = cleanWikipediaText(intro || best.text || "");
         if (!isWeakWikipediaText(picked)) return { text: picked, photo: best.photo };
       }
@@ -746,11 +1152,11 @@ async function fetchWikipediaDiscoveryInfo(
   // Avoid nearest-article fallback for named POIs — it often picks unrelated nearby articles.
   if (!allowGeoFallback) return {};
 
-  const nearbyTitle = await fetchWikipediaTitleByCoords(lat, lng);
+  const nearbyTitle = await fetchWikipediaTitleByCoords(lat, lng, wiki);
   if (nearbyTitle && wikipediaTitleMatchesQuery(name, nearbyTitle)) {
-    const near = await fetchWikipediaSummaryByTitle(nearbyTitle);
+    const near = await fetchWikipediaSummaryByTitle(nearbyTitle, wiki);
     if (near) {
-      const intro = await fetchWikipediaIntroByTitle(near.title || nearbyTitle);
+      const intro = await fetchWikipediaIntroByTitle(near.title || nearbyTitle, wiki);
       const picked = cleanWikipediaText(intro || near.text || "");
       if (!isWeakWikipediaText(picked)) return { text: picked, photo: near.photo };
     }
@@ -761,23 +1167,19 @@ async function fetchWikipediaDiscoveryInfo(
 
 function getHotelDates(
   stop: RouteStop,
-  idx: number,
+  _idx: number,
   hotelStops: RouteStop[],
   tripStartDate: string
 ): { checkIn: string; checkOut: string; nights: number } {
+  const timeline = computeHotelStaysTimeline(hotelStops, tripStartDate);
   const nights = Math.max(1, Number(stop.hotelNights) || 2);
-  const isBookedAnchor = !!stop.bookingConfirmation && !!stop.hotelCheckIn;
-  let checkIn = isBookedAnchor ? (stop.hotelCheckIn || "") : "";
-  if (!checkIn) {
-    if (idx === 0) {
-      checkIn = tripStartDate || stop.hotelCheckIn || "";
-    } else {
-      const prev = getHotelDates(hotelStops[idx - 1], idx - 1, hotelStops, tripStartDate);
-      checkIn = prev.checkOut || stop.hotelCheckIn || "";
+  return (
+    timeline.get(stop.id) ?? {
+      checkIn: stop.hotelCheckIn || "",
+      checkOut: stop.hotelCheckIn ? addDaysISO(stop.hotelCheckIn, nights) : "",
+      nights,
     }
-  }
-  const checkOut = checkIn ? addDaysISO(checkIn, nights) : "";
-  return { checkIn, checkOut, nights };
+  );
 }
 
 // --- Google Static Maps API ---
@@ -1271,7 +1673,7 @@ function markerLabelForStop(stop: RouteStop, index: number, total: number): stri
 function markerColorForStop(stop: RouteStop, index: number, total: number): string {
   if (index === 0) return "#3b82f6";
   if (index === total - 1) return "#ef4444";
-  if (stop.isHotel && stop.bookingConfirmation) return "#22c55e";
+  if (stop.isHotel && stopHasLodgingBooking(stop)) return "#22c55e";
   if (stop.isHotel) return "#a855f7";
   return "#f97316";
 }
@@ -1657,7 +2059,13 @@ async function loadImageAsDataURL(url: string): Promise<string | null> {
   if (!url) return null;
   if (url.startsWith("data:image/")) return url;
   try {
-    const resp = await fetch(url);
+    const isRemote = /^https?:\/\//i.test(url);
+    const fetchTarget =
+      isRemote && typeof window !== "undefined"
+        ? `/api/image-proxy?url=${encodeURIComponent(url)}`
+        : url;
+    const resp = await fetch(fetchTarget);
+    if (!resp.ok) return null;
     const blob = await resp.blob();
     const dataUrl = await blobToDataURL(blob);
     if (blob.type.includes("webp")) {
@@ -1732,23 +2140,46 @@ function resolvePhotoLayout(layout: PdfPhotoLayout, count: number): PdfPhotoLayo
   return "grid";
 }
 
+function drawPhotoCaption(
+  doc: jsPDF,
+  caption: string | undefined,
+  x: number,
+  y: number,
+  w: number,
+): number {
+  const text = normalizePdfPhotoCaption(caption || "");
+  if (!text) return 0;
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(8);
+  setColor(doc, GRAY);
+  const lines = doc.splitTextToSize(text, w);
+  doc.text(lines, x + w / 2, y, { align: "center" });
+  return lines.length * 9 + 2;
+}
+
 async function renderManualPhotoPages(
   doc: jsPDF,
   photoUrls: string[],
   layoutPref: PdfPhotoLayout,
-  targetPages?: number
+  targetPages?: number,
+  captionsByUrl?: Record<string, string>,
 ): Promise<void> {
   const uniquePhotos = Array.from(new Set(photoUrls)).slice(0, 24);
   if (uniquePhotos.length === 0) return;
-  const assets = (await Promise.all(uniquePhotos.map((url) => loadPhotoAsset(url)))).filter(
-    (a): a is { dataUrl: string; format: "PNG" | "JPEG"; aspect: number } => !!a
-  );
+  const assets = (
+    await Promise.all(
+      uniquePhotos.map(async (url) => {
+        const loaded = await loadPhotoAsset(url);
+        return loaded ? { ...loaded, url } : null;
+      }),
+    )
+  ).filter((a): a is { dataUrl: string; format: "PNG" | "JPEG"; aspect: number; url: string } => !!a);
   if (assets.length === 0) return;
 
   const layout = resolvePhotoLayout(layoutPref, assets.length);
   const gap = 10;
 
-  type Asset = { dataUrl: string; format: "PNG" | "JPEG"; aspect: number };
+  type Asset = { dataUrl: string; format: "PNG" | "JPEG"; aspect: number; url: string };
   type Row = { kind: "landscape" | "portrait"; items: Asset[] };
 
   const isLandscape = (a: Asset) => a.aspect >= 1.05;
@@ -1796,15 +2227,25 @@ async function renderManualPhotoPages(
     rows.forEach((row, idx) => {
       const rowH = estimated[idx] * scale;
       if (row.kind === "landscape") {
-        drawImageContained(doc, row.items[0], M, y, CONTENT_W, rowH);
+        const item = row.items[0];
+        drawImageContained(doc, item, M, y, CONTENT_W, rowH);
+        const capH = drawPhotoCaption(doc, captionsByUrl?.[item.url], M, y + rowH + 4, CONTENT_W);
+        y += rowH + capH + gap;
       } else {
         const cols = row.items.length;
         const cellW = (CONTENT_W - gap * (cols - 1)) / cols;
+        let maxCap = 0;
         for (let c = 0; c < cols; c++) {
-          drawImageContained(doc, row.items[c], M + c * (cellW + gap), y, cellW, rowH);
+          const item = row.items[c];
+          const cellX = M + c * (cellW + gap);
+          drawImageContained(doc, item, cellX, y, cellW, rowH);
+          maxCap = Math.max(
+            maxCap,
+            drawPhotoCaption(doc, captionsByUrl?.[item.url], cellX, y + rowH + 4, cellW),
+          );
         }
+        y += rowH + maxCap + gap;
       }
-      y += rowH + gap;
     });
   };
 
@@ -1986,6 +2427,8 @@ export interface PdfOptions {
   etappen: Etappe[];
   routeInfo?: { distance: string; duration: string; stops: number };
   googleApiKey?: string;
+  /** UI-Sprache für Wikipedia/Ortsinfo-Texte im PDF (z. B. de → nur de.wikipedia). */
+  contentLocale?: string;
   onProgress?: (pct: number, msg: string) => void;
 }
 
@@ -2019,10 +2462,126 @@ export async function prewarmOverviewMapForPdf(trip: Trip, googleApiKey?: string
   return null;
 }
 
+async function renderPdfPlaceCard(
+  doc: jsPDF,
+  stop: RouteStop,
+  y: number,
+  discoveryInfoCache: Map<string, { text?: string; photo?: string }>,
+  pdfWiki: PdfWikiConfig,
+  onNewPage: () => void,
+  tripId?: string,
+): Promise<number> {
+  if (y > PAGE_H - 150) {
+    doc.addPage();
+    onNewPage();
+    y = M;
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  setColor(doc, BLACK);
+  const category = (stop.discoveryCategory || "").trim();
+  const showCategory = category && normalizePlaceKey(category) !== "eigener stopp";
+  const titleSuffix = showCategory ? ` (${category})` : "";
+  doc.text(`${stop.name}${titleSuffix}`, M, y);
+  y += 10;
+
+  const key = normalizePlaceKey(stop.name);
+  const stopText = normalizeDiscoveryText(stop.discoveryDescription || "");
+  let wikiText = "";
+  if (!stopText) {
+    if (!discoveryInfoCache.has(key)) {
+      if (stop.discoveryWikipediaTitle) {
+        const exact = await fetchWikipediaSummaryByTitle(stop.discoveryWikipediaTitle, pdfWiki);
+        const intro = exact
+          ? await fetchWikipediaIntroByTitle(exact.title || stop.discoveryWikipediaTitle, pdfWiki)
+          : undefined;
+        const picked = cleanWikipediaText(intro || exact?.text || "");
+        discoveryInfoCache.set(key, {
+          text: isWeakWikipediaText(picked) ? undefined : picked,
+          photo: exact?.photo,
+        });
+      } else {
+        discoveryInfoCache.set(
+          key,
+          await fetchWikipediaDiscoveryInfo(stop.name, stop.lat, stop.lng, {
+            allowGeoFallback: false,
+            wiki: pdfWiki,
+          }),
+        );
+      }
+    }
+    const cached = discoveryInfoCache.get(key) || {};
+    wikiText = normalizeDiscoveryText(cached.text || "");
+  }
+  const info = discoveryInfoCache.get(key) || {};
+
+  const photoW = 74;
+  const photoH = 56;
+  const isMapOrBucketPoi =
+    stop.discoverySource === "custom" ||
+    stop.discoverySource === "google" ||
+    stop.discoverySource === "bucket";
+  const rawText = stopText || (isMapOrBucketPoi ? wikiText : wikiText);
+
+  const sidecarPhoto = tripId ? readStopPhotoFromSidecar(tripId, stop.id) : undefined;
+  const imageUrl =
+    stop.discoveryPhotoDataUrl || sidecarPhoto || stop.discoveryPhotoUrl || info.photo;
+
+  let embeddedImage = false;
+  let blockH = 0;
+  if (imageUrl) {
+    try {
+      let img = await loadImageAsDataURL(imageUrl);
+      if (img) {
+        let format = dataUrlFormat(img);
+        if (!img.startsWith("data:image/png") && !img.startsWith("data:image/jpeg")) {
+          const converted = await convertDataUrlToJpeg(img);
+          if (converted) {
+            img = converted;
+            format = "JPEG";
+          }
+        }
+        doc.addImage(img, format, M, y, photoW, photoH);
+        embeddedImage = true;
+        blockH = photoH;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const textX = embeddedImage ? M + photoW + 10 : M;
+  const textW = embeddedImage ? RIGHT - textX : CONTENT_W;
+  const textLines = buildSentenceExcerpt(doc, rawText, textW, 5);
+  blockH = Math.max(blockH, textLines.length * 10);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  setColor(doc, BLACK);
+  if (textLines.length > 0) {
+    doc.text(textLines, textX, y + 9, { maxWidth: textW, align: "justify" });
+  } else if (!embeddedImage && blockH < 8) {
+    blockH = Math.max(blockH, 8);
+  }
+  if (blockH < 4) blockH = 4;
+  return y + blockH + 22;
+}
+
 export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
-  const { trip, etappen, routeInfo, googleApiKey, onProgress } = opts;
-  const exportOpts = resolvePdfExportOptions(trip);
+  const trip =
+    typeof window !== "undefined"
+      ? hydrateTripMedia(syncTripRouteStops(opts.trip))
+      : opts.trip;
+  const { etappen, routeInfo, googleApiKey, onProgress, contentLocale } = opts;
+  const pdfWiki = pdfWikiConfigFromLocale(contentLocale);
+  const exportOpts = resolvePdfExportOptions(trip, {
+    etappenCount: etappen.length,
+    hasRouteInfo: !!routeInfo,
+  });
   const doc = new jsPDF({ unit: "pt", format: "a4" });
+  type TocPagePatch = { page: number; y: number; pageLabel: string };
+  const tocPagePatches: TocPagePatch[] = [];
   const hotelStops = collectAllHotelStops(trip);
   const aiDiscoveriesByEtappe = collectAiDiscoveriesByEtappe(trip);
   const discoveryInfoCache = new Map<string, { text?: string; photo?: string }>();
@@ -2037,7 +2596,10 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   let overviewMapData: string | null = null;
   const etappeMapData: (string | null)[] = [];
   const allStops = trip.stops.filter((s) => s.name.trim());
-  const etappeStopsByIndex: RouteStop[][] = etappen.map((et) => getEtappeStopsForMap(et, allStops));
+  const etappeStopsByIndex: RouteStop[][] = etappen.map((et) =>
+    enrichEtappeStopsFromLegChain(et, getEtappeStopsForMap(et, allStops), allStops),
+  );
+  const routeBriefsByEtappe = collectRouteBriefsByEtappe(trip, etappen, etappeStopsByIndex);
   const routedSegmentsByIndex: (RoutedSegment[] | null)[] = etappen.map(() => null);
   const encodedRouteByIndex: (string | null)[] = etappen.map(() => null);
 
@@ -2073,10 +2635,8 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       const etappeStops = etappeStopsByIndex[i] || [];
       let routedSegments: RoutedSegment[] | null = null;
       let encodedByNames: string | null = null;
-      const nameChain = etappeStops.map((s) => s.name.trim()).filter(Boolean);
-      const originName = nameChain[0] || et.from;
-      const destinationName = nameChain[nameChain.length - 1] || et.to;
-      const waypointNames = nameChain.length > 2 ? nameChain.slice(1, -1) : et.legs.slice(0, -1).map((l) => l.to);
+      const { origin: originName, destination: destinationName, waypoints: waypointNames } =
+        etappeRouteNamesForMap(et, etappeStops);
       const jsRoute = await loadRouteByNamesViaJsApi(originName, destinationName, waypointNames);
       if (jsRoute) {
         routedSegments = jsRoute.segments;
@@ -2087,14 +2647,19 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       }
       routedSegmentsByIndex[i] = routedSegments;
       encodedRouteByIndex[i] = encodedByNames;
-      if (exportOpts.etappeMaps && etappeStops.length >= 2) {
-        const waypoints = waypointNames;
+      if (exportOpts.etappeMaps && originName.trim() && destinationName.trim()) {
         etappeMapData.push(
-          await loadMapImage(etappeStops, googleApiKey, {
-            origin: originName,
-            destination: destinationName,
-            waypoints,
-          }, routedSegments, encodedByNames)
+          await loadMapImage(
+            etappeStops,
+            googleApiKey,
+            {
+              origin: originName,
+              destination: destinationName,
+              waypoints: waypointNames,
+            },
+            routedSegments,
+            encodedByNames,
+          ),
         );
       } else {
         etappeMapData.push(null);
@@ -2381,7 +2946,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   } else {
     for (let idx = 0; idx < hotelStops.length; idx++) {
       const stop = hotelStops[idx];
-      const isBooked = !!stop.bookingConfirmation;
+      const isBooked = stopHasLodgingBooking(stop);
       const { checkIn, checkOut, nights } = getHotelDates(stop, idx, hotelStops, trip.startDate);
       const guests = stop.hotelGuests || trip.travelers || 2;
       const rooms = stop.hotelRooms || 1;
@@ -2459,7 +3024,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   const KM_TAB = RIGHT - 70; // tab stop for km column
   const PAGE_TAB = RIGHT; // right-aligned page number
 
-  const drawTocRow = (label: string, km: string, page: string) => {
+  const drawTocRow = (label: string, km: string, page: string, deferPageNumber?: boolean) => {
     doc.setFont("helvetica", "normal");
     doc.text(label, M, y);
     if (km) {
@@ -2467,7 +3032,14 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       doc.text(km, KM_TAB, y, { align: "right" });
       setColor(doc, BLACK);
     }
-    doc.text(page, PAGE_TAB, y, { align: "right" });
+    if (deferPageNumber) {
+      tocPagePatches.push({ page: doc.getNumberOfPages(), y, pageLabel: "" });
+      setColor(doc, GRAY);
+      doc.text("…", PAGE_TAB, y, { align: "right" });
+      setColor(doc, BLACK);
+    } else {
+      doc.text(page, PAGE_TAB, y, { align: "right" });
+    }
     y += 18;
   };
 
@@ -2548,89 +3120,48 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     doc.line(M, y, RIGHT, y);
     y += 15;
 
-    // Etappe map
+    const etappeStopsForDay = etappeStopsByIndex[i] || [];
+    const matchedHotel = findLodgingForEtappe(et, hotelStops, etappeStopsForDay);
+    const hasHotelBlock =
+      !!matchedHotel || et.hotelBooked !== undefined || !!et.hotelName;
+    const isBooked = matchedHotel
+      ? stopHasLodgingBooking(matchedHotel)
+      : !!et.hotelBooked;
+
+    const mapRowH = 170;
+    const mapColW = Math.round(CONTENT_W * 0.56);
+    const hotelColW = CONTENT_W - mapColW - 14;
+    const rowTopY = y;
+    let rowBottom = rowTopY;
+
     if (exportOpts.etappeMaps && etappeMapData[i]) {
       try {
-        const mapH = 180;
         const aspect = await getDataUrlAspect(etappeMapData[i]!);
-        const mapW = aspect ? Math.min(CONTENT_W, mapH * aspect) : CONTENT_W;
-        const mapX = M + (CONTENT_W - mapW) / 2;
-        doc.addImage(etappeMapData[i]!, "PNG", mapX, y, mapW, mapH);
-        y += mapH + 15;
-      } catch { /* ignore */ }
-    }
-
-    // Hotel info
-    const matchedHotel = hotelStops.find(
-      (s) => extractCity(s.name).toLowerCase() === extractCity(et.to).toLowerCase()
-    );
-
-    if (matchedHotel || et.hotelBooked !== undefined) {
-      const isBooked = matchedHotel ? !!matchedHotel.bookingConfirmation : !!et.hotelBooked;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      setColor(doc, isBooked ? GREEN : RED);
-      doc.text(isBooked ? "Hotel gebucht" : "Hotel offen", M, y);
-      y += 14;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-
-      if (matchedHotel) {
-        const hIdx = hotelStops.indexOf(matchedHotel);
-        const { checkIn, checkOut, nights } = getHotelDates(matchedHotel, hIdx, hotelStops, trip.startDate);
-        const guests = matchedHotel.hotelGuests || trip.travelers || 2;
-        const rooms = matchedHotel.hotelRooms || 1;
-
-        const colW = CONTENT_W / 2;
-        const leftX = M;
-        const rightX = M + colW + 5;
-        let leftY = y;
-        let rightY = y;
-
-        if (matchedHotel.bookingHotelName) {
-          doc.text(matchedHotel.bookingHotelName, leftX, leftY);
-          leftY += 12;
-        }
-        if (matchedHotel.bookingAddress) {
-          const addrLines = splitTextLines(doc, matchedHotel.bookingAddress, colW - 5);
-          doc.text(addrLines, leftX, leftY);
-          leftY += addrLines.length * 11;
-        }
-
-        if (checkIn) {
-          doc.text(`${formatDateDE(checkIn)} - ${formatDateDE(checkOut)}`, rightX, rightY);
-          rightY += 12;
-        }
-        doc.text(
-          `${guests} Pers., ${rooms} Zimm., ${nights} Nacht${nights !== 1 ? "e" : ""}`,
-          rightX,
-          rightY
-        );
-        rightY += 12;
-        if (matchedHotel.bookingPrice) {
-          doc.text(`Preis: ${matchedHotel.bookingPrice}`, rightX, rightY);
-          rightY += 12;
-        }
-        if (matchedHotel.bookingConfirmation) {
-          doc.text(`Best.-Nr: ${matchedHotel.bookingConfirmation}`, rightX, rightY);
-          rightY += 12;
-        }
-
-        y = Math.max(leftY, rightY) + 8;
-      } else if (et.hotelName) {
-        doc.text(et.hotelName, M, y);
-        y += 12;
-        if (et.hotelAddress) {
-          doc.text(et.hotelAddress, M, y);
-          y += 12;
-        }
-        y += 5;
+        const mapW = aspect ? Math.min(mapColW, mapRowH * aspect) : mapColW;
+        doc.addImage(etappeMapData[i]!, "PNG", M, rowTopY, mapW, mapRowH);
+        rowBottom = rowTopY + mapRowH;
+      } catch {
+        /* ignore */
       }
     }
 
-    const discoveries = aiDiscoveriesByEtappe.get(i) || [];
+    if (hasHotelBlock) {
+      const hotelX = exportOpts.etappeMaps && etappeMapData[i] ? M + mapColW + 14 : M;
+      const hotelW = exportOpts.etappeMaps && etappeMapData[i] ? hotelColW : CONTENT_W;
+      drawHotelTabPanel(doc, hotelX, rowTopY, hotelW, mapRowH, {
+        isBooked,
+        matchedHotel,
+        et,
+        hotelStops,
+        trip,
+      });
+      rowBottom = Math.max(rowBottom, rowTopY + mapRowH);
+    }
+
+    y = rowBottom + 30;
+
+    const briefsForDay = exportOpts.stopBriefs ? routeBriefsByEtappe.get(i) || [] : [];
+    const discoveries = exportOpts.entdeckenHighlights ? aiDiscoveriesByEtappe.get(i) || [] : [];
     const selectedManualPhotos = trip.pdfPhotosByEtappe?.[String(i)] || [];
     const photoPlacement: PdfPhotoPlacement = trip.pdfPhotoPlacementByEtappe?.[String(i)] || "afterEntdecken";
     const photoLayout: PdfPhotoLayout = trip.pdfPhotoLayoutByEtappe?.[String(i)] || "auto";
@@ -2639,17 +3170,20 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     const renderManualPhotoPageIfNeeded = async (target: PdfPhotoPlacement) => {
       if (renderedManualPhotoPage || photoPlacement !== target || selectedManualPhotos.length === 0) return;
       const beforePages = doc.getNumberOfPages();
-      await renderManualPhotoPages(doc, selectedManualPhotos, photoLayout, photoTargetPages);
+      await renderManualPhotoPages(
+        doc,
+        selectedManualPhotos,
+        photoLayout,
+        photoTargetPages,
+        trip.pdfPhotoCaptionsByEtappe?.[String(i)],
+      );
       const afterPages = doc.getNumberOfPages();
       pageNumber += Math.max(0, afterPages - beforePages);
       renderedManualPhotoPage = true;
     };
 
-    await renderManualPhotoPageIfNeeded("afterHotel");
-
-    // Legs detail (after hotel, before Entdecken)
-    const segmentRows = buildSegmentRows(et, etappeStopsByIndex[i] || [], routedSegmentsByIndex[i]);
-    if (exportOpts.teilstrecken && segmentRows.length > 1) {
+    const segmentRows = buildSegmentRows(et, etappeStopsForDay, routedSegmentsByIndex[i]);
+    if (exportOpts.teilstrecken && segmentRows.length > 0) {
       if (y > PAGE_H - 120) {
         doc.addPage();
         pageNumber++;
@@ -2659,119 +3193,86 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       doc.setFontSize(10);
       setColor(doc, BLUE);
       doc.text("Teilstrecken", M, y);
-      y += 14;
+      y += 16;
+
+      const colDistX = RIGHT - 95;
+      const colTimeX = RIGHT;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      setColor(doc, GRAY);
+      doc.text("STRECKE", M, y);
+      doc.text("DISTANZ", colDistX, y, { align: "right" });
+      doc.text("FAHRZEIT", colTimeX, y, { align: "right" });
+      y += 10;
+      doc.setDrawColor(LIGHT_GRAY[0], LIGHT_GRAY[1], LIGHT_GRAY[2]);
+      doc.setLineWidth(0.3);
+      doc.line(M, y, RIGHT, y);
+      y += 10;
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       setColor(doc, BLACK);
 
-      for (const seg of segmentRows) {
+      for (let segIdx = 0; segIdx < segmentRows.length; segIdx++) {
+        const seg = segmentRows[segIdx];
         if (y > PAGE_H - 40) {
           doc.addPage();
           pageNumber++;
           y = M;
         }
-        const routeLabel = `${seg.from}  ->  ${seg.to}`;
-        doc.text(routeLabel, M, y);
-        if (typeof seg.distanceMeters === "number" && typeof seg.durationSeconds === "number") {
-          const km = Math.round(seg.distanceMeters / 1000);
-          const dur = formatDur(seg.durationSeconds);
-          doc.text(`${km} km - ${dur}`, RIGHT, y, { align: "right" });
+        const num = String(segIdx + 1).padStart(2, "0");
+        doc.text(`${num}  ${seg.from} - ${seg.to}`, M, y);
+        const hasDist = typeof seg.distanceMeters === "number";
+        const hasDur = typeof seg.durationSeconds === "number";
+        if (hasDist) {
+          const km = Math.round(seg.distanceMeters! / 1000);
+          doc.text(`${km} km`, colDistX, y, { align: "right" });
+        } else {
+          setColor(doc, GRAY);
+          doc.text("offen", colDistX, y, { align: "right" });
+          setColor(doc, BLACK);
+        }
+        if (hasDur) {
+          doc.text(formatDur(seg.durationSeconds!), colTimeX, y, { align: "right" });
+        } else {
+          setColor(doc, GRAY);
+          doc.text("offen", colTimeX, y, { align: "right" });
+          setColor(doc, BLACK);
         }
         y += 13;
       }
-      y += 5;
+      y += 8;
     }
 
+    await renderManualPhotoPageIfNeeded("afterHotel");
     await renderManualPhotoPageIfNeeded("afterTeilstrecken");
 
-    // Discoveries selected from "Entdecken"
-    if (exportOpts.entdeckenHighlights && discoveries.length > 0) {
-      // Extra spacing before "Entdecken Highlights" for readability (approx. 2 blank lines).
-      y += 22;
+    const mergedPlaces = mergeEtappePlaceStops(briefsForDay, discoveries);
+    const briefIds = new Set(briefsForDay.map((s) => s.id));
+    const placesOnRoute = mergedPlaces.filter((p) => {
+      if (p.isHotel) return false;
+      if (briefIds.has(p.id)) return true;
+      return filterPlacesToEtappeDay([p], et, etappeStopsForDay, i).length > 0;
+    });
+    if (placesOnRoute.length > 0) {
+      y += 12;
       if (y > PAGE_H - 150) {
         doc.addPage();
         pageNumber++;
         y = M;
       }
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
+      doc.setFontSize(10);
       setColor(doc, BLUE);
-      doc.text("Entdecken Highlights", M, y);
+      doc.text("Orte auf der Strecke", M, y);
       y += 18;
 
-      for (const stop of discoveries) {
-        if (y > PAGE_H - 150) {
-          doc.addPage();
+      for (const stop of placesOnRoute) {
+        y = await renderPdfPlaceCard(doc, stop, y, discoveryInfoCache, pdfWiki, () => {
           pageNumber++;
-          y = M;
-        }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        setColor(doc, BLACK);
-        const category = (stop.discoveryCategory || "").trim();
-        const showCategory = category && normalizePlaceKey(category) !== "eigener stopp";
-        const titleSuffix = showCategory ? ` (${category})` : "";
-        doc.text(`${stop.name}${titleSuffix}`, M, y);
-        y += 10;
-
-        const key = normalizePlaceKey(stop.name);
-        if (!discoveryInfoCache.has(key)) {
-          if (stop.discoveryWikipediaTitle) {
-            const exact = await fetchWikipediaSummaryByTitle(stop.discoveryWikipediaTitle);
-            const intro = exact
-              ? await fetchWikipediaIntroByTitle(exact.title || stop.discoveryWikipediaTitle)
-              : undefined;
-            const picked = cleanWikipediaText(intro || exact?.text || "");
-            discoveryInfoCache.set(key, {
-              text: isWeakWikipediaText(picked) ? undefined : picked,
-              photo: exact?.photo,
-            });
-          } else {
-            discoveryInfoCache.set(
-              key,
-              await fetchWikipediaDiscoveryInfo(stop.name, stop.lat, stop.lng, { allowGeoFallback: false })
-            );
-          }
-        }
-        const info = discoveryInfoCache.get(key) || {};
-
-        const photoW = 74;
-        const photoH = 56;
-        const textX = M + photoW + 10;
-        const textW = RIGHT - textX;
-        const wikiText = normalizeDiscoveryText(info.text || "");
-        const stopText = normalizeDiscoveryText(stop.discoveryDescription || "");
-        const isMapOrBucketPoi =
-          stop.discoverySource === "custom" ||
-          stop.discoverySource === "google" ||
-          stop.discoverySource === "bucket";
-        const rawText = isMapOrBucketPoi ? wikiText : wikiText || stopText;
-        const textLines = buildSentenceExcerpt(doc, rawText, textW, 5);
-
-        let blockH = textLines.length * 10;
-        const imageUrl = stop.discoveryPhotoDataUrl || stop.discoveryPhotoUrl || info.photo;
-        if (imageUrl) {
-          try {
-            const img = await loadImageAsDataURL(imageUrl);
-            if (img) {
-              doc.addImage(img, dataUrlFormat(img), M, y, photoW, photoH);
-              blockH = Math.max(blockH, photoH);
-            }
-          } catch {
-            // ignore image errors in PDF rendering
-          }
-        }
-
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9);
-        setColor(doc, BLACK);
-        if (textLines.length > 0) {
-          doc.text(textLines, textX, y + 9, { maxWidth: textW, align: "justify" });
-        }
-        y += blockH + 22;
+        }, trip.id);
       }
-      y += 8;
+      y += 4;
     }
 
     await renderManualPhotoPageIfNeeded("afterEntdecken");

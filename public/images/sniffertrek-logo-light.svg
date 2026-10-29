@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 52" role="img" aria-label="SnifferTrek">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path
+      d="M8 36 L20 14 L36 22"
+      stroke="#ffffff"
+      stroke-width="4.5"
+    />
+    <circle cx="36" cy="22" r="4.5" fill="#ffffff" stroke="none" />
+  </g>
+  <text
+    x="50"
+    y="35"
+    font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+    font-size="30"
+    font-weight="700"
+    letter-spacing="-0.02em"
+    fill="#ffffff"
+  >
+    SnifferTrek
+  </text>
+</svg>

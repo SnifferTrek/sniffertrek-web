@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useTranslations } from "next-intl";
 import { RouteStop, RouteLegInfo, ViaPoint } from "@/lib/types";
 import {
   bucketMarkerDomId,
@@ -8,6 +9,12 @@ import {
   resolvePoiImageUrl,
   wireBucketPoiInfoWindow,
 } from "@/lib/bucketMapPoi";
+import {
+  GOOGLE_PLACE_DETAIL_FIELDS,
+  mountGooglePlaceInfoWindow,
+  placeResultToPopupData,
+  type PlaceInfoLabels,
+} from "@/lib/googlePlaceInfoWindow";
 
 const GOOGLE_MAPS_KEY = "AIzaSyDTcV42T-ZkriZOB8RtNZMtGR8gZq3Izi0";
 
@@ -31,6 +38,7 @@ export type MapHighlightPoi = {
   imageUrl?: string;
   wikipediaTitle?: string;
   inMyBucketList?: boolean;
+  rating?: number;
 };
 
 const EMPTY_BUCKET_POIS: MapHighlightPoi[] = [];
@@ -44,7 +52,14 @@ interface GoogleMapProps {
   showBucketListOnMap?: boolean;
   fitBucketMarkers?: boolean;
   onToggleBucketListOnMap?: () => void;
-  onAddToBucketList?: (poi: { name: string; lat: number; lng: number; category?: string }) => void;
+  onAddToBucketList?: (poi: {
+    name: string;
+    lat: number;
+    lng: number;
+    category?: string;
+    rating?: number;
+    description?: string;
+  }) => void;
   onAddBucketPoiAsStop?: (poi: MapHighlightPoi) => void;
   isInBucketList?: (name: string) => boolean;
   isInRoute?: (name: string) => boolean;
@@ -144,6 +159,45 @@ export default function GoogleMap({
   onViaPointsChange,
   onRemoveStop,
 }: GoogleMapProps) {
+  const tm = useTranslations("map");
+  const tt = useTranslations("planerTabs");
+  const tp = useTranslations("planer");
+  const placeInfoLabelsRef = useRef<PlaceInfoLabels>({
+    addToRoute: "",
+    toBucket: "",
+    inBucket: "",
+    moreInfo: "",
+    detailsTitle: "",
+    reviews: "",
+    rating: "",
+    priceLevel: "",
+    openingHours: "",
+    website: "",
+    phone: "",
+    openInMaps: "",
+    googleAttribution: "",
+    category: "",
+    noExtraInfo: "",
+    back: "",
+  });
+  placeInfoLabelsRef.current = {
+    addToRoute: tm("placeAddRoute"),
+    toBucket: tm("placeToBucket"),
+    inBucket: tm("placeInBucket"),
+    moreInfo: tm("placeMoreInfo"),
+    detailsTitle: tm("placeDetailsTitle"),
+    reviews: tm("placeReviews"),
+    rating: tm("placeRating"),
+    priceLevel: tm("placePriceLevel"),
+    openingHours: tm("placeOpeningHours"),
+    website: tm("placeWebsite"),
+    phone: tm("placePhone"),
+    openInMaps: tm("placeOpenInMaps"),
+    googleAttribution: tm("placeGoogleAttribution"),
+    category: tm("placeCategory"),
+    noExtraInfo: tm("placeNoExtraInfo"),
+    back: tm("placeBack"),
+  };
   const mapShellRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<google.maps.Map | null>(null);
@@ -263,15 +317,11 @@ export default function GoogleMap({
             const bestInsertIdx = getBestInsertIndexForPoint(e.latLng);
             const req: google.maps.places.PlaceDetailsRequest = {
               placeId,
-              fields: ["name", "formatted_address", "address_components", "photos", "types"],
+              fields: [...GOOGLE_PLACE_DETAIL_FIELDS],
             };
             placesService.getDetails(req, (place, status) => {
               if (status !== google.maps.places.PlacesServiceStatus.OK || !place) return;
               const photo = place.photos?.[0]?.getUrl({ maxWidth: 340, maxHeight: 220 });
-              const title = escapeHtml(place.name || "Ort");
-              const address = escapeHtml(place.formatted_address || "").replace(/,/g, "<br/>");
-              const addBtnId = `add-route-poi-${placeId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
-              const bucketBtnId = `add-bucket-poi-${placeId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
               const locality = place.address_components?.find((c) =>
                 c.types.includes("locality")
               )?.long_name;
@@ -287,35 +337,46 @@ export default function GoogleMap({
               const inBucket =
                 (isInBucketListRef.current?.(poiName) ?? false) ||
                 (isInBucketListRef.current?.(routeName) ?? false);
-              const bucketBtnLabel = inBucket ? "Auf Bucket List" : "Zur Bucket List";
-              const bucketBtnStyle = inBucket
-                ? "border:1px solid #86efac;background:#ecfdf5;color:#15803d;cursor:default;"
-                : "border:1px solid #d1d5db;background:#fff;color:#374151;cursor:pointer;";
-              const content = `<div style="font-family:system-ui;padding:4px 2px;min-width:220px;max-width:320px"><div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:4px">${title}</div>${address ? `<div style="font-size:12px;color:#4b5563;line-height:1.35">${address}</div>` : ""}<div style="display:flex;gap:8px;margin-top:10px"><button id="${addBtnId}" style="flex:1;padding:7px 10px;font-size:11px;font-weight:600;font-family:system-ui;color:#fff;background:#2563eb;border:0;border-radius:7px;cursor:pointer">Zu Route hinzufügen</button><button id="${bucketBtnId}" ${inBucket ? "disabled" : ""} style="flex:1;padding:7px 10px;font-size:11px;font-weight:600;font-family:system-ui;border-radius:7px;${bucketBtnStyle}">${bucketBtnLabel}</button></div>${photo ? `<div style="margin-top:8px"><img src="${photo}" alt="${title}" style="width:100%;height:130px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb"/></div>` : ""}</div>`;
+              const popupData = placeResultToPopupData(placeId, place, {
+                photoUrl: photo,
+                category,
+              });
               if (poiInfoWindowRef.current) {
                 poiInfoWindowRef.current.close();
               }
-              poiInfoWindowRef.current = new google.maps.InfoWindow({ content, position: e.latLng! });
+              poiInfoWindowRef.current = new google.maps.InfoWindow({
+                maxWidth: 360,
+                position: e.latLng!,
+              });
               poiInfoWindowRef.current.open(map);
-              google.maps.event.addListenerOnce(poiInfoWindowRef.current, "domready", () => {
-                const btn = document.getElementById(addBtnId);
-                btn?.addEventListener("click", () => {
-                  onMapClickRef.current?.(poiName, e.latLng!.lat(), e.latLng!.lng(), bestInsertIdx, photo);
-                  poiInfoWindowRef.current?.close();
-                });
-                const bucketBtn = document.getElementById(bucketBtnId);
-                if (!inBucket) {
-                  bucketBtn?.addEventListener("click", () => {
+              mountGooglePlaceInfoWindow(
+                poiInfoWindowRef.current,
+                "summary",
+                popupData,
+                placeInfoLabelsRef.current,
+                {
+                  inBucket,
+                  onAddToRoute: () => {
+                    onMapClickRef.current?.(
+                      poiName,
+                      e.latLng!.lat(),
+                      e.latLng!.lng(),
+                      bestInsertIdx,
+                      photo,
+                    );
+                  },
+                  onAddToBucket: () => {
                     onAddToBucketListRef.current?.({
                       name: poiName,
                       lat: e.latLng!.lat(),
                       lng: e.latLng!.lng(),
                       category,
+                      rating: place.rating ?? 0,
+                      description: place.formatted_address || "",
                     });
-                    poiInfoWindowRef.current?.close();
-                  });
-                }
-              });
+                  },
+                },
+              );
             });
             return;
           }
@@ -540,7 +601,12 @@ export default function GoogleMap({
         const renderer = new google.maps.DirectionsRenderer({
           map: mapInstance.current,
           suppressMarkers: true,
-          draggable: !!onViaPointsChangeRef.current && !optimize,
+          // On iOS, panning across the route can create unintended via points.
+          // Use the explicit add-via mode there, including iPad desktop mode.
+          draggable: !!onViaPointsChangeRef.current && !optimize && !(
+            /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+          ),
           polylineOptions: { strokeColor: colors[e % colors.length], strokeWeight: 5, strokeOpacity: 0.8, clickable: true, zIndex: 2 },
           preserveViewport: true,
         });
@@ -1045,7 +1111,7 @@ export default function GoogleMap({
               }`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 12h6"/><path d="M15 12h6"/><path d="M12 3v6"/><path d="M12 15v6"/></svg>
-              {addViaMode ? "Durchfahrtspunkt abbrechen" : "+ Durchfahrtspunkt setzen"}
+              {addViaMode ? tm("cancelVia") : tm("addVia")}
             </button>
           )}
           <button
@@ -1061,7 +1127,7 @@ export default function GoogleMap({
             }`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-            {addMode ? "Abbrechen" : "+ Stopp auf Karte eingeben"}
+            {addMode ? tm("cancel") : tm("addStop")}
           </button>
           {onToggleBucketListOnMap && (
             <button
@@ -1074,7 +1140,7 @@ export default function GoogleMap({
               }`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-              {showBucketListOnMap ? "Bucket List aus" : "Bucket List"}
+              {showBucketListOnMap ? tt("mapBucketOff") : tp("tabBucket")}
             </button>
           )}
           <button
@@ -1083,7 +1149,7 @@ export default function GoogleMap({
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white/95 px-3 py-2 text-xs font-medium text-gray-700 shadow-sm backdrop-blur-sm transition-all hover:bg-white"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-            {isFullscreen ? "Vollbild beenden" : "Vollbild"}
+            {isFullscreen ? tt("mapFullscreenExit") : tt("mapFullscreen")}
           </button>
           </div>
         </div>
@@ -1096,7 +1162,7 @@ export default function GoogleMap({
       {calculating && (
         <div className="absolute top-12 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
           <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-gray-600 font-medium">Route wird berechnet...</span>
+          <span className="text-xs text-gray-600 font-medium">{tm("calculating")}</span>
         </div>
       )}
       {routeStatus && !calculating && (
@@ -1107,9 +1173,7 @@ export default function GoogleMap({
       {(addMode || addViaMode) && (
         <div className="mt-2 text-center">
           <span className={`text-xs font-medium ${addViaMode ? "text-cyan-700" : "text-orange-600"}`}>
-            {addViaMode
-              ? "Klicke auf die Karte um einen Durchfahrtspunkt zu setzen"
-              : "Klicke auf die Karte um einen Zwischenstopp hinzuzufügen"}
+            {addViaMode ? tm("clickVia") : tm("clickStop")}
           </span>
         </div>
       )}

@@ -1,0 +1,8 @@
+backups/
+test-results/
+*.tar.gz
+# Editor-/Sync-Duplikate (nicht für Production)
+public/**/* 2.*
+public/**/* 3.*
+public/**/* 4.*
+public/**/* 5.*

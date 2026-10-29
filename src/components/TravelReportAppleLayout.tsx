@@ -4,7 +4,6 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import { buildHotelsComLink } from "@/lib/affiliateLinks";
 import { partnerLinkCta } from "@/lib/partnerLabelFromUrl";
-import { PartnerAffiliateMark } from "@/components/PartnerLinkBadge";
 import { Link } from "@/i18n/navigation";
 
 export type TravelReportAppleViewModel = {
@@ -155,7 +154,6 @@ function HotelPickPartnerLink({
   return (
     <ExtLink href={href} className={className} sponsored>
       {partnerLinkCta(href, "search", locale)}
-      <PartnerAffiliateMark href={href} />
     </ExtLink>
   );
 }
@@ -207,7 +205,6 @@ export default function TravelReportAppleLayout({ model }: Props) {
               className="bcn-apple-btn bcn-apple-btn--ghost"
             >
               {partnerLinkCta(hotelsComHref, "open", locale)}
-              <PartnerAffiliateMark href={hotelsComHref} className="ml-1.5 text-[10px] font-normal uppercase tracking-wide opacity-80" />
             </a>
           </div>
         </div>
@@ -420,7 +417,6 @@ export default function TravelReportAppleLayout({ model }: Props) {
             className="bcn-apple-btn bcn-apple-btn--blue"
           >
             {partnerLinkCta(hotelsComHref, "open", locale)}
-            <PartnerAffiliateMark href={hotelsComHref} className="ml-1.5 text-[10px] font-normal uppercase tracking-wide opacity-80" />
           </a>
           <Link href={model.planerHref} className="bcn-apple-btn bcn-apple-btn--ghost">
             {t("addInPlanner")}

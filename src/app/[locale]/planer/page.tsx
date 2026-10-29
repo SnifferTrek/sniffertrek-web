@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, Fragment, type ChangeEvent } from "react";
 import {
   MapPin,
   Hotel,
@@ -33,7 +33,7 @@ import {
   BedDouble,
   Clock,
   Route,
-  ChevronUp,
+  GripVertical,
   ChevronRight,
   ChevronLeft,
   ArrowDownUp,
@@ -44,9 +44,27 @@ import {
   Loader2,
   Settings,
   Pencil,
+  Info,
+  FileUp,
 } from "lucide-react";
 import { Link, useRouter } from "@/i18n/navigation";
-;
+import { useLocale, useTranslations } from "next-intl";
+import RouteStopBriefPanel from "@/components/RouteStopBriefPanel";
+import {
+  stopHasBriefContent,
+  stopBriefIncluded,
+  countNamedRouteStops,
+  roleLabel,
+  isUserUploadedStopPhoto,
+} from "@/lib/stopBrief";
+import { asAppLocale } from "@/lib/localeCopy";
+import {
+  wikipediaSummaryUrls,
+  wikipediaIntroExtractUrls,
+  wikipediaOpenSearchUrls,
+  wikipediaGeosearchUrls,
+  wikipediaArticleUrl,
+} from "@/lib/wikipediaLocale";
 import {
   Trip,
   TravelMode,
@@ -68,26 +86,54 @@ import {
   saveTrip,
   getAllTrips,
   getTrip,
+  loadTripHydrated,
   deleteTrip,
   getActiveTripId,
   setActiveTripId,
   getTripDisplayName,
   formatDate,
+  markStopsDeleted,
+  TRIPS_MERGED_EVENT,
 } from "@/lib/tripStorage";
+import {
+  applyPdfMediaToTrip,
+  hydrateTripMedia,
+  loadDurablePdfMedia,
+  readTripCoverPhoto,
+  removeTripCoverPhoto,
+  writeTripCoverPhoto,
+  writeStopPhotoToSidecar,
+  removeStopPhotoFromSidecar,
+  loadDurableStopMedia,
+} from "@/lib/tripMediaSidecar";
+import { mergeTripRecords, preserveStopPhotos, syncTripRouteStops } from "@/lib/tripStopMerge";
+import { normalizePdfPhotoCaption, PDF_PHOTO_CAPTION_MAX_LENGTH } from "@/lib/pdfPhotoCaption";
 import { saveTripToCloud, deleteTripFromCloud } from "@/lib/cloudSync";
 import { useAuth } from "@/components/AuthProvider";
 import GoogleMap, { useGoogleAutocomplete, type MapHighlightPoi } from "@/components/GoogleMap";
 import HotelDatePicker from "@/components/HotelDatePicker";
 import { POI, searchPOIs, searchPOIsAlongRoute } from "@/lib/poiService";
-import { Landmark, loadLandmarks, filterLandmarks, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
+import { Landmark, loadLandmarks, filterLandmarks, filterLandmarksAlongRoute, CATEGORIES, CONTINENTS } from "@/lib/landmarkService";
 import { landmarkToMapPoi } from "@/lib/bucketMapPoi";
-import { PDF_EXPORT_OPTION_DEFS, isPdfExportOptionEnabled } from "@/lib/pdfExportOptions";
+import {
+  getApplicablePdfExportOptionDefs,
+  isPdfExportOptionEnabled,
+  type PdfExportPlanContext,
+} from "@/lib/pdfExportOptions";
 import WikiThumb from "@/components/WikiThumb";
 import DateRangePicker from "@/components/DateRangePicker";
 import BucketListMap from "@/components/BucketListMap";
 import AirportSelect from "@/components/AirportSelect";
-import { generateTripPDF } from "@/lib/pdfService";
 import { isCatalogModuleActive } from "@/lib/tripModuleCatalog";
+import {
+  assignStopRoles,
+  applyRoundTripShortcut,
+  endStopLooksLikeTripTitleOnly,
+  isActiveRouteStopInsert,
+  reorderStopsToInsertIndex,
+  resolveRouteStopInsertIndex,
+  ROUTE_TITLE_AS_DESTINATION_MESSAGE,
+} from "@/lib/routeStops";
 import {
   buildBookingHotelLink,
   buildExpediaHotelLink,
@@ -113,6 +159,14 @@ import {
   buildWorldNomadsLink,
 } from "@/lib/affiliateLinks";
 import { trackAffiliateClick } from "@/lib/affiliateTracking";
+import { partnerLabelFromUrl, partnerLinkCta } from "@/lib/partnerLabelFromUrl";
+import { PartnerAffiliateMark } from "@/components/PartnerLinkBadge";
+import { parseHotelBookingIcs } from "@/lib/parseHotelBookingIcs";
+import {
+  computeHotelStaysTimeline,
+  getBookedHotelDatesOnly,
+  isBookedHotelStop,
+} from "@/lib/hotelStopDates";
 
 function normalizePlaceKey(value: string): string {
   return value
@@ -155,7 +209,7 @@ async function imageUrlToPrintableDataUrl(url: string): Promise<string | undefin
       node.onerror = reject;
       node.src = rawDataUrl;
     });
-    const maxW = 640;
+    const maxW = 1280;
     const scale = img.width > maxW ? maxW / img.width : 1;
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(img.width * scale));
@@ -193,6 +247,9 @@ async function fileToPrintableDataUrl(file: File): Promise<string | undefined> {
 }
 
 export default function PlanerPage() {
+  const t = useTranslations("planer");
+  const tt = useTranslations("planerTabs");
+  const chrome = useTranslations("chrome");
   const { user } = useAuth();
   const { ready: autocompleteReady, attachAutocomplete } = useGoogleAutocomplete();
   const [trip, setTrip] = useState<Trip>(createNewTrip());
@@ -207,7 +264,18 @@ export default function PlanerPage() {
   const planerRouter = useRouter();
   const [saveStatus, setSaveStatus] = useState<"idle" | "saved">("idle");
   const [activeTab, setActiveTab] = useState<
-    "route" | "hotels" | "flights" | "car" | "poi" | "report" | "bucket" | "esim" | "droneMaps" | "train" | "insurance"
+    | "route"
+    | "ortsinfo"
+    | "hotels"
+    | "flights"
+    | "car"
+    | "poi"
+    | "report"
+    | "bucket"
+    | "esim"
+    | "droneMaps"
+    | "train"
+    | "insurance"
   >("route");
   const [expandedEtappen, setExpandedEtappen] = useState<number[]>([]);
   const [hotelFocus, setHotelFocus] = useState<{ stopId: string; openBooking: boolean } | null>(null);
@@ -226,6 +294,7 @@ export default function PlanerPage() {
   const [landmarkCategory, setLandmarkCategory] = useState("");
   const [landmarkContinent, setLandmarkContinent] = useState("");
   const [landmarkUnescoOnly, setLandmarkUnescoOnly] = useState(false);
+  const [bucketDiscoveryScope, setBucketDiscoveryScope] = useState<"route" | "worldwide">("route");
   const [flightFrom, setFlightFrom] = useState("");
   const [flightTo, setFlightTo] = useState("");
   const [flightDepart, setFlightDepart] = useState("");
@@ -270,6 +339,30 @@ export default function PlanerPage() {
   const [draggingPhotoSlotByEtappe, setDraggingPhotoSlotByEtappe] = useState<Record<number, number | null>>({});
   const [photoAspectByUrl, setPhotoAspectByUrl] = useState<Record<string, number>>({});
   const [quickStopDrafts, setQuickStopDrafts] = useState<Array<{ id: string; name: string; lat?: number; lng?: number }>>([]);
+  const [draggingRouteStopId, setDraggingRouteStopId] = useState<string | null>(null);
+  const [dropInsertIndex, setDropInsertIndex] = useState<number | null>(null);
+  const [saveBlockedMessage, setSaveBlockedMessage] = useState<string | null>(null);
+  const [pdfExportError, setPdfExportError] = useState<string | null>(null);
+  const locale = useLocale();
+  const icsFileInputRef = useRef<HTMLInputElement>(null);
+  const icsImportStopIdRef = useRef<string | null>(null);
+  const [icsImportFeedback, setIcsImportFeedback] = useState<Record<string, "ok" | "err">>({});
+
+  useEffect(() => {
+    setAiPois([]);
+    setAiPoiPhotos({});
+    setPois([]);
+    setPoisSearchedFor("");
+  }, [locale]);
+  const [expandedStopBriefIds, setExpandedStopBriefIds] = useState<Record<string, boolean>>({});
+  const [stopBriefLoadingId, setStopBriefLoadingId] = useState<string | null>(null);
+  const [autoEnrichStopBriefs, setAutoEnrichStopBriefs] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("sniffertrek_auto_stop_brief") !== "0";
+  });
+  const autoEnrichStopBriefsRef = useRef(true);
+  autoEnrichStopBriefsRef.current = autoEnrichStopBriefs;
+  const scheduleStopBriefEnrichRef = useRef<(stopId: string) => void>(() => {});
   const [showBucketOnMap, setShowBucketOnMap] = useState(false);
   const [bucketGeocoded, setBucketGeocoded] = useState<Record<string, { lat: number; lng: number }>>({});
 
@@ -298,6 +391,19 @@ export default function PlanerPage() {
       });
     }
   }, [activeTab, showBucketOnMap, landmarksLoaded]);
+
+  const prevActiveTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (activeTab === "bucket" && prevActiveTabRef.current !== "bucket" && !landmarkQuery.trim()) {
+      setBucketDiscoveryScope("route");
+    }
+    prevActiveTabRef.current = activeTab;
+  }, [activeTab, landmarkQuery]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("sniffertrek_auto_stop_brief", autoEnrichStopBriefs ? "1" : "0");
+  }, [autoEnrichStopBriefs]);
 
   useEffect(() => {
     if (activeTab === "flights") {
@@ -343,14 +449,17 @@ export default function PlanerPage() {
   }, [trip.id, trip.travelers]);
 
   useEffect(() => {
-    const shouldEditInHeader = trip.name === "Neue Reise" || isEditingTripName;
-    if (!shouldEditInHeader) return;
+    const isDefaultName = !trip.name?.trim() || trip.name === "Neue Reise";
+    setIsEditingTripName(isDefaultName);
+  }, [trip.id]);
+
+  useEffect(() => {
+    if (!isEditingTripName) return;
     const timer = setTimeout(() => {
       tripNameInputRef.current?.focus();
-      tripNameInputRef.current?.select();
     }, 250);
     return () => clearTimeout(timer);
-  }, [trip.id, trip.name, isEditingTripName]);
+  }, [trip.id, isEditingTripName]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -372,7 +481,7 @@ export default function PlanerPage() {
   useEffect(() => {
     const activeId = getActiveTripId();
     if (activeId) {
-      const existing = getTrip(activeId);
+      const existing = loadTripHydrated(activeId);
       if (existing) {
         setTrip(existing);
       } else {
@@ -384,20 +493,118 @@ export default function PlanerPage() {
     setSavedTrips(getAllTrips());
   }, [planerRouter]);
 
+  useEffect(() => {
+    const reloadFromStorage = () => {
+      const activeId = getActiveTripId();
+      if (!activeId) return;
+      const fresh = loadTripHydrated(activeId);
+      if (fresh) {
+        setTrip((prev) => {
+          if (prev.id !== fresh.id) return fresh;
+          let merged = mergeTripRecords(fresh, prev);
+          const cover =
+            prev.pdfCoverPhotoDataUrl?.trim() ||
+            merged.pdfCoverPhotoDataUrl?.trim() ||
+            readTripCoverPhoto(fresh.id);
+          if (cover && !merged.pdfCoverPhotoDataUrl?.trim()) {
+            merged = { ...merged, pdfCoverPhotoDataUrl: cover };
+          }
+          queueMicrotask(() => {
+            saveTrip(merged);
+            setSavedTrips(getAllTrips());
+          });
+          return preserveStopPhotos(prev, merged);
+        });
+      }
+      setSavedTrips(getAllTrips());
+    };
+    window.addEventListener(TRIPS_MERGED_EVENT, reloadFromStorage);
+    return () => window.removeEventListener(TRIPS_MERGED_EVENT, reloadFromStorage);
+  }, []);
+
+  // Ortsfotos aus IndexedDB restaurieren, falls der localStorage-Sidecar
+  // (Quota) sie verloren hat – sonst zeigt die Ortsinfo „Kein Bild".
+  useEffect(() => {
+    if (!trip.id) return;
+    let cancelled = false;
+    void loadDurableStopMedia(trip.id).then((media) => {
+      if (cancelled || !Object.keys(media).length) return;
+      setTrip((prev) => {
+        if (prev.id !== trip.id) return prev;
+        let changed = false;
+        const stops = prev.stops.map((s) => {
+          const photo = media[s.id]?.trim();
+          if (photo && photo !== s.discoveryPhotoDataUrl) {
+            changed = true;
+            return { ...s, discoveryPhotoDataUrl: photo };
+          }
+          return s;
+        });
+        if (!changed) return prev;
+        const next = syncTripRouteStops({ ...prev, stops });
+        queueMicrotask(() => saveTrip(next));
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trip.id]);
+
+  useEffect(() => {
+    if (!trip.id) return;
+    let cancelled = false;
+    void loadDurablePdfMedia(trip.id).then((side) => {
+      if (cancelled || !side) return;
+      setTrip((prev) => {
+        if (prev.id !== trip.id) return prev;
+        const next = applyPdfMediaToTrip(prev, side);
+        const coverChanged =
+          !!next.pdfCoverPhotoDataUrl?.trim() && !prev.pdfCoverPhotoDataUrl?.trim();
+        const prevPhotos = Object.values(prev.pdfPhotosByEtappe || {}).flat().length;
+        const nextPhotos = Object.values(next.pdfPhotosByEtappe || {}).flat().length;
+        const prevLib = Object.values(prev.pdfPhotoLibraryByEtappe || {}).flat().length;
+        const nextLib = Object.values(next.pdfPhotoLibraryByEtappe || {}).flat().length;
+        if (!coverChanged && nextPhotos === prevPhotos && nextLib === prevLib) return prev;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [trip.id]);
+
+  /** Stopps, deren Foto der Nutzer bewusst gelöscht hat („Ortsinfo entfernen"). */
+  const photoClearAllowRef = useRef<Set<string>>(new Set());
+
   const updateTrip = useCallback((updates: Partial<Trip> | ((prev: Trip) => Trip)) => {
-    setTrip((prev) =>
-      typeof updates === "function" ? updates(prev) : { ...prev, ...updates }
-    );
+    setTrip((prev) => {
+      const base = typeof updates === "function" ? updates(prev) : { ...prev, ...updates };
+      // Harte Garantie: Kein Update darf ein vorhandenes Stopp-Foto entfernen.
+      return prev.id === base.id ? preserveStopPhotos(prev, base, photoClearAllowRef.current) : base;
+    });
     setHasUnsavedChanges(true);
   }, []);
 
   const updateTripSilent = useCallback((updates: Partial<Trip> | ((prev: Trip) => Trip)) => {
-    setTrip((prev) =>
-      typeof updates === "function" ? updates(prev) : { ...prev, ...updates }
-    );
+    setTrip((prev) => {
+      const base = typeof updates === "function" ? updates(prev) : { ...prev, ...updates };
+      return prev.id === base.id ? preserveStopPhotos(prev, base, photoClearAllowRef.current) : base;
+    });
+  }, []);
+
+  const persistTripSnapshot = useCallback((snapshot: Trip) => {
+    const synced = syncTripRouteStops(snapshot);
+    saveTrip(synced);
+    setSavedTrips(getAllTrips());
   }, []);
 
   const handleSave = useCallback(() => {
+    if (endStopLooksLikeTripTitleOnly(trip)) {
+      setSaveBlockedMessage(ROUTE_TITLE_AS_DESTINATION_MESSAGE);
+      return;
+    }
+    setSaveBlockedMessage(null);
     saveTrip(trip);
     setActiveTripId(trip.id);
     setSavedTrips(getAllTrips());
@@ -414,7 +621,7 @@ export default function PlanerPage() {
     if (!hasUnsavedChanges) return;
     const timer = setTimeout(() => {
       handleSave();
-    }, 3000);
+    }, 1200);
     return () => clearTimeout(timer);
   }, [trip, hasUnsavedChanges, handleSave]);
 
@@ -453,7 +660,7 @@ export default function PlanerPage() {
   };
 
   const handleLoadTrip = (id: string) => {
-    const loaded = getTrip(id);
+    const loaded = loadTripHydrated(id);
     if (loaded) {
       setTrip(loaded);
       setActiveTripId(id);
@@ -498,22 +705,40 @@ export default function PlanerPage() {
     return trip.routes?.route?.viaPoints || [];
   })();
 
-  const updateCurrentStops = useCallback((newStops: RouteStop[]) => {
-    if (activeTab === "route") {
-      updateTrip({ stops: newStops });
-    } else {
-      const key = activeTab as TransportModule;
-      if (TRANSPORT_TABS.includes(key)) {
-        updateTrip((prev) => ({
-          ...prev,
-          routes: { ...prev.routes, [key]: { stops: newStops } },
-        }));
-      } else {
-        // Non-transport tabs (e.g. POI/Hotels/Bucket) still edit the main route stops.
-        updateTrip({ stops: newStops });
-      }
-    }
-  }, [activeTab, updateTrip]);
+  const updateCurrentStops = useCallback(
+    (newStops: RouteStop[] | ((prev: RouteStop[]) => RouteStop[])) => {
+      const resolve = (cur: RouteStop[]): RouteStop[] =>
+        typeof newStops === "function"
+          ? (newStops as (prev: RouteStop[]) => RouteStop[])(cur)
+          : newStops;
+      updateTrip((prev) => {
+        let next: Trip;
+        if (activeTab === "route" || !TRANSPORT_TABS.includes(activeTab)) {
+          // Non-transport tabs (e.g. POI/Hotels/Bucket) still edit the main route stops.
+          next = syncTripRouteStops({
+            ...prev,
+            stops: resolve(prev.stops),
+            updatedAt: new Date().toISOString(),
+          });
+        } else {
+          const key = activeTab as TransportModule;
+          const cur = prev.routes?.[key]?.stops || defaultStopsForRoute();
+          next = {
+            ...prev,
+            updatedAt: new Date().toISOString(),
+            routes: {
+              ...prev.routes,
+              [key]: { ...prev.routes?.[key], stops: resolve(cur) },
+            },
+          };
+        }
+        // Sofort persistieren – nicht erst auf den Autosave-Timer warten.
+        queueMicrotask(() => persistTripSnapshot(next));
+        return next;
+      });
+    },
+    [activeTab, updateTrip, persistTripSnapshot]
+  );
 
   const updateCurrentViaPoints = useCallback((newViaPoints: ViaPoint[]) => {
     const toKey = (vp: ViaPoint) => `${vp.afterStopId || ""}:${vp.lat.toFixed(5)}:${vp.lng.toFixed(5)}`;
@@ -595,43 +820,71 @@ export default function PlanerPage() {
     insertAtIndex?: number,
     photoUrl?: string
   ) => {
-    const baseName = (placeName || "Ort").trim();
-    const baseKey = normalizePlaceKey(baseName);
-    const hasSameName = currentRouteStops.some((s) => normalizePlaceKey(s.name) === baseKey);
-    const finalName = hasSameName ? `${baseName} (POI)` : baseName;
-    const effectiveInsertIdx =
-      insertAtIndex != null && Number.isFinite(insertAtIndex)
-        ? Math.max(0, Math.min(currentRouteStops.length, insertAtIndex))
-        : (() => {
-            const endIdx = currentRouteStops.findIndex((s) => s.type === "end");
-            return endIdx >= 0 ? endIdx : currentRouteStops.length;
-          })();
-    const discoveryEtappeIndex = Math.max(
-      0,
-      currentRouteStops
-        .slice(0, effectiveInsertIdx)
-        .filter((s) => s.type === "stop" && !!s.isHotel).length
-    );
-    const newStop: RouteStop = {
-      id: `stop-${Date.now()}`,
-      name: finalName,
-      type: "stop",
-      lat,
-      lng,
-      discoverySource: "google",
-      discoveryCategory: "Karten-POI",
-      discoveryEtappeIndex,
-      discoveryAddedAt: new Date().toISOString(),
-      discoveryPhotoUrl: photoUrl,
-    };
-    const newStops = [...currentRouteStops];
-    if (insertAtIndex != null && insertAtIndex >= 0 && insertAtIndex <= newStops.length) {
-      newStops.splice(insertAtIndex, 0, newStop);
-    } else {
-      const endIdx = newStops.findIndex((s) => s.type === "end");
-      newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, newStop);
-    }
-    updateCurrentStops(newStops);
+    updateTrip((prev) => {
+      const routeStops =
+        activeTab === "route"
+          ? prev.stops
+          : TRANSPORT_TABS.includes(activeTab)
+            ? prev.routes?.[activeTab as TransportModule]?.stops || defaultStopsForRoute()
+            : prev.stops;
+
+      const baseName = (placeName || "Ort").trim();
+      const baseKey = normalizePlaceKey(baseName);
+      const hasSameName = routeStops.some((s) => normalizePlaceKey(s.name) === baseKey);
+      const finalName = hasSameName ? `${baseName} (POI)` : baseName;
+      const effectiveInsertIdx =
+        insertAtIndex != null && Number.isFinite(insertAtIndex)
+          ? Math.max(0, Math.min(routeStops.length, insertAtIndex))
+          : (() => {
+              const endIdx = routeStops.findIndex((s) => s.type === "end");
+              return endIdx >= 0 ? endIdx : routeStops.length;
+            })();
+      const discoveryEtappeIndex = Math.max(
+        0,
+        routeStops
+          .slice(0, effectiveInsertIdx)
+          .filter((s) => s.type === "stop" && !!s.isHotel).length
+      );
+      const newStop: RouteStop = {
+        id: `stop-${Date.now()}`,
+        name: finalName,
+        type: "stop",
+        lat,
+        lng,
+        discoverySource: "google",
+        discoveryCategory: "Karten-POI",
+        discoveryEtappeIndex,
+        discoveryAddedAt: new Date().toISOString(),
+        discoveryPhotoUrl: photoUrl,
+      };
+      const newStops = [...routeStops];
+      if (insertAtIndex != null && insertAtIndex >= 0 && insertAtIndex <= newStops.length) {
+        newStops.splice(insertAtIndex, 0, newStop);
+      } else {
+        const endIdx = newStops.findIndex((s) => s.type === "end");
+        newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, newStop);
+      }
+
+      const now = new Date().toISOString();
+      let next: Trip;
+      if (activeTab === "route") {
+        next = syncTripRouteStops({ ...prev, stops: newStops, updatedAt: now });
+      } else if (TRANSPORT_TABS.includes(activeTab)) {
+        const key = activeTab as TransportModule;
+        next = {
+          ...prev,
+          updatedAt: now,
+          routes: {
+            ...prev.routes,
+            [key]: { ...prev.routes?.[key], stops: newStops },
+          },
+        };
+      } else {
+        next = syncTripRouteStops({ ...prev, stops: newStops, updatedAt: now });
+      }
+      queueMicrotask(() => persistTripSnapshot(next));
+      return next;
+    });
   };
 
   const addStopSmart = async (
@@ -648,37 +901,52 @@ export default function PlanerPage() {
     const stops = currentRouteStops;
     const existingStops = stops.filter((s) => s.name.trim());
     if (existingStops.length < 2 || lat == null || lng == null) {
-      const newStops = [...stops];
-      const endIdx = newStops.findIndex((s) => s.type === "end");
-      newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, newStop);
-      updateCurrentStops(newStops);
+      updateCurrentStops((prevStops) => {
+        if (prevStops.some((s) => normalizePlaceKey(s.name) === wantedKey)) return prevStops;
+        const next = [...prevStops];
+        const endIdx = next.findIndex((s) => s.type === "end");
+        next.splice(endIdx >= 0 ? endIdx : next.length, 0, newStop);
+        return next;
+      });
       return true;
     }
+    // Geocoding darf dauern – danach in den AKTUELLEN Stand einfügen,
+    // nicht in die (inzwischen evtl. veraltete) Liste von vor dem Await.
     const coords = await Promise.all(
       stops.map(async (s) => {
         const c = await geocodeStop(s);
         return c ? { ...s, lat: c.lat, lng: c.lng } : s;
       })
     );
-    let bestIdx = coords.findIndex((s) => s.type === "end");
-    let minDetour = Infinity;
-    for (let i = 0; i < coords.length - 1; i++) {
-      const a = coords[i], b = coords[i + 1];
-      if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) continue;
-      const ab = haversine(a.lat, a.lng, b.lat, b.lng);
-      const ac = haversine(a.lat, a.lng, lat, lng);
-      const cb = haversine(lat, lng, b.lat, b.lng);
-      const detour = ac + cb - ab;
-      if (detour < minDetour) { minDetour = detour; bestIdx = i + 1; }
-    }
-    const finalStops: RouteStop[] = coords.map((s, i) => ({ ...stops[i], lat: s.lat, lng: s.lng }));
-    finalStops.splice(bestIdx, 0, newStop);
-    updateCurrentStops(finalStops);
+    const coordById: Record<string, RouteStop> = {};
+    for (const c of coords) coordById[c.id] = c;
+    updateCurrentStops((prevStops) => {
+      if (prevStops.some((s) => normalizePlaceKey(s.name) === wantedKey)) return prevStops;
+      const filled: RouteStop[] = prevStops.map((s) => {
+        const c = coordById[s.id];
+        return c && c.lat != null && s.lat == null ? { ...s, lat: c.lat, lng: c.lng } : s;
+      });
+      let bestIdx = filled.findIndex((s) => s.type === "end");
+      let minDetour = Infinity;
+      for (let i = 0; i < filled.length - 1; i++) {
+        const a = filled[i], b = filled[i + 1];
+        if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) continue;
+        const ab = haversine(a.lat, a.lng, b.lat, b.lng);
+        const ac = haversine(a.lat, a.lng, lat!, lng!);
+        const cb = haversine(lat!, lng!, b.lat, b.lng);
+        const detour = ac + cb - ab;
+        if (detour < minDetour) { minDetour = detour; bestIdx = i + 1; }
+      }
+      const next = [...filled];
+      next.splice(bestIdx >= 0 ? bestIdx : next.length, 0, newStop);
+      return next;
+    });
     return true;
   };
 
   const removeStop = (id: string) => {
-    updateCurrentStops(currentRouteStops.filter((s) => s.id !== id));
+    markStopsDeleted(trip.id, [id]);
+    updateCurrentStops((prevStops) => prevStops.filter((s) => s.id !== id));
   };
 
   const updateStop = (id: string, name: string) => {
@@ -725,7 +993,8 @@ export default function PlanerPage() {
     if (stopIdx < 0) return;
     const stop = stops[stopIdx];
     if (stop.type !== "stop") {
-      updateCurrentStops(stops.map((s) => (s.id === id ? { ...s, name, lat, lng } : s)));
+      updateCurrentStops((prevStops) => prevStops.map((s) => (s.id === id ? { ...s, name, lat, lng } : s)));
+      scheduleStopBriefEnrichRef.current(id);
       return;
     }
 
@@ -734,9 +1003,15 @@ export default function PlanerPage() {
 
     const filledStops = newStops.filter((s) => s.name.trim());
     if (filledStops.length < 2) {
-      const endIdx = newStops.findIndex((s) => s.type === "end");
-      newStops.splice(endIdx >= 0 ? endIdx : newStops.length, 0, updatedStop);
-      updateCurrentStops(newStops);
+      updateCurrentStops((prevStops) => {
+        const cur = prevStops.find((s) => s.id === id);
+        const without = prevStops.filter((s) => s.id !== id);
+        const endIdx = without.findIndex((s) => s.type === "end");
+        const next = [...without];
+        next.splice(endIdx >= 0 ? endIdx : next.length, 0, { ...(cur || updatedStop), name, lat, lng });
+        return next;
+      });
+      scheduleStopBriefEnrichRef.current(id);
       return;
     }
 
@@ -770,17 +1045,96 @@ export default function PlanerPage() {
       }
     }
 
-    const finalStops: RouteStop[] = coords.map((s, i) => ({ ...newStops[i], lat: s.lat, lng: s.lng }));
-    finalStops.splice(bestIdx, 0, updatedStop);
-    updateCurrentStops(finalStops);
+    void bestIdx;
+    void minDetour;
+    // Nach dem Geocoding in den AKTUELLEN Stand einfügen (nicht in die alte Liste).
+    const coordById: Record<string, RouteStop> = {};
+    for (const c of coords) coordById[c.id] = c;
+    updateCurrentStops((prevStops) => {
+      const current = prevStops.find((s) => s.id === id);
+      const upd: RouteStop = { ...(current || stop), name, lat, lng };
+      const without = prevStops.filter((s) => s.id !== id);
+      const filled: RouteStop[] = without.map((s) => {
+        const c = coordById[s.id];
+        return c && c.lat != null && s.lat == null ? { ...s, lat: c.lat, lng: c.lng } : s;
+      });
+      let insertIdx = filled.findIndex((s) => s.type === "end");
+      let best = Infinity;
+      for (let i = 0; i < filled.length - 1; i++) {
+        const a = filled[i];
+        const b = filled[i + 1];
+        if (!a.name.trim() || !b.name.trim()) continue;
+        if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) continue;
+        const detour =
+          haversine(a.lat, a.lng, lat, lng) + haversine(lat, lng, b.lat, b.lng) - haversine(a.lat, a.lng, b.lat, b.lng);
+        if (detour < best) {
+          best = detour;
+          insertIdx = i + 1;
+        }
+      }
+      const next = [...filled];
+      next.splice(insertIdx >= 0 ? insertIdx : next.length, 0, upd);
+      return next;
+    });
+    scheduleStopBriefEnrichRef.current(id);
+  };
+
+  const openIcsBookingImport = (stopId: string) => {
+    icsImportStopIdRef.current = stopId;
+    icsFileInputRef.current?.click();
+  };
+
+  const handleIcsBookingFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const stopId = icsImportStopIdRef.current;
+    icsImportStopIdRef.current = null;
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !stopId) return;
+
+    try {
+      const text = await file.text();
+      const parsed = parseHotelBookingIcs(text);
+      const patch: Partial<RouteStop> = { isHotel: true };
+      if (parsed.hotelName) patch.bookingHotelName = parsed.hotelName;
+      if (parsed.address) patch.bookingAddress = parsed.address;
+      if (parsed.confirmation) patch.bookingConfirmation = parsed.confirmation;
+      if (parsed.bookingLink) patch.bookingLink = parsed.bookingLink;
+      if (parsed.provider) patch.bookingProvider = parsed.provider;
+      if (parsed.checkIn) patch.hotelCheckIn = parsed.checkIn;
+      if (parsed.nights) patch.hotelNights = parsed.nights;
+      updateStopField(stopId, patch);
+      setHotelPanels((prev) => ({ ...prev, [stopId]: "booking" }));
+      setIcsImportFeedback((prev) => ({ ...prev, [stopId]: "ok" }));
+      window.setTimeout(() => {
+        setIcsImportFeedback((prev) => {
+          const next = { ...prev };
+          delete next[stopId];
+          return next;
+        });
+      }, 5000);
+    } catch {
+      setIcsImportFeedback((prev) => ({ ...prev, [stopId]: "err" }));
+    }
   };
 
   const updateStopField = (id: string, fields: Partial<RouteStop>) => {
-    if (activeTab === "route") {
-      updateTrip((prev) => ({
-        ...prev,
-        stops: prev.stops.map((s) => (s.id === id ? { ...s, ...fields } : s)),
-      }));
+    if (activeTab === "route" || activeTab === "ortsinfo") {
+      updateTrip((prev) => {
+        const next = syncTripRouteStops({
+          ...prev,
+          stops: prev.stops.map((s) => (s.id === id ? { ...s, ...fields } : s)),
+          updatedAt: new Date().toISOString(),
+        });
+        // Sidecar hier nur SCHREIBEN, nie löschen: Ein `undefined` im Patch
+        // (z. B. von der Ortsinfo) darf ein gespeichertes Foto nicht killen.
+        // Explizites Löschen läuft über clearStopBrief → removeStopPhotoFromSidecar.
+        const dataUrl = fields.discoveryPhotoDataUrl?.trim();
+        if (dataUrl) {
+          writeStopPhotoToSidecar(prev.id, id, dataUrl);
+          queueMicrotask(() => persistTripSnapshot(next));
+        }
+        return next;
+      });
       return;
     }
 
@@ -806,6 +1160,235 @@ export default function PlanerPage() {
       stops: prev.stops.map((s) => (s.id === id ? { ...s, ...fields } : s)),
     }));
   };
+
+  const printablePhotoForStop = useCallback(
+    async (stop: RouteStop, photoUrl?: string) => {
+      if (!photoUrl || !stopBriefIncluded(stop)) return undefined;
+      return await imageUrlToPrintableDataUrl(photoUrl);
+    },
+    [],
+  );
+
+  const setStopBriefPdfIncluded = useCallback(
+    async (stopId: string, included: boolean) => {
+      const stop = trip.stops.find((s) => s.id === stopId);
+      if (!stop) return;
+      if (!included) {
+        // Nur aus dem PDF nehmen – das (eigene) Bild bleibt erhalten.
+        updateTrip((prev) => {
+          const next = syncTripRouteStops({
+            ...prev,
+            stops: prev.stops.map((s) =>
+              s.id === stopId ? { ...s, discoveryIncludeInReport: false } : s,
+            ),
+          });
+          saveTrip(next);
+          return next;
+        });
+        setHasUnsavedChanges(false);
+        return;
+      }
+      const existingData = stop.discoveryPhotoDataUrl?.trim();
+      const photoUrl = stop.discoveryPhotoUrl;
+      const photoDataUrl =
+        existingData ||
+        (photoUrl ? await imageUrlToPrintableDataUrl(photoUrl) : undefined);
+      updateTrip((prev) => {
+        const next = syncTripRouteStops({
+          ...prev,
+          stops: prev.stops.map((s) =>
+            s.id === stopId
+              ? {
+                  ...s,
+                  discoveryIncludeInReport: true,
+                  ...(photoDataUrl ? { discoveryPhotoDataUrl: photoDataUrl } : {}),
+                }
+              : s,
+          ),
+        });
+        saveTrip(next);
+        return next;
+      });
+      setHasUnsavedChanges(false);
+    },
+    [trip.stops, updateTrip],
+  );
+
+  const setPdfPhotoCaptionForEtappe = useCallback(
+    (etappeIndex: number, photoUrl: string, caption: string) => {
+      const key = String(etappeIndex);
+      const normalized = normalizePdfPhotoCaption(caption);
+      updateTrip((prev) => {
+        const perEtappe = { ...(prev.pdfPhotoCaptionsByEtappe?.[key] || {}) };
+        if (normalized) perEtappe[photoUrl] = normalized;
+        else delete perEtappe[photoUrl];
+        const next = syncTripRouteStops({
+          ...prev,
+          pdfPhotoCaptionsByEtappe: {
+            ...(prev.pdfPhotoCaptionsByEtappe || {}),
+            [key]: perEtappe,
+          },
+        });
+        saveTrip(next);
+        return next;
+      });
+      setHasUnsavedChanges(false);
+    },
+    [updateTrip],
+  );
+
+  const enrichStopBrief = useCallback(
+    async (stopId: string, opts?: { force?: boolean }) => {
+      const stop = currentRouteStops.find((s) => s.id === stopId);
+      if (!stop?.name?.trim()) return;
+      if (!stopBriefIncluded(stop) && !opts?.force) return;
+      if (!opts?.force && stopHasBriefContent(stop)) return;
+
+      setStopBriefLoadingId(stopId);
+      try {
+        let lat = stop.lat;
+        let lng = stop.lng;
+        if (lat == null || lng == null) {
+          const geo = await geocodeStop(stop);
+          if (geo) {
+            lat = geo.lat;
+            lng = geo.lng;
+            updateStopField(stopId, { lat, lng });
+          }
+        }
+        const resp = await fetch("/api/stop-brief", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: stop.name,
+            lat,
+            lng,
+            language: asAppLocale(locale),
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) return;
+
+        const nextPhotoUrl = (data.photoUrl as string) || stop.discoveryPhotoUrl;
+        const fetchedDataUrl = await printablePhotoForStop(stop, nextPhotoUrl);
+        const keepCustomPhoto = isUserUploadedStopPhoto(stop);
+
+        const preserveSource =
+          stop.discoverySource &&
+          stop.discoverySource !== "autocomplete" &&
+          stop.discoverySource !== "manual";
+
+        const briefPatch: Partial<RouteStop> = {
+          discoveryDescription: (data.description as string) || stop.discoveryDescription,
+          discoveryWikipediaTitle: data.wikipediaTitle,
+          discoveryLanguage: asAppLocale(locale),
+          discoveryBriefSource: (data.briefSource as RouteStop["discoveryBriefSource"]) || "ai",
+          discoveryBriefQualityHint: undefined,
+          discoveryAddedAt: new Date().toISOString(),
+          ...(!preserveSource ? { discoverySource: "autocomplete" as const } : {}),
+        };
+        if (!keepCustomPhoto) {
+          briefPatch.discoveryPhotoUrl = nextPhotoUrl;
+          if (fetchedDataUrl) {
+            briefPatch.discoveryPhotoDataUrl = fetchedDataUrl;
+          }
+          // Kein speicherbares Bild geladen → altes Bild unverändert lassen.
+        }
+        // Eigenes Bild: Foto-Felder beim Text-Laden grundsätzlich nicht anfassen.
+
+        updateStopField(stopId, briefPatch);
+        if (autoEnrichStopBriefsRef.current) {
+          setExpandedStopBriefIds((prev) => ({ ...prev, [stopId]: true }));
+        }
+      } finally {
+        setStopBriefLoadingId(null);
+      }
+    },
+    [currentRouteStops, geocodeStop, locale, printablePhotoForStop, updateStopField],
+  );
+
+  const refreshStopBriefPhoto = useCallback(
+    async (stopId: string, photoMode: "reload" | "alternate") => {
+      const stop = currentRouteStops.find((s) => s.id === stopId);
+      if (!stop?.name?.trim()) return;
+      setStopBriefLoadingId(stopId);
+      try {
+        const resp = await fetch("/api/stop-brief", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: stop.name,
+            wikipediaTitle: stop.discoveryWikipediaTitle,
+            lat: stop.lat,
+            lng: stop.lng,
+            language: asAppLocale(locale),
+            photoMode,
+            variantIndex: stop.discoveryPhotoVariantIndex,
+            currentPhotoUrl: stop.discoveryPhotoUrl,
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) return;
+        const fetchedDataUrl = await printablePhotoForStop(stop, data.photoUrl as string);
+        const keepCustomPhoto = isUserUploadedStopPhoto(stop);
+        const photoPatch: Partial<RouteStop> = {
+          discoveryPhotoVariantIndex:
+            typeof data.variantIndex === "number" ? data.variantIndex : undefined,
+          discoveryWikipediaTitle: data.wikipediaTitle || stop.discoveryWikipediaTitle,
+        };
+        if (fetchedDataUrl) {
+          // Nur ersetzen, wenn die neue Bildversion auch speicherbar ist.
+          photoPatch.discoveryPhotoUrl = data.photoUrl as string;
+          photoPatch.discoveryPhotoDataUrl = fetchedDataUrl;
+        } else if (!keepCustomPhoto && data.photoUrl) {
+          photoPatch.discoveryPhotoUrl = data.photoUrl as string;
+        }
+        // Sonst: vorhandenes (eigenes) Bild unangetastet lassen – nie mit undefined löschen.
+        updateStopField(stopId, photoPatch);
+      } finally {
+        setStopBriefLoadingId(null);
+      }
+    },
+    [currentRouteStops, locale, printablePhotoForStop, updateStopField],
+  );
+
+  const scheduleStopBriefEnrich = useCallback(
+    (stopId: string) => {
+      if (!autoEnrichStopBriefsRef.current) return;
+      void enrichStopBrief(stopId, { force: true });
+    },
+    [enrichStopBrief, currentRouteStops],
+  );
+
+  scheduleStopBriefEnrichRef.current = scheduleStopBriefEnrich;
+
+  const enrichAllRouteStopBriefs = useCallback(async () => {
+    for (const s of currentRouteStops) {
+      if (!s.name.trim()) continue;
+      await enrichStopBrief(s.id, { force: true });
+    }
+  }, [currentRouteStops, enrichStopBrief]);
+
+  const clearStopBrief = useCallback(
+    (stopId: string) => {
+      // Explizit gewollt: Ortsinfo inkl. Foto wirklich löschen.
+      photoClearAllowRef.current.add(stopId);
+      removeStopPhotoFromSidecar(trip.id, stopId);
+      updateStopField(stopId, {
+        discoveryDescription: "",
+        discoveryPhotoUrl: undefined,
+        discoveryPhotoDataUrl: undefined,
+        discoveryPhotoVariantIndex: undefined,
+        discoveryHighlights: undefined,
+        discoveryWikipediaTitle: undefined,
+        discoveryBriefSource: undefined,
+        discoveryBriefQualityHint: undefined,
+        discoveryIncludeInReport: false,
+      });
+      setExpandedStopBriefIds((prev) => ({ ...prev, [stopId]: false }));
+    },
+    [updateStopField, trip.id],
+  );
 
   const toggleHotel = (id: string) => {
     const inCurrent = currentRouteStops.some((s) => s.id === id);
@@ -883,7 +1466,7 @@ export default function PlanerPage() {
           legs: [...currentLegs],
           distanceKm: Math.round(km / 1000),
           durationFormatted: formatDur(sec),
-          hotelBooked: !!toStop.bookingConfirmation,
+          hotelBooked: !!(toStop.bookingConfirmation || toStop.bookingHotelName?.trim()),
           hotelName: toStop.bookingHotelName,
           hotelAddress: toStop.bookingAddress,
           hotelNights: toStop.hotelNights,
@@ -912,16 +1495,26 @@ export default function PlanerPage() {
     return result;
   })();
 
-  const moveStop = (id: string, direction: "up" | "down") => {
-    const newStops = [...currentRouteStops];
-    const idx = newStops.findIndex((s) => s.id === id);
-    if (idx < 0) return;
-    const targetIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= newStops.length) return;
-    if (newStops[targetIdx].type === "start") return;
-    if (newStops[targetIdx].type === "end") return;
-    [newStops[idx], newStops[targetIdx]] = [newStops[targetIdx], newStops[idx]];
-    updateCurrentStops(newStops);
+  const pdfExportContext: PdfExportPlanContext = useMemo(
+    () => ({
+      etappenCount: etappen.length,
+      hasRouteInfo: !!(routeInfo?.legs?.length || routeInfo?.distance),
+    }),
+    [etappen.length, routeInfo],
+  );
+
+  const applicablePdfExportDefs = useMemo(
+    () => getApplicablePdfExportOptionDefs(trip, pdfExportContext),
+    [trip, pdfExportContext],
+  );
+
+  const reorderRouteStopToInsertIndex = (dragId: string, insertIndex: number) => {
+    const next = reorderStopsToInsertIndex(currentRouteStops, dragId, insertIndex);
+    if (next) updateCurrentStops(next);
+  };
+
+  const makeRoundTrip = () => {
+    updateCurrentStops(applyRoundTripShortcut(currentRouteStops));
   };
 
   const reverseRoute = () => {
@@ -935,36 +1528,31 @@ export default function PlanerPage() {
     const newEnd: RouteStop = { ...end, name: start.name, lat: start.lat, lng: start.lng };
     const reversedWaypoints = [...waypoints].reverse();
 
-    updateCurrentStops([newStart, ...reversedWaypoints, newEnd]);
+    updateCurrentStops(assignStopRoles([newStart, ...reversedWaypoints, newEnd]));
   };
 
   const handleOptimizeRoute = () => {
     const waypointStops = currentRouteStops.filter((s) => s.type === "stop" && s.name.trim());
     if (waypointStops.length < 2) return;
     if (waypointStops.length > 23) {
-      setRouteError("Optimierung ist nur bis 23 Zwischenstopps möglich. Reduziere die Anzahl oder optimiere manuell.");
+      setRouteError(tt("routeOptimizeLimit"));
       return;
     }
     setOptimizeRoute(true);
   };
 
   const handleStopsReordered = useCallback((orderedIds: string[]) => {
-    const stops = activeTab === "route" ? trip.stops : (trip.routes?.[activeTab as TransportModule]?.stops || []);
-    const stopLookup: Record<string, RouteStop> = {};
-    stops.forEach((s) => { stopLookup[s.id] = s; });
-    const reordered = orderedIds
-      .map((id) => stopLookup[id])
-      .filter((s): s is RouteStop => !!s);
-    if (reordered.length === stops.length) {
-      if (activeTab === "route") {
-        updateTrip({ stops: reordered });
-      } else {
-        const routes = { ...trip.routes, [activeTab as TransportModule]: { stops: reordered } };
-        updateTrip({ routes });
-      }
-    }
+    updateCurrentStops((prevStops) => {
+      if (orderedIds.length !== prevStops.length) return prevStops;
+      const lookup: Record<string, RouteStop> = {};
+      for (const s of prevStops) lookup[s.id] = s;
+      const reordered = orderedIds
+        .map((id) => lookup[id])
+        .filter((s): s is RouteStop => !!s);
+      return reordered.length === prevStops.length ? assignStopRoles(reordered) : prevStops;
+    });
     setOptimizeRoute(false);
-  }, [activeTab, trip.stops, trip.routes, updateTrip]);
+  }, [updateCurrentStops]);
 
   const addToBucketList = (item: Omit<BucketListItem, "id" | "added">) => {
     const newItem: BucketListItem = {
@@ -980,28 +1568,32 @@ export default function PlanerPage() {
   };
 
   const travelModes = [
-    { id: "auto" as TravelMode, label: "Auto", icon: Car },
+    { id: "auto" as TravelMode, label: t("tabAuto"), icon: Car },
   ];
 
   const defaultModules: string[] = ["route", "hotels", "report", "bucket"];
   const activeModules = trip.modules?.length ? trip.modules : defaultModules;
 
-  const allTabs = [
-    { id: "route" as const, label: "Autoroute", icon: Car, module: "route" },
-    { id: "hotels" as const, label: "Hotels", icon: Hotel, module: "hotels" },
-    { id: "poi" as const, label: "Entdecken", icon: Compass, module: "poi" },
-    { id: "report" as const, label: "Reisebericht", icon: FileDown, module: "report" },
-    { id: "bucket" as const, label: "Bucket List", icon: BookmarkPlus, module: "bucket" },
-    { id: "flights" as const, label: "Flüge", icon: Plane, module: "flights" },
-    { id: "car" as const, label: "Mietwagen", icon: Car, module: "car" },
-    { id: "train" as const, label: "Züge", icon: Train, module: "train" },
-    { id: "esim" as const, label: "eSIM", icon: Smartphone, module: "esim" },
-    { id: "droneMaps" as const, label: "Drohnenkarten", icon: Map, module: "droneMaps" },
-    { id: "insurance" as const, label: "Versicherung", icon: Shield, module: "insurance" },
-  ];
+  const allTabs = useMemo(
+    () => [
+      { id: "route" as const, label: t("tabRoute"), icon: Car, module: "route" },
+      { id: "ortsinfo" as const, label: tt("tabOrtsinfo"), icon: Info, module: "route" },
+      { id: "hotels" as const, label: t("tabHotels"), icon: Hotel, module: "hotels" },
+      { id: "poi" as const, label: t("tabPoi"), icon: Compass, module: "poi" },
+      { id: "report" as const, label: t("tabReport"), icon: FileDown, module: "report" },
+      { id: "bucket" as const, label: t("tabBucket"), icon: BookmarkPlus, module: "bucket" },
+      { id: "flights" as const, label: t("tabFlights"), icon: Plane, module: "flights" },
+      { id: "car" as const, label: t("tabCar"), icon: Car, module: "car" },
+      { id: "train" as const, label: t("tabTrain"), icon: Train, module: "train" },
+      { id: "esim" as const, label: t("tabEsim"), icon: Smartphone, module: "esim" },
+      { id: "droneMaps" as const, label: t("tabDroneMaps"), icon: Map, module: "droneMaps" },
+      { id: "insurance" as const, label: t("tabInsurance"), icon: Shield, module: "insurance" },
+    ],
+    [t, tt],
+  );
 
   const tabs = allTabs.filter(
-    (t) => activeModules.includes(t.module) && isCatalogModuleActive(t.module)
+    (tab) => activeModules.includes(tab.module) && isCatalogModuleActive(tab.module),
   );
   const isHotelOnlyMode = tabs.length === 1 && tabs[0].id === "hotels";
 
@@ -1011,7 +1603,7 @@ export default function PlanerPage() {
     }
   }, [tabs, activeTab]);
 
-  const hasHotelsTab = tabs.some((t) => t.id === "hotels");
+  const hasHotelsTab = tabs.some((tab) => tab.id === "hotels");
 
   const hotelTabStops = (() => {
     const seen = new Set<string>();
@@ -1099,8 +1691,7 @@ export default function PlanerPage() {
     const diff = Math.round((oDate.getTime() - cDate.getTime()) / 86400000);
     return Math.max(1, diff || 1);
   })();
-  const isNamingNewTrip = !trip.name?.trim() || trip.name === "Neue Reise";
-  const showTripNameEditor = isNamingNewTrip || isEditingTripName;
+  const showTripNameEditor = isEditingTripName;
   const coverTitleColor = trip.pdfCoverTitleColor || "#007aff";
   const coverDateColor = trip.pdfCoverDateColor || "#007aff";
   const coverTitleSize = Math.max(18, Math.min(64, Number(trip.pdfCoverTitleSize) || 32));
@@ -1163,7 +1754,7 @@ export default function PlanerPage() {
         ...params,
         clickRef: createAffiliateClickRef(),
       });
-      logAffiliateClick("hotels", "Expedia", targetUrl, context);
+      logAffiliateClick("hotels", partnerLabelFromUrl(targetUrl).brandName, targetUrl, context);
       window.open(targetUrl, "_blank", "noopener,noreferrer");
     },
     [createAffiliateClickRef, logAffiliateClick]
@@ -1172,7 +1763,7 @@ export default function PlanerPage() {
   const openHotelsComAffiliateLink = useCallback(
     (params: Parameters<typeof buildHotelsComLink>[0], context?: Record<string, unknown>) => {
       const targetUrl = buildHotelsComLink(params);
-      logAffiliateClick("hotels", "Hotels.com", targetUrl, context);
+      logAffiliateClick("hotels", partnerLabelFromUrl(targetUrl).brandName, targetUrl, context);
       window.open(targetUrl, "_blank", "noopener,noreferrer");
     },
     [logAffiliateClick]
@@ -1192,16 +1783,33 @@ export default function PlanerPage() {
 
   const [poiScope, setPoiScope] = useState<"route" | "destination" | "ai">("ai");
 
-  const interestOptions: { id: TravelInterest; label: string; emoji: string }[] = [
-    { id: "kultur", label: "Kultur & Geschichte", emoji: "🏰" },
-    { id: "natur", label: "Natur & Landschaft", emoji: "🌿" },
-    { id: "kulinarik", label: "Kulinarik & Wein", emoji: "🍷" },
-    { id: "straende", label: "Strände & Küste", emoji: "🏖" },
-    { id: "fotospots", label: "Fotospots", emoji: "📸" },
-    { id: "familien", label: "Familien", emoji: "🎢" },
-    { id: "abenteuer", label: "Abenteuer & Sport", emoji: "🥾" },
-    { id: "shopping", label: "Shopping & Märkte", emoji: "🛍" },
-  ];
+  const interestOptions = useMemo((): { id: TravelInterest; label: string; emoji: string }[] => {
+    const ids: TravelInterest[] = [
+      "kultur",
+      "natur",
+      "kulinarik",
+      "straende",
+      "fotospots",
+      "familien",
+      "abenteuer",
+      "shopping",
+    ];
+    const emoji: Record<TravelInterest, string> = {
+      kultur: "🏰",
+      natur: "🌿",
+      kulinarik: "🍷",
+      straende: "🏖",
+      fotospots: "📸",
+      familien: "🎢",
+      abenteuer: "🥾",
+      shopping: "🛍",
+    };
+    return ids.map((id) => ({
+      id,
+      label: tt(`interest_${id}`),
+      emoji: emoji[id],
+    }));
+  }, [tt]);
 
   const toggleInterest = (interest: TravelInterest) => {
     const current = trip.interests || [];
@@ -1259,10 +1867,7 @@ export default function PlanerPage() {
   ): Promise<{ title: string; extract: string; thumbnail?: string; lat?: number; lng?: number } | undefined> => {
     const query = (title || "").trim();
     if (!query) return undefined;
-    const endpoints = [
-      `https://de.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`,
-      `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`,
-    ];
+    const endpoints = wikipediaSummaryUrls(query, locale);
     for (const url of endpoints) {
       try {
         const resp = await fetch(url);
@@ -1290,15 +1895,12 @@ export default function PlanerPage() {
       }
     }
     return undefined;
-  }, [cleanWikipediaText]);
+  }, [cleanWikipediaText, locale]);
 
   const fetchWikipediaIntroExtract = useCallback(async (title: string): Promise<string | undefined> => {
     const query = (title || "").trim();
     if (!query) return undefined;
-    const endpoints = [
-      `https://de.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=1&redirects=1&titles=${encodeURIComponent(query)}&format=json&origin=*`,
-      `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&exintro=1&redirects=1&titles=${encodeURIComponent(query)}&format=json&origin=*`,
-    ];
+    const endpoints = wikipediaIntroExtractUrls(query, locale);
     for (const url of endpoints) {
       try {
         const resp = await fetch(url);
@@ -1317,7 +1919,7 @@ export default function PlanerPage() {
       }
     }
     return undefined;
-  }, [cleanWikipediaText]);
+  }, [cleanWikipediaText, locale]);
 
   const clampWikiText = useCallback((value: string, maxLength = 900): string => {
     const normalized = (value || "").replace(/\s+/g, " ").trim();
@@ -1350,10 +1952,7 @@ export default function PlanerPage() {
   const fetchWikipediaOpenSearchTitles = useCallback(async (query: string): Promise<string[]> => {
     const q = (query || "").trim();
     if (!q) return [];
-    const endpoints = [
-      `https://de.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}&limit=8&namespace=0&format=json&origin=*`,
-      `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(q)}&limit=8&namespace=0&format=json&origin=*`,
-    ];
+    const endpoints = wikipediaOpenSearchUrls(q, locale);
     const allTitles: string[] = [];
     for (const url of endpoints) {
       try {
@@ -1369,7 +1968,7 @@ export default function PlanerPage() {
       }
     }
     return allTitles;
-  }, []);
+  }, [locale]);
 
   const pickBestWikipediaTitle = useCallback((query: string, titles: string[]): string | undefined => {
     if (!titles.length) return undefined;
@@ -1407,10 +2006,7 @@ export default function PlanerPage() {
 
   const fetchWikipediaTitleByCoords = useCallback(async (lat?: number, lng?: number): Promise<string | undefined> => {
     if (typeof lat !== "number" || typeof lng !== "number") return undefined;
-    const endpoints = [
-      `https://de.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lng}&gsradius=10000&gslimit=1&format=json&origin=*`,
-      `https://en.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lng}&gsradius=10000&gslimit=1&format=json&origin=*`,
-    ];
+    const endpoints = wikipediaGeosearchUrls(lat, lng, locale);
     for (const url of endpoints) {
       try {
         const resp = await fetch(url);
@@ -1423,7 +2019,7 @@ export default function PlanerPage() {
       }
     }
     return undefined;
-  }, []);
+  }, [locale]);
 
   const fetchWikipediaSummaryForPoi = useCallback(
     async (name: string, lat?: number, lng?: number): Promise<string | undefined> => {
@@ -1462,6 +2058,7 @@ export default function PlanerPage() {
         travelMode: trip.travelMode,
         stops: trip.stops,
         etappeIndex: eIdx,
+        language: asAppLocale(locale),
       });
       const results = await enrichAiPoisWithWikipedia(rawResults);
       setAiPois((prev) => [...prev.filter((p) => p.etappeIndex !== eIdx), ...results]);
@@ -1477,11 +2074,11 @@ export default function PlanerPage() {
         }
       }
     } catch (err) {
-      setAiPoisError(err instanceof Error ? err.message : "KI-Empfehlungen konnten nicht geladen werden");
+      setAiPoisError(err instanceof Error ? err.message : tt("aiFail"));
     } finally {
       setAiLoadingEtappe(null);
     }
-  }, [etappen, trip.interests, trip.travelMode, trip.stops, aiPoiPhotos, enrichAiPoisWithWikipedia]);
+  }, [etappen, trip.interests, trip.travelMode, trip.stops, aiPoiPhotos, enrichAiPoisWithWikipedia, locale, tt]);
 
   const loadAllAiPois = useCallback(async () => {
     if (etappen.length === 0) return;
@@ -1494,6 +2091,7 @@ export default function PlanerPage() {
         interests: trip.interests || [],
         travelMode: trip.travelMode,
         stops: trip.stops,
+        language: asAppLocale(locale),
       });
       const results = await enrichAiPoisWithWikipedia(rawResults);
       setAiPois(results);
@@ -1507,12 +2105,12 @@ export default function PlanerPage() {
         }
       }
     } catch (err) {
-      setAiPoisError(err instanceof Error ? err.message : "KI-Empfehlungen konnten nicht geladen werden");
+      setAiPoisError(err instanceof Error ? err.message : tt("aiFail"));
       setAiPois([]);
     } finally {
       setAiPoisLoading(false);
     }
-  }, [etappen, trip.interests, trip.travelMode, trip.stops, enrichAiPoisWithWikipedia]);
+  }, [etappen, trip.interests, trip.travelMode, trip.stops, enrichAiPoisWithWikipedia, locale, tt]);
 
   useEffect(() => {
     if (activeTab === "poi" && poiScope !== "ai") {
@@ -1534,8 +2132,8 @@ export default function PlanerPage() {
       if (isInBucketList(poi.name)) return;
       addToBucketList({
         name: poi.name,
-        category: poi.category || "Sehenswürdigkeit",
-        rating: 0,
+        category: poi.category || tt("sightseeingCategory"),
+        rating: poi.rating ?? 0,
         description: poi.description || "",
         lat: poi.lat,
         lng: poi.lng,
@@ -1632,6 +2230,45 @@ export default function PlanerPage() {
       .filter((lm) => Number.isFinite(lm.latitude) && Number.isFinite(lm.longitude))
       .map((lm) => landmarkToMapPoi(lm, inBucketNames.has(lm.name)));
   }, [filteredCatalogLandmarks, trip.bucketList]);
+
+  const bucketTabWorldwide = bucketDiscoveryScope === "worldwide" || !!landmarkQuery.trim();
+
+  const bucketTabFilteredLandmarks = useMemo(() => {
+    if (!landmarksLoaded) return [];
+    const source = bucketTabWorldwide
+      ? landmarks
+      : filterLandmarksAlongRoute(landmarks, trip.stops, 120);
+    return filterLandmarks(source, {
+      query: landmarkQuery,
+      category: landmarkCategory,
+      continent: landmarkContinent,
+      unescoOnly: landmarkUnescoOnly,
+    });
+  }, [
+    landmarks,
+    landmarksLoaded,
+    bucketTabWorldwide,
+    trip.stops,
+    landmarkQuery,
+    landmarkCategory,
+    landmarkContinent,
+    landmarkUnescoOnly,
+  ]);
+
+  const bucketTabMapMarkers = useMemo((): MapHighlightPoi[] => {
+    const inBucketNames = new Set(trip.bucketList.map((b) => b.name));
+    return bucketTabFilteredLandmarks
+      .filter((lm) => Number.isFinite(lm.latitude) && Number.isFinite(lm.longitude))
+      .map((lm) => landmarkToMapPoi(lm, inBucketNames.has(lm.name)));
+  }, [bucketTabFilteredLandmarks, trip.bucketList]);
+
+  const bucketTabFitPositions = useMemo(
+    () =>
+      trip.stops
+        .filter((s) => s.name.trim() && Number.isFinite(s.lat) && Number.isFinite(s.lng))
+        .map((s) => ({ lat: s.lat as number, lng: s.lng as number })),
+    [trip.stops]
+  );
 
   const bucketListMapMarkers = useMemo((): MapHighlightPoi[] => {
     if (!showBucketOnMap) return [];
@@ -1778,7 +2415,7 @@ export default function PlanerPage() {
           const aiResp = await fetch("/api/place-summary", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: pageTitle || query }),
+            body: JSON.stringify({ name: pageTitle || query, language: asAppLocale(locale) }),
           });
           if (aiResp.ok) {
             const aiData = await aiResp.json();
@@ -1793,8 +2430,8 @@ export default function PlanerPage() {
         ...prev,
         [etappeIndex]: {
           name: pageTitle || query,
-          category: "Eigener Stopp",
-          description: description || `${query} ist ein interessanter Ort entlang deiner Reiseetappe.`,
+          category: tt("customStopCategory"),
+          description: description || tt("poiFallback", { name: query }),
           photoUrl,
           lat,
           lng,
@@ -1805,14 +2442,14 @@ export default function PlanerPage() {
         ...prev,
         [etappeIndex]: {
           name: query,
-          category: "Eigener Stopp",
-          description: `${query} ist ein interessanter Ort entlang deiner Reiseetappe.`,
+          category: tt("customStopCategory"),
+          description: tt("poiFallback", { name: query }),
         },
       }));
     } finally {
       setCustomStopLoading((prev) => ({ ...prev, [etappeIndex]: false }));
     }
-  }, [customStopQuery, fetchWikipediaPageByTitle, fetchWikipediaOpenSearchTitles, pickBestWikipediaTitle, fetchWikipediaSummaryByTitle, isWeakWikipediaText, cleanWikipediaText]);
+  }, [customStopQuery, fetchWikipediaPageByTitle, fetchWikipediaOpenSearchTitles, pickBestWikipediaTitle, fetchWikipediaSummaryByTitle, isWeakWikipediaText, cleanWikipediaText, locale, tt]);
 
   const addCustomDiscoveryToRoute = useCallback(async (etappeIndex: number) => {
     const result = customStopResult[etappeIndex];
@@ -2079,13 +2716,19 @@ export default function PlanerPage() {
       if (!first?.type?.startsWith("image/")) return;
       const encoded = await fileToPrintableDataUrl(first);
       if (!encoded) return;
-      updateTrip((prev) => ({ ...prev, pdfCoverPhotoDataUrl: encoded }));
+      updateTrip((prev) => {
+        writeTripCoverPhoto(prev.id, encoded);
+        return { ...prev, pdfCoverPhotoDataUrl: encoded };
+      });
     },
     [updateTrip]
   );
 
   const clearPdfCoverPhoto = useCallback(() => {
-    updateTrip((prev) => ({ ...prev, pdfCoverPhotoDataUrl: undefined }));
+    updateTrip((prev) => {
+      removeTripCoverPhoto(prev.id);
+      return { ...prev, pdfCoverPhotoDataUrl: undefined };
+    });
   }, [updateTrip]);
 
   const getFirstPageSlotCount = useCallback((layout: PdfPhotoLayout): number => {
@@ -2246,7 +2889,7 @@ export default function PlanerPage() {
             <div style="font-size:12px;color:#374151;margin-top:7px;line-height:1.45">${poi.description}</div>
             <div style="display:flex;gap:8px;margin-top:10px">
               <button id="${addBtnId}" ${poiInRoute ? "disabled" : ""} style="border:none;background:${poiInRoute ? "#10b981" : "#2563eb"};color:white;padding:6px 10px;border-radius:8px;font-size:11px;cursor:${poiInRoute ? "default" : "pointer"}">${poiInRoute ? "In Route" : "Zur Route"}</button>
-              <button id="${bucketBtnId}" style="border:1px solid #d1d5db;background:white;color:#374151;padding:6px 10px;border-radius:8px;font-size:11px;cursor:pointer">Bucket List</button>
+              <button id="${bucketBtnId}" style="border:1px solid #d1d5db;background:white;color:#374151;padding:6px 10px;border-radius:8px;font-size:11px;cursor:pointer">{t("tabBucket")}</button>
             </div>
           </div>`
         );
@@ -2369,18 +3012,29 @@ export default function PlanerPage() {
   );
 
   const handleDownloadPDF = async () => {
+    setPdfExportError(null);
+    if (endStopLooksLikeTripTitleOnly(trip)) {
+      setPdfExportError(ROUTE_TITLE_AS_DESTINATION_MESSAGE);
+      return;
+    }
     // Open window immediately (in click context) to avoid popup blocker
     const pdfWindow = window.open("", "_blank");
     if (pdfWindow) {
-      pdfWindow.document.write("<html><head><title>PDF wird erstellt…</title></head><body style='display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#555'><p>PDF wird erstellt…</p></body></html>");
+      const creating = t("pdfCreating");
+      pdfWindow.document.write(
+        `<html><head><title>${creating}</title></head><body style='display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;color:#555'><p>${creating}</p></body></html>`,
+      );
     }
     setPdfGenerating(true);
     setPdfProgress(0);
-    setPdfProgressMsg("Starte…");
+    setPdfProgressMsg(tt("pdfStart"));
     try {
+      const { generateTripPDF } = await import("@/lib/pdfService");
+      const tripForPdf = hydrateTripMedia(syncTripRouteStops(trip));
       const blob = await generateTripPDF({
-        trip,
+        trip: tripForPdf,
         etappen,
+        contentLocale: asAppLocale(locale),
         routeInfo: routeInfo ? { distance: routeInfo.distance, duration: routeInfo.duration, stops: routeInfo.stops } : undefined,
         googleApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY || "AIzaSyDTcV42T-ZkriZOB8RtNZMtGR8gZq3Izi0",
         onProgress: (pct, msg) => {
@@ -2397,6 +3051,7 @@ export default function PlanerPage() {
     } catch (err) {
       console.error("PDF generation failed:", err);
       pdfWindow?.close();
+      setPdfExportError("PDF konnte nicht erstellt werden. Bitte erneut versuchen.");
     } finally {
       setPdfGenerating(false);
     }
@@ -2404,12 +3059,19 @@ export default function PlanerPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
+      <input
+        ref={icsFileInputRef}
+        type="file"
+        accept=".ics,text/calendar"
+        className="hidden"
+        onChange={handleIcsBookingFile}
+      />
       {/* PDF Generation Overlay */}
       {pdfGenerating && (
         <div className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
             <Loader2 className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">PDF wird erstellt…</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">{t("pdfCreating")}</h3>
             <p className="text-sm text-gray-500 mb-4">{pdfProgressMsg}</p>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
@@ -2433,9 +3095,9 @@ export default function PlanerPage() {
           >
             <div className="flex items-start justify-between gap-3 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">PDF exportieren</h3>
+                <h3 className="text-lg font-semibold text-gray-900">{tt("pdfExportTitle")}</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  Wähle, welche Inhalte im Reisebericht enthalten sein sollen.
+                  {tt("pdfExportHint")}
                 </p>
               </div>
               <button
@@ -2448,21 +3110,28 @@ export default function PlanerPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-6">
-              {PDF_EXPORT_OPTION_DEFS.map((def) => (
+              {applicablePdfExportDefs.length === 0 ? (
+                <p className="col-span-full text-sm text-gray-500 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3">
+                  {tt("pdfNoOptionalModal")}
+                </p>
+              ) : null}
+              {applicablePdfExportDefs.map((def) => (
                 <label
                   key={def.key}
                   className="flex items-start gap-2.5 rounded-xl border border-gray-100 bg-gray-50 p-3 cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
                 >
                   <input
                     type="checkbox"
-                    checked={isPdfExportOptionEnabled(trip, def.key)}
+                    checked={isPdfExportOptionEnabled(trip, def.key, pdfExportContext)}
                     onChange={(ev) => updateTrip({ [def.tripField]: ev.target.checked })}
                     className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="min-w-0">
-                    <span className="block text-sm font-medium text-gray-900">{def.label}</span>
+                    <span className="block text-sm font-medium text-gray-900">
+                      {tt(def.labelKey as Parameters<typeof tt>[0])}
+                    </span>
                     <span className="block text-[11px] text-gray-500 leading-snug mt-0.5">
-                      {def.description}
+                      {tt(def.descKey as Parameters<typeof tt>[0])}
                     </span>
                   </span>
                 </label>
@@ -2478,7 +3147,7 @@ export default function PlanerPage() {
                 }}
                 className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
               >
-                Deckblatt bearbeiten
+                {tt("editCoverSheet")}
               </button>
               <button
                 type="button"
@@ -2489,9 +3158,7 @@ export default function PlanerPage() {
                 disabled={pdfGenerating}
                 className="inline-flex items-center gap-2 rounded-full bg-[#0071e3] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#0077ed] disabled:opacity-50"
               >
-                <FileDown className="w-4 h-4" />
-                PDF erstellen
-              </button>
+                <FileDown className="w-4 h-4" />{tt("pdfCreate")}</button>
             </div>
           </div>
         </div>
@@ -2513,14 +3180,12 @@ export default function PlanerPage() {
                 type="button"
                 onClick={() => setOpenEtappeMapIndex(null)}
                 className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 transition-colors"
-                title="Karte schließen"
+                title={tt("closeMap")}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-4 bg-gray-50 border-b border-gray-200 text-xs text-gray-600">
-              Klicke auf ein Highlight für Details und Aktionen (Zur Route / Bucket List).
-            </div>
+            <div className="p-4 bg-gray-50 border-b border-gray-200 text-xs text-gray-600">{tt("highlightHint")}</div>
             <div ref={etappeMapRef} className="h-[560px] w-full" />
           </div>
         </div>
@@ -2551,7 +3216,7 @@ export default function PlanerPage() {
                         (e.currentTarget as HTMLInputElement).blur();
                       }
                     }}
-                    placeholder="Neue Reise"
+                    placeholder={t("newTrip")}
                     className="w-[320px] max-w-[70vw] bg-white/10 border border-white/35 rounded-xl px-4 py-2 text-2xl font-bold text-white placeholder:text-white/65 focus:outline-none focus:ring-2 focus:ring-white/60"
                   />
                 ) : (
@@ -2563,7 +3228,7 @@ export default function PlanerPage() {
                       type="button"
                       onClick={() => setIsEditingTripName(true)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 border border-white/25 text-white transition-colors"
-                      title="Reisename bearbeiten"
+                      title={t("editTripName")}
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
@@ -2586,24 +3251,20 @@ export default function PlanerPage() {
               {/* Auto-Save Status */}
               {saveStatus === "saved" && (
                 <span className="inline-flex items-center gap-1.5 text-xs text-green-100 bg-green-500/20 px-3 py-1.5 rounded-lg">
-                  <Check className="w-3.5 h-3.5" />
-                  Gespeichert
-                </span>
+                  <Check className="w-3.5 h-3.5" />{t("saved")}</span>
               )}
 
               <button
                 onClick={() => setShowTips((v) => !v)}
                 className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all border border-white/20"
-                title="Tipps ein-/ausblenden"
+                title={t("toggleTips")}
               >
                 <Sparkles className="w-4 h-4" />
-                {showTips ? "Tipps ausblenden" : "Tipps einblenden"}
+                {showTips ? t("tipsOff") : t("tipsOn")}
               </button>
               {hasUnsavedChanges && saveStatus === "idle" && (
                 <span className="inline-flex items-center gap-1.5 text-xs text-blue-200">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-300 animate-pulse" />
-                  Wird gespeichert…
-                </span>
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-300 animate-pulse" />{t("saving")}</span>
               )}
 
               {/* PDF Download */}
@@ -2611,7 +3272,7 @@ export default function PlanerPage() {
                 onClick={() => setShowPdfExportModal(true)}
                 disabled={pdfGenerating}
                 className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all border border-white/20 disabled:opacity-50"
-                title="Reise als PDF herunterladen"
+                title={t("pdfTitle")}
               >
                 {pdfGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
                 <span className="hidden sm:inline">PDF</span>
@@ -2623,7 +3284,7 @@ export default function PlanerPage() {
                 className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all border border-white/20"
               >
                 <FolderOpen className="w-4 h-4" />
-                Meine Reisen
+                {chrome("myTrips")}
               </button>
 
               {/* New Trip */}
@@ -2631,9 +3292,7 @@ export default function PlanerPage() {
                 onClick={handleNewTrip}
                 className="inline-flex items-center gap-2 bg-white text-blue-700 px-4 py-2 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all"
               >
-                <Plus className="w-4 h-4" />
-                Neue Reise
-              </button>
+                <Plus className="w-4 h-4" />{t("newTrip")}</button>
             </div>
           </div>
 
@@ -2686,7 +3345,7 @@ export default function PlanerPage() {
                       ? "bg-white text-blue-600 border-blue-200"
                       : "bg-blue-400/25 border-blue-300/50 text-white hover:bg-white/20"
                   }`}
-                  title="Module verwalten"
+                  title={t("manageModules")}
                 >
                   <Settings className="w-4 h-4" />
                 </button>
@@ -2695,9 +3354,7 @@ export default function PlanerPage() {
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setShowModuleSettings(false)} />
                     <div className="absolute right-0 top-12 z-40 bg-white rounded-2xl shadow-xl border border-gray-200 p-4 w-64">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">
-                        Module ein/aus
-                      </h3>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">{tt("modulesToggle")}</h3>
                       <div className="space-y-1.5">
                         {allTabs
                           .filter((tab) => isCatalogModuleActive(tab.module))
@@ -2740,31 +3397,27 @@ export default function PlanerPage() {
           {showTripList && (
             <div className="mt-4">
               {savedTrips.length === 0 ? (
-                <div className="bg-white/10 rounded-2xl p-6 text-center text-white/60 text-sm">
-                  Noch keine gespeicherten Reisen.
-                </div>
+                <div className="bg-white/10 rounded-2xl p-6 text-center text-white/60 text-sm">{tt("noSavedTrips")}</div>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {savedTrips.map((t) => {
-                    const isActive = t.id === trip.id;
+                  {savedTrips.map((savedTrip) => {
+                    const isActive = savedTrip.id === trip.id;
                     return (
                       <button
-                        key={t.id}
-                        onClick={() => handleLoadTrip(t.id)}
+                        key={savedTrip.id}
+                        onClick={() => handleLoadTrip(savedTrip.id)}
                         className={`relative group inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all ${
                           isActive
                             ? "bg-white text-gray-900 shadow-lg ring-2 ring-blue-400"
                             : "bg-white/15 text-white hover:bg-white/25 border border-white/20"
                         }`}
                       >
-                        <span className="truncate max-w-[180px]">{getTripDisplayName(t)}</span>
+                        <span className="truncate max-w-[180px]">{getTripDisplayName(savedTrip)}</span>
                         {isActive && (
-                          <span className="text-[10px] text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
-                            Aktiv
-                          </span>
+                          <span className="text-[10px] text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded-full flex-shrink-0">{tt("activeTripBadge")}</span>
                         )}
                         <button
-                          onClick={(e) => handleDeleteTrip(t.id, e)}
+                          onClick={(e) => handleDeleteTrip(savedTrip.id, e)}
                           className="p-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 hover:bg-red-50 flex-shrink-0"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -2786,41 +3439,148 @@ export default function PlanerPage() {
             <div className="flex items-center gap-3">
               <BookmarkPlus className="w-5 h-5 text-amber-500" />
               <p className="text-sm text-amber-800">
-                <strong>Tipp:</strong> Erstelle ein kostenloses Konto, um deine
-                Reisen dauerhaft zu speichern und auf allen Geräten zu synchronisieren.
+                <strong>{tt("tip")}:</strong> {tt("accountHint")}
               </p>
             </div>
             <Link
               href="/login"
               className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
             >
-              <LogIn className="w-3.5 h-3.5" />
-              Anmelden
-            </Link>
+              <LogIn className="w-3.5 h-3.5" />{tt("signIn")}</Link>
           </div>
         </div>
       )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className={activeTab === "report" ? "block" : "grid lg:grid-cols-[380px_1fr] gap-8"}>
+        {saveBlockedMessage && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {saveBlockedMessage}
+          </div>
+        )}
+        <div
+          className={
+            activeTab === "report" || activeTab === "ortsinfo"
+              ? "block max-w-3xl"
+              : "grid lg:grid-cols-[380px_1fr] gap-8"
+          }
+        >
           {/* Left Panel */}
           {activeTab !== "report" && (
           <div className="space-y-6">
             {/* Route Stops - only for transport tabs */}
+            {activeTab === "ortsinfo" && (
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{tt("ortsinfoTitle")}</h3>
+                  {countNamedRouteStops(trip.stops) > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void enrichAllRouteStopBriefs()}
+                      disabled={!!stopBriefLoadingId}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                    >{tt("ortsinfoLoadAll")}</button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  {tt("ortsinfoIntro")}
+                </p>
+                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoEnrichStopBriefs}
+                    onChange={(e) => setAutoEnrichStopBriefs(e.target.checked)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />{tt("ortsinfoAutoLoad")}</label>
+                <div className="space-y-6">
+                  {trip.stops.filter((s) => s.name.trim()).length === 0 ? (
+                    <p className="text-sm text-gray-500">{tt("ortsinfoNeedStops")}</p>
+                  ) : (
+                    trip.stops
+                      .filter((s) => s.name.trim())
+                      .map((stop) => (
+                        <div
+                          key={stop.id}
+                          className="rounded-xl border border-gray-100 bg-gray-50/50 p-3 pt-4"
+                        >
+                          <p className="mb-2 text-sm font-semibold text-gray-800">
+                            {stop.name}
+                            <span className="ml-2 text-xs font-medium text-gray-400">{roleLabel(stop, locale)}</span>
+                          </p>
+                          <RouteStopBriefPanel
+                            stop={stop}
+                            layout="card"
+                            expanded
+                            onToggleExpand={() => {}}
+                            loading={stopBriefLoadingId === stop.id}
+                            included={stopBriefIncluded(stop)}
+                            onSetIncluded={(on) => void setStopBriefPdfIncluded(stop.id, on)}
+                            onClearBrief={() => clearStopBrief(stop.id)}
+                            onLoadBrief={() => void enrichStopBrief(stop.id, { force: true })}
+                            onSaveDescription={(text) =>
+                              updateStopField(stop.id, {
+                                discoveryDescription: text,
+                                discoverySource: "manual",
+                                discoveryBriefSource: "manual",
+                                discoveryLanguage: asAppLocale(locale),
+                              })
+                            }
+                            onPhotoDataUrl={(dataUrl) => {
+                              void (async () => {
+                                if (dataUrl) {
+                                  writeStopPhotoToSidecar(trip.id, stop.id, dataUrl);
+                                  updateStopField(stop.id, {
+                                    discoveryPhotoUrl: dataUrl,
+                                    discoveryPhotoDataUrl: dataUrl,
+                                    discoverySource: "manual",
+                                  });
+                                  return;
+                                }
+                                const url = stop.discoveryPhotoUrl;
+                                const printable =
+                                  url && stopBriefIncluded(stop)
+                                    ? await imageUrlToPrintableDataUrl(url)
+                                    : stop.discoveryPhotoDataUrl;
+                                updateStopField(stop.id, {
+                                  discoveryPhotoUrl: url,
+                                  discoveryPhotoDataUrl: printable,
+                                  discoverySource: stop.discoverySource || "manual",
+                                });
+                              })();
+                            }}
+                            onReloadPhoto={() => void refreshStopBriefPhoto(stop.id, "reload")}
+                            onAlternatePhoto={() => void refreshStopBriefPhoto(stop.id, "alternate")}
+                            imageUrlToDataUrl={imageUrlToPrintableDataUrl}
+                            fileToDataUrl={fileToPrintableDataUrl}
+                          />
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+            )}
+
             {isTransportTab && (
             <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
-                {activeTab === "route" ? "Autoroute" : activeTab === "flights" ? "Flugroute" : activeTab === "car" ? "Mietwagen-Route" : activeTab === "train" ? "Zugroute" : "Route"}
-              </h3>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+                  {activeTab === "route"
+                    ? t("tabRoute")
+                    : activeTab === "flights"
+                      ? tt("routeTitleFlights")
+                      : activeTab === "car"
+                        ? tt("routeTitleCar")
+                        : activeTab === "train"
+                          ? tt("routeTitleTrain")
+                          : tt("routeTitle")}
+                </h3>
+              </div>
               <div className="mb-4 space-y-2">
-                <p className="text-xs font-medium text-gray-500">Zwischenziel hinzufügen</p>
+                <p className="text-xs font-medium text-gray-500">{tt("addVia")}</p>
                 <button
                   onClick={addQuickStopDraft}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-xs font-semibold transition-colors"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  Zwischenziel hinzufügen
-                </button>
+                  <Plus className="w-3.5 h-3.5" />{tt("addVia")}</button>
                 {quickStopDrafts.map((draft) => (
                   <div key={draft.id}>
                     <input
@@ -2844,15 +3604,22 @@ export default function PlanerPage() {
                           void commitQuickStopDraft(draft.id);
                         }
                       }}
-                      placeholder="Zwischenziel eingeben..."
+                      placeholder={tt("addViaPh")}
                       className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
                 ))}
               </div>
-              <div className="space-y-3 relative">
+              <div
+                className="space-y-3 relative"
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setDropInsertIndex(null);
+                  }
+                }}
+              >
                 {currentRouteStops.length > 1 && (
-                  <div className="absolute left-[19px] top-[28px] bottom-[28px] w-0.5 bg-gradient-to-b from-blue-400 via-gray-200 to-red-400 z-0" />
+                  <div className="absolute left-[22px] top-[28px] bottom-[28px] w-0.5 bg-gradient-to-b from-blue-400 via-gray-200 to-red-400 z-0" />
                 )}
                 {currentRouteStops.map((stop, stopIndex) => (
                     (() => {
@@ -2862,33 +3629,79 @@ export default function PlanerPage() {
                           : stop.type === "end"
                             ? "B"
                             : String(stopIndex);
+                      const showInsertLine =
+                        !!draggingRouteStopId &&
+                        dropInsertIndex === stopIndex &&
+                        isActiveRouteStopInsert(draggingRouteStopId, stopIndex, currentRouteStops);
                       return (
-                    <div
-                      key={`${trip.id}-${stop.id}`}
-                      className="relative flex items-center gap-2 z-10 rounded-xl py-1 transition-all"
-                    >
-                      {stop.type === "stop" ? (
-                        <div className="flex flex-col gap-0.5 flex-shrink-0">
-                          <button
-                            onClick={() => moveStop(stop.id, "up")}
-                            disabled={stopIndex <= 1}
-                            className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-20 disabled:hover:text-gray-300 transition-colors"
-                            title="Nach oben"
-                          >
-                            <ChevronUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => moveStop(stop.id, "down")}
-                            disabled={stopIndex >= currentRouteStops.length - 2}
-                            className="p-0.5 text-gray-300 hover:text-blue-500 disabled:opacity-20 disabled:hover:text-gray-300 transition-colors"
-                            title="Nach unten"
-                          >
-                            <ChevronDown className="w-4 h-4" />
-                          </button>
+                    <Fragment key={`${trip.id}-${stop.id}`}>
+                      {showInsertLine && (
+                        <div className="relative z-20 -my-1 py-0.5 pointer-events-none" aria-hidden>
+                          <div className="flex items-center gap-2 pl-9 pr-1">
+                            <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500 ring-2 ring-blue-200" />
+                            <div className="h-[3px] flex-1 rounded-full bg-blue-500" />
+                          </div>
                         </div>
-                      ) : (
-                        <div className="w-5 flex-shrink-0" />
                       )}
+                    <div
+                      className={`relative flex items-center gap-2 z-10 rounded-xl py-1 transition-opacity ${
+                        draggingRouteStopId === stop.id ? "opacity-40" : ""
+                      }`}
+                      onDragOver={(e) => {
+                        if (!draggingRouteStopId || draggingRouteStopId === stop.id) return;
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const insertIdx = resolveRouteStopInsertIndex(
+                          stopIndex,
+                          e.clientY,
+                          rect.top,
+                          rect.height,
+                          currentRouteStops.length
+                        );
+                        if (isActiveRouteStopInsert(draggingRouteStopId, insertIdx, currentRouteStops)) {
+                          setDropInsertIndex(insertIdx);
+                        } else {
+                          setDropInsertIndex(null);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const dragId = e.dataTransfer.getData("text/plain") || draggingRouteStopId;
+                        if (!dragId) return;
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const insertIdx =
+                          dropInsertIndex ??
+                          resolveRouteStopInsertIndex(
+                            stopIndex,
+                            e.clientY,
+                            rect.top,
+                            rect.height,
+                            currentRouteStops.length
+                          );
+                        reorderRouteStopToInsertIndex(dragId, insertIdx);
+                        setDraggingRouteStopId(null);
+                        setDropInsertIndex(null);
+                      }}
+                    >
+                      <button
+                        type="button"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", stop.id);
+                          e.dataTransfer.effectAllowed = "move";
+                          setDraggingRouteStopId(stop.id);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingRouteStopId(null);
+                          setDropInsertIndex(null);
+                        }}
+                        className="flex-shrink-0 p-0.5 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing touch-none"
+                        title={tt("moveStop")}
+                        aria-label={tt("moveStop")}
+                      >
+                        <GripVertical className="w-5 h-5" />
+                      </button>
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
                           stop.type === "start"
@@ -2897,7 +3710,7 @@ export default function PlanerPage() {
                             ? "bg-gradient-to-br from-red-500 to-purple-500"
                             : stop.type === "end"
                             ? "bg-red-500"
-                            : stop.isHotel && stop.bookingConfirmation
+                            : stop.isHotel && (stop.bookingConfirmation || stop.bookingHotelName?.trim())
                             ? "bg-green-500"
                             : stop.isHotel
                             ? "bg-purple-500"
@@ -2907,7 +3720,7 @@ export default function PlanerPage() {
                         <span className="text-white text-sm font-bold leading-none">{stopBadgeLabel}</span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        {stop.isHotel && stop.bookingConfirmation ? (
+                        {stop.isHotel && (stop.bookingConfirmation || stop.bookingHotelName?.trim()) ? (
                           <div className="px-4 py-2 bg-green-50 border border-green-200 rounded-xl">
                             <p className="text-sm font-medium text-green-900 truncate">
                               {stop.bookingHotelName || stop.name}
@@ -2927,9 +3740,10 @@ export default function PlanerPage() {
                             if (el && autocompleteReady) {
                               attachAutocomplete(el, (place, lat, lng) => {
                                 if (lat != null && lng != null && stop.type === "stop") {
-                                  updateStopWithCoords(stop.id, place, lat, lng);
+                                  void updateStopWithCoords(stop.id, place, lat, lng);
                                 } else if (lat != null && lng != null) {
                                   updateStopField(stop.id, { name: place, lat, lng });
+                                  scheduleStopBriefEnrich(stop.id);
                                 } else {
                                   updateStop(stop.id, place);
                                 }
@@ -2939,18 +3753,19 @@ export default function PlanerPage() {
                           onChange={(e) => updateStop(stop.id, e.target.value)}
                           placeholder={
                             stop.type === "start"
-                              ? "Startort eingeben..."
+                              ? tt("startPh")
                               : stop.type === "end"
-                              ? "Zielort eingeben..."
-                              : stop.isHotel
-                              ? "Hotelort eingeben..."
-                              : "Zwischenstopp..."
+                                ? tt("destPh")
+                                : stop.isHotel
+                                  ? tt("hotelPlacePh")
+                                  : tt("stopPh")
                           }
                           className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         />
                         )}
                       </div>
-                      {(stop.type === "stop" || stop.type === "end") && !(stop.isHotel && stop.bookingConfirmation) && (
+                      {(stop.type === "stop" || stop.type === "end") &&
+                        !(stop.isHotel && (stop.bookingConfirmation || stop.bookingHotelName?.trim())) && (
                         <button
                           onClick={() => toggleHotel(stop.id)}
                           className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
@@ -2958,25 +3773,41 @@ export default function PlanerPage() {
                               ? "text-purple-500 bg-purple-50 hover:bg-purple-100"
                               : "text-gray-300 hover:text-purple-500 hover:bg-purple-50"
                           }`}
-                          title={stop.isHotel ? "Hotel entfernen" : stop.type === "end" ? "Ziel als Hotel markieren" : "Als Hotel markieren"}
+                          title={
+                            stop.isHotel
+                              ? tt("removeHotel")
+                              : stop.type === "end"
+                                ? tt("markDestHotel")
+                                : tt("markHotel")
+                          }
                         >
                           <BedDouble className="w-4 h-4" />
                         </button>
                       )}
-                      {stop.type === "stop" && !(stop.isHotel && stop.bookingConfirmation) && (
+                      {stop.type === "stop" &&
+                        !(stop.isHotel && (stop.bookingConfirmation || stop.bookingHotelName?.trim())) && (
                         <button
                           onClick={() => removeStop(stop.id)}
                           className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
-                          title="Zwischenstopp entfernen"
+                          title={tt("removeStop")}
                         >
                           <X className="w-4 h-4" />
                         </button>
                       )}
                     </div>
+                    </Fragment>
                       );
                     })()
                 ))}
               </div>
+              {currentRouteStops.length >= 2 && (
+                <button
+                  type="button"
+                  onClick={makeRoundTrip}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-white"
+                >
+                  <Route className="w-3.5 h-3.5" />{tt("roundTripLong")}</button>
+              )}
             </div>
             )}
 
@@ -2984,19 +3815,17 @@ export default function PlanerPage() {
             {!isHotelOnlyMode && (
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                  {activeTab === "hotels" ? "Hotel-Suche für diese Reise" : "Reisedaten"}
+                  {activeTab === "hotels" ? tt("hotelSearchThisTrip") : tt("tripDates")}
                 </h3>
                 <DateRangePicker
                   startDate={trip.startDate}
                   endDate={trip.endDate}
                   onSelect={(s, e) => updateTrip({ startDate: s, endDate: e })}
-                  startLabel="Abreise"
-                  endLabel="Rückkehr"
+                  startLabel={t("depart")}
+                  endLabel={t("return")}
                 />
                 <div className="mt-3">
-                  <label className="text-xs text-gray-500 mb-1 block">
-                    Reisende
-                  </label>
+                  <label className="text-xs text-gray-500 mb-1 block">{t("travelers")}</label>
                   <div className="relative">
                     <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <select
@@ -3008,7 +3837,7 @@ export default function PlanerPage() {
                     >
                       {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                         <option key={n} value={n}>
-                          {n} {n === 1 ? "Person" : "Personen"}
+                          {n === 1 ? tt("travelerOne") : tt("travelerCount", { n })}
                         </option>
                       ))}
                     </select>
@@ -3018,9 +3847,7 @@ export default function PlanerPage() {
                 {activeTab === "hotels" && (
                   <>
                     <div className="mt-3">
-                      <label className="text-xs text-gray-500 mb-1 block">
-                        Zimmer
-                      </label>
+                      <label className="text-xs text-gray-500 mb-1 block">{tt("rooms")}</label>
                       <div className="relative">
                         <BedDouble className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <select
@@ -3034,11 +3861,11 @@ export default function PlanerPage() {
                           className="w-full pl-9 pr-8 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none disabled:opacity-60"
                         >
                           {commonHotelRooms === null && hotelTabStops.length > 0 && (
-                            <option value="" disabled>Unterschiedlich</option>
+                            <option value="" disabled>{tt("roomsMixed")}</option>
                           )}
                           {[1, 2, 3, 4, 5, 6].map((n) => (
                             <option key={n} value={n}>
-                              {n} Zimmer
+                              {tt("roomCount", { n })}
                             </option>
                           ))}
                         </select>
@@ -3049,8 +3876,10 @@ export default function PlanerPage() {
                       <MapPin className="w-4 h-4 flex-shrink-0 text-blue-500" />
                       <span>
                         {hotelTabStops.length === 0
-                          ? "Noch keine Übernachtungsorte entlang deiner Route"
-                          : `${hotelTabStops.length} ${hotelTabStops.length === 1 ? "Übernachtungsort" : "Übernachtungsorte"} entlang deiner Route`}
+                          ? tt("noOvernightYet")
+                          : hotelTabStops.length === 1
+                            ? tt("overnightCountOne")
+                            : tt("overnightCountMany", { count: hotelTabStops.length })}
                       </span>
                     </div>
                   </>
@@ -3060,23 +3889,11 @@ export default function PlanerPage() {
 
             
 
-            {/* Bucket List Shortcut */}
-            {trip.bucketList.length > 0 && activeTab !== "hotels" && (
-              <button
-                onClick={() => setActiveTab("bucket")}
-                className="w-full flex items-center justify-between bg-green-50 border border-green-100 rounded-2xl px-5 py-3 hover:bg-green-100 transition-colors"
-              >
-                <span className="flex items-center gap-2 text-sm font-medium text-green-700">
-                  <BookmarkPlus className="w-4 h-4" />
-                  Bucket List ({trip.bucketList.length})
-                </span>
-                <ChevronDown className="w-4 h-4 text-green-400 -rotate-90" />
-              </button>
-            )}
           </div>
           )}
 
           {/* Right Panel */}
+          {activeTab !== "ortsinfo" && (
           <div className="min-w-0">
             {/* Route Tab (shared for auto, car, train) */}
             {(activeTab === "route" || activeTab === "car" || activeTab === "train") && (
@@ -3086,11 +3903,8 @@ export default function PlanerPage() {
                     <div className="flex items-start gap-3">
                       <Sparkles className="w-5 h-5 text-blue-500 mt-0.5" />
                       <div>
-                        <p className="text-sm font-medium text-blue-800">Tipp</p>
-                        <p className="text-sm text-blue-600 mt-1">
-                          Gib links einen Start- und Zielort ein. Die Autocomplete-Suche hilft dir, 
-                          Städte schnell zu finden. Die Route wird automatisch auf der Karte berechnet.
-                        </p>
+                        <p className="text-sm font-medium text-blue-800">{tt("tip")}</p>
+                        <p className="text-sm text-blue-600 mt-1">{tt("routeTip")}</p>
                       </div>
                     </div>
                   </div>
@@ -3148,7 +3962,7 @@ export default function PlanerPage() {
                     <div className="flex items-start gap-3">
                       <Globe className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0" />
                       <div>
-                        <p className="text-sm font-medium text-amber-800">Routenberechnung</p>
+                        <p className="text-sm font-medium text-amber-800">{tt("routing")}</p>
                         <p className="text-sm text-amber-600 mt-1">{routeError}</p>
                       </div>
                     </div>
@@ -3160,9 +3974,9 @@ export default function PlanerPage() {
                     const waypointCount = currentRouteStops.filter((s) => s.type === "stop" && s.name.trim()).length;
                     const tooMany = waypointCount >= 20;
                     const stats = [
-                      { icon: Navigation, value: routeInfo?.distance || "—", active: !!routeInfo?.distance, label: "Distanz" },
-                      { icon: Clock, value: routeInfo?.duration || "—", active: !!routeInfo?.duration, label: "Fahrzeit" },
-                      { icon: MapPin, value: routeInfo?.stops ?? "—", active: !!routeInfo, label: "Zwischenstopps" },
+                      { icon: Navigation, value: routeInfo?.distance || "—", active: !!routeInfo?.distance, label: tt("distance") },
+                      { icon: Clock, value: routeInfo?.duration || "—", active: !!routeInfo?.duration, label: tt("driveTime") },
+                      { icon: MapPin, value: routeInfo?.stops ?? "—", active: !!routeInfo, label: tt("viaStops") },
                     ];
                     return (
                       <>
@@ -3181,14 +3995,20 @@ export default function PlanerPage() {
 
                           {!tooMany && ((currentOrigin && currentDestination) || waypointCount >= 2) && (
                             <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+                              {currentOrigin && !tooMany && (
+                                <button
+                                  type="button"
+                                  onClick={makeRoundTrip}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
+                                >
+                                  <Route className="w-3.5 h-3.5" />{tt("roundTripShort")}</button>
+                              )}
                               {currentOrigin && currentDestination && !tooMany && (
                                 <button
                                   onClick={reverseRoute}
                                   className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-gray-300 hover:bg-gray-50"
                                 >
-                                  <ArrowDownUp className="w-3.5 h-3.5" />
-                                  Route umkehren
-                                </button>
+                                  <ArrowDownUp className="w-3.5 h-3.5" />{tt("reverseRoute")}</button>
                               )}
 
                               {waypointCount >= 2 && !tooMany && (
@@ -3199,14 +4019,10 @@ export default function PlanerPage() {
                                 >
                                   {optimizeRoute ? (
                                     <>
-                                      <div className="w-3.5 h-3.5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
-                                      Wird optimiert...
-                                    </>
+                                      <div className="w-3.5 h-3.5 border-2 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />{tt("optimizing")}</>
                                   ) : (
                                     <>
-                                      <Zap className="w-3.5 h-3.5" />
-                                      Kürzeste Route berechnen
-                                    </>
+                                      <Zap className="w-3.5 h-3.5" />{tt("shortestRoute")}</>
                                   )}
                                 </button>
                               )}
@@ -3215,15 +4031,13 @@ export default function PlanerPage() {
                         </div>
 
                         {currentOrigin && currentDestination && !routeInfo?.distance && !routeError && (
-                          <p className="text-xs text-gray-400 mt-2">
-                            Wähle Start und Ziel über die Autocomplete-Vorschläge aus, damit die Route berechnet wird.
-                          </p>
+                          <p className="text-xs text-gray-400 mt-2">{tt("pickAutocomplete")}</p>
                         )}
 
                         {tooMany && (
                           <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                             <p className="text-xs text-amber-700">
-                              <strong>{waypointCount} Zwischenstopps</strong> — Route umkehren und optimieren sind bei 20+ Stopps deaktiviert.
+                              {tt("waypointsTooManyHint", { count: waypointCount })}
                               Verwende die Pfeile oder «+ Stopp auf Karte», um die Route anzupassen.
                             </p>
                           </div>
@@ -3239,7 +4053,7 @@ export default function PlanerPage() {
                     <div className="flex items-center gap-3 mb-3">
                       <Route className="w-5 h-5 text-purple-500" />
                       <h3 className="font-semibold text-gray-900">
-                        Tagesetappen ({etappen.length})
+                        {tt("dayStages", { count: etappen.length })}
                       </h3>
                       {(() => {
                         const expandableCount = Math.min(
@@ -3277,8 +4091,10 @@ export default function PlanerPage() {
                           .filter((s) => s.name.trim() && s.type === "stop" && !!s.isHotel)
                           .forEach((stop) => {
                             const nights = Math.max(1, Number(stop.hotelNights) || 2);
-                            const isBookedAnchor = !!stop.bookingConfirmation && !!stop.hotelCheckIn;
-                            const checkIn = isBookedAnchor ? (stop.hotelCheckIn || "") : (dateCursor || stop.hotelCheckIn || "");
+                            const isBookedAnchor = isBookedHotelStop(stop);
+                            const checkIn = isBookedAnchor
+                              ? stop.hotelCheckIn || ""
+                              : dateCursor || stop.hotelCheckIn || "";
                             const checkOut = checkIn ? addDaysLocal(checkIn, nights) : "";
                             dateCursor = checkOut || dateCursor;
                             departureDates.push(checkOut);
@@ -3397,7 +4213,11 @@ export default function PlanerPage() {
                           </>
                         );
                         const stayHotelName = stay?.stop.bookingHotelName?.trim() || "";
-                        const stayHasHotel = !!stay && (!!stayHotelName || !!stay.stop.bookingConfirmation?.trim());
+                        const stayHasHotel =
+                          !!stay &&
+                          (!!stayHotelName ||
+                            !!stay.stop.bookingConfirmation?.trim() ||
+                            !!stay.stop.bookingHotelName?.trim());
                         const stayGuests = stay ? (stay.stop.hotelGuests || trip.travelers || 2) : 0;
                         return (
                         <div
@@ -3457,19 +4277,21 @@ export default function PlanerPage() {
                                       <span className="truncate">{stayHotelName || `Unterkunft in ${stay.stop.name}`}</span>
                                     </div>
                                     <div className="text-xs text-gray-500 mt-0.5">
-                                      {stay.nights} {stay.nights === 1 ? "Nacht" : "Nächte"} · {stay.stop.bookingConfirmation?.trim() ? "gebucht" : "vorgemerkt"}
+                                      {stay.nights} {stay.nights === 1 ? "Nacht" : "Nächte"} ·{" "}
+                                      {stayHotelName || stay.stop.bookingConfirmation?.trim() ? "gebucht" : "vorgemerkt"}
                                     </div>
                                     {(stay.stop.bookingLink || hasHotelsTab) && (
                                       <div className="mt-2 flex items-center gap-2 text-xs font-medium">
                                         {stay.stop.bookingLink && (
-                                          <a href={stay.stop.bookingLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline">
-                                            Hotel ansehen
+                                          <a href={stay.stop.bookingLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline">
+                                            {partnerLinkCta(stay.stop.bookingLink, "open", locale)}
+                                            <PartnerAffiliateMark href={stay.stop.bookingLink} />
                                           </a>
                                         )}
                                         {stay.stop.bookingLink && hasHotelsTab && <span className="text-gray-300">·</span>}
                                         {hasHotelsTab && (
                                           <button type="button" onClick={() => openHotelStop(stay.stop.id, true)} className="text-blue-600 hover:text-blue-800 hover:underline">
-                                            Ändern
+                                            {tt("changeBtn")}
                                           </button>
                                         )}
                                       </div>
@@ -3477,7 +4299,7 @@ export default function PlanerPage() {
                                   </div>
                                 ) : (
                                   <div className="mt-3 border-t border-purple-100 pt-3">
-                                    <div className="text-xs text-gray-500">Noch keine Unterkunft ausgewählt</div>
+                                    <div className="text-xs text-gray-500">{tt("noLodgingSelected")}</div>
                                     {hasHotelsTab && (
                                       <button
                                         type="button"
@@ -3508,7 +4330,7 @@ export default function PlanerPage() {
                 <div className={`bg-white rounded-2xl p-6 shadow-sm border border-gray-100 ${isHotelOnlyMode ? "" : "order-last"}`}>
                   <div className="flex items-center gap-3 mb-4">
                     <Hotel className="w-5 h-5 text-blue-500" />
-                    <h3 className="font-semibold text-gray-900">Hotel direkt suchen (ohne Autoroute)</h3>
+                    <h3 className="font-semibold text-gray-900">{tt("hotelsDirect")}</h3>
                   </div>
                   <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
                     <input
@@ -3516,7 +4338,7 @@ export default function PlanerPage() {
                       type="text"
                       value={hotelOnlyDestination}
                       onChange={(e) => setHotelOnlyDestination(e.target.value)}
-                      placeholder="Hotel-Ort eingeben..."
+                      placeholder={tt("hotelPlaceInput")}
                       className="lg:col-span-2 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     <div className="sm:col-span-2 lg:col-span-2">
@@ -3540,7 +4362,7 @@ export default function PlanerPage() {
                         value={hotelOnlyTravelers}
                         onChange={(e) => setHotelOnlyTravelers(parseInt(e.target.value) || 1)}
                         className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Gäste"
+                        placeholder={tt("guests")}
                       />
                       <input
                         type="number"
@@ -3548,7 +4370,7 @@ export default function PlanerPage() {
                         value={hotelOnlyRooms}
                         onChange={(e) => setHotelOnlyRooms(parseInt(e.target.value) || 1)}
                         className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Zimmer"
+                        placeholder={tt("rooms")}
                       />
                     </div>
                   </div>
@@ -3564,7 +4386,8 @@ export default function PlanerPage() {
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 bg-red-50 px-3 py-2 rounded-lg border border-red-200 hover:bg-red-100 transition-colors"
                     >
                       <Hotel className="w-3.5 h-3.5" />
-                      Hotels.com
+                      {partnerLabelFromUrl(buildHotelsComLink(hotelOnlySearchParams)).brandName}
+                      <PartnerAffiliateMark href={buildHotelsComLink(hotelOnlySearchParams)} />
                     </a>
                     <a
                       href={buildExpediaHotelLink(hotelOnlySearchParams)}
@@ -3577,17 +4400,22 @@ export default function PlanerPage() {
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 bg-yellow-50 px-3 py-2 rounded-lg border border-yellow-200 hover:bg-yellow-100 transition-colors"
                     >
                       <Hotel className="w-3.5 h-3.5" />
-                      Expedia
+                      {partnerLabelFromUrl(buildExpediaHotelLink(hotelOnlySearchParams)).brandName}
+                      <PartnerAffiliateMark href={buildExpediaHotelLink(hotelOnlySearchParams)} />
                     </a>
                     <a
                       href={buildBookingHotelLink(hotelOnlySearchParams)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={() => logAffiliateClick("hotels", "Booking.com", buildBookingHotelLink(hotelOnlySearchParams), { mode: "hotel-only" })}
+                      onClick={() => {
+                        const url = buildBookingHotelLink(hotelOnlySearchParams);
+                        logAffiliateClick("hotels", partnerLabelFromUrl(url).brandName, url, { mode: "hotel-only" });
+                      }}
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-blue-50 px-3 py-2 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors"
                     >
                       <Hotel className="w-3.5 h-3.5" />
-                      Booking.com
+                      {partnerLabelFromUrl(buildBookingHotelLink(hotelOnlySearchParams)).brandName}
+                      <PartnerAffiliateMark href={buildBookingHotelLink(hotelOnlySearchParams)} />
                     </a>
                   </div>
                 </div>
@@ -3616,33 +4444,26 @@ export default function PlanerPage() {
                     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
                   }
 
-                  const computedHotelDates = (() => {
-                    const out = new globalThis.Map<string, { checkIn: string; checkOut: string; nights: number }>();
-                    let cursor = trip.startDate || "";
-                    for (const stop of hotelStops) {
-                      const nights = Math.max(1, Number(stop.hotelNights) || 2);
-                      const isBookedAnchor = !!stop.bookingConfirmation && !!stop.hotelCheckIn;
-                      const checkIn = isBookedAnchor
-                        ? (stop.hotelCheckIn || "")
-                        : (cursor || stop.hotelCheckIn || "");
-                      const checkOut = checkIn ? addDaysLocal(checkIn, nights) : "";
-                      out.set(stop.id, { checkIn, checkOut, nights });
-                      cursor = checkOut || cursor;
-                    }
-                    return out;
-                  })();
+                  const computedHotelDates = computeHotelStaysTimeline(hotelStops, trip.startDate || "");
 
                   function getHotelDates(stop: RouteStop): { checkIn: string; checkOut: string; nights: number } {
-                    return computedHotelDates.get(stop.id) || {
-                      checkIn: stop.hotelCheckIn || "",
-                      checkOut: stop.hotelCheckIn ? addDaysLocal(stop.hotelCheckIn, Math.max(1, Number(stop.hotelNights) || 2)) : "",
-                      nights: Math.max(1, Number(stop.hotelNights) || 2),
-                    };
+                    if (isBookedHotelStop(stop)) {
+                      return getBookedHotelDatesOnly(stop);
+                    }
+                    return (
+                      computedHotelDates.get(stop.id) || {
+                        checkIn: stop.hotelCheckIn || "",
+                        checkOut: stop.hotelCheckIn
+                          ? addDaysLocal(stop.hotelCheckIn, Math.max(1, Number(stop.hotelNights) || 2))
+                          : "",
+                        nights: Math.max(1, Number(stop.hotelNights) || 2),
+                      }
+                    );
                   }
 
                   function handleDateSelect(stopId: string, newCheckIn: string, newNights: number) {
                     const selected = hotelStops.find((s) => s.id === stopId);
-                    if (selected?.bookingConfirmation) {
+                    if (selected && isBookedHotelStop(selected)) {
                       updateStopField(stopId, { hotelCheckIn: newCheckIn, hotelNights: newNights });
                     } else {
                       updateStopField(stopId, { hotelCheckIn: "", hotelNights: newNights });
@@ -3655,12 +4476,9 @@ export default function PlanerPage() {
                         <div className="flex items-start gap-3">
                           <BedDouble className="w-6 h-6 text-purple-500 mt-0.5" />
                           <div>
-                            <p className="text-sm font-semibold text-purple-800">Noch keine Hotel-Orte</p>
+                            <p className="text-sm font-semibold text-purple-800">{tt("noHotelPlaces")}</p>
                             <p className="text-sm text-purple-600 mt-1">
-                              Nutze {isHotelOnlyMode ? "oben" : "unten"} die direkte Hotelsuche oder markiere im <strong>Autoroute</strong>-Tab Zwischenstopps/Ziel mit dem
-                              <BedDouble className="w-3.5 h-3.5 inline mx-1 text-purple-500" />
-                              Symbol als Hotel-Ort.
-                            </p>
+                              Nutze {isHotelOnlyMode ? "oben" : "unten"} die direkte Hotelsuche oder markiere im <strong>{t("tabRoute")}</strong>{tt("noHotelPlacesBody2")}<BedDouble className="w-3.5 h-3.5 inline mx-1 text-purple-500" />{tt("noHotelPlacesBody3")}</p>
                           </div>
                         </div>
                       </div>
@@ -3673,11 +4491,7 @@ export default function PlanerPage() {
                         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5">
                           <div className="flex items-start gap-3">
                             <BedDouble className="w-5 h-5 text-amber-500 mt-0.5" />
-                            <p className="text-sm text-amber-700">
-                              Markiere Zwischenstopps oder das Ziel im <strong>Autoroute</strong>-Tab mit dem
-                              <BedDouble className="w-3.5 h-3.5 inline mx-1 text-purple-500" />
-                              Symbol als Hotelstopps, damit sie hier erscheinen.
-                            </p>
+                            <p className="text-sm text-amber-700">{tt("markHotelStops1")}<strong>{t("tabRoute")}</strong>{tt("markHotelStops2")}<BedDouble className="w-3.5 h-3.5 inline mx-1 text-purple-500" />{tt("markHotelStops3")}</p>
                           </div>
                         </div>
                       )}
@@ -3686,9 +4500,7 @@ export default function PlanerPage() {
                         <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
                           <div className="flex items-start gap-3">
                             <Calendar className="w-5 h-5 text-blue-500 mt-0.5" />
-                            <p className="text-sm text-blue-700">
-                              Setze ein <strong>Reise-Startdatum</strong> oben, damit die Hotel-Daten automatisch berechnet werden.
-                            </p>
+                            <p className="text-sm text-blue-700">{tt("setStartDate1")}<strong>{tt("tripStartDate")}</strong>{tt("setStartDate2")}</p>
                           </div>
                         </div>
                       )}
@@ -3703,7 +4515,7 @@ export default function PlanerPage() {
                               </h3>
                             </div>
                             <p className="text-xs text-gray-500 mt-1">
-                              Finde die passenden Hotels für deine Übernachtungsorte entlang der Route oder trage bestehende Buchungen ein.
+                              {tt("hotelsRouteIntro")}
                             </p>
                           </div>
                           <div className="space-y-3">
@@ -3720,8 +4532,8 @@ export default function PlanerPage() {
                               };
                               const panel = hotelPanels[stop.id];
                               const hotelName = stop.bookingHotelName?.trim() || "";
-                              const isBooked = !!stop.bookingConfirmation?.trim();
-                              const hasHotel = isBooked || !!hotelName;
+                              const isBooked = Boolean(hotelName || stop.bookingConfirmation?.trim());
+                              const hasHotel = isBooked;
                               const dateLine = [
                                 checkIn && checkOut ? `${formatDate(checkIn)} – ${formatDate(checkOut)}` : "",
                                 `${nights} ${nights === 1 ? "Nacht" : "Nächte"}`,
@@ -3746,8 +4558,14 @@ export default function PlanerPage() {
                                             checkIn={checkIn}
                                             checkOut={checkOut}
                                             nights={nights}
+                                            locked={isBooked}
                                             onSelect={(ci, n) => handleDateSelect(stop.id, ci, n)}
                                           />
+                                          {isBooked && (
+                                            <p className="mt-1 text-[10px] text-green-700 leading-snug">
+                                              {tt("bookedDatesLocked")}
+                                            </p>
+                                          )}
                                         </div>
                                         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-600">
                                           <label className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2 py-1">
@@ -3798,9 +4616,7 @@ export default function PlanerPage() {
                                                 : "border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
                                             }`}
                                           >
-                                            <Calendar className="w-3.5 h-3.5" />
-                                            Buchung eintragen
-                                          </button>
+                                            <Calendar className="w-3.5 h-3.5" />{tt("enterBooking")}</button>
                                         </div>
                                       </div>
                                     </div>
@@ -3819,13 +4635,15 @@ export default function PlanerPage() {
                                             {stop.bookingAddress && <p className="mt-0.5 text-gray-500 truncate">{stop.bookingAddress}</p>}
                                             {stop.bookingLink && (
                                               <a href={stop.bookingLink} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800">
-                                                Hotel ansehen <ExternalLink className="w-3 h-3" />
+                                                {partnerLinkCta(stop.bookingLink, "open", locale)}
+                                                <PartnerAffiliateMark href={stop.bookingLink} />
+                                                <ExternalLink className="w-3 h-3" />
                                               </a>
                                             )}
                                           </>
                                         ) : (
                                           <>
-                                            <p className="font-semibold text-gray-900">Noch kein Hotel ausgewählt</p>
+                                            <p className="font-semibold text-gray-900">{tt("noHotelSelected")}</p>
                                             <p className="mt-0.5 text-gray-500">
                                               {stop.type === "end"
                                                 ? `Optionale Übernachtung in ${stop.name} oder trage eine bestehende Buchung ein.`
@@ -3854,23 +4672,26 @@ export default function PlanerPage() {
                                       className="inline-flex items-center gap-1.5 text-xs font-medium text-red-700 bg-white px-3 py-2 rounded-lg border border-red-200 hover:bg-red-50 transition-colors"
                                     >
                                       <Hotel className="w-3.5 h-3.5" />
-                                      Hotels.com
+                                      {partnerLabelFromUrl(buildHotelsComLink(stopSearchParams)).brandName}
+                                      <PartnerAffiliateMark href={buildHotelsComLink(stopSearchParams)} />
                                       <ExternalLink className="w-3 h-3 text-red-400" />
                                     </a>
                                     <a
                                       href={buildBookingHotelLink(stopSearchParams)}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      onClick={() =>
-                                        logAffiliateClick("hotels", "Booking.com", buildBookingHotelLink(stopSearchParams), {
+                                      onClick={() => {
+                                        const url = buildBookingHotelLink(stopSearchParams);
+                                        logAffiliateClick("hotels", partnerLabelFromUrl(url).brandName, url, {
                                           stopId: stop.id,
                                           stopName: stop.name,
-                                        })
-                                      }
+                                        });
+                                      }}
                                       className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 bg-white px-3 py-2 rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
                                     >
                                       <Hotel className="w-3.5 h-3.5" />
-                                      Booking.com
+                                      {partnerLabelFromUrl(buildBookingHotelLink(stopSearchParams)).brandName}
+                                      <PartnerAffiliateMark href={buildBookingHotelLink(stopSearchParams)} />
                                       <ExternalLink className="w-3 h-3 text-blue-400" />
                                     </a>
                                     <a
@@ -3887,39 +4708,43 @@ export default function PlanerPage() {
                                       className="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-700 bg-white px-3 py-2 rounded-lg border border-yellow-200 hover:bg-yellow-50 transition-colors"
                                     >
                                       <Hotel className="w-3.5 h-3.5" />
-                                      Expedia
+                                      {partnerLabelFromUrl(buildExpediaHotelLink(stopSearchParams)).brandName}
+                                      <PartnerAffiliateMark href={buildExpediaHotelLink(stopSearchParams)} />
                                       <ExternalLink className="w-3 h-3 text-yellow-400" />
                                     </a>
                                     <a
                                       href={buildAgodaHotelLink(stopSearchParams)}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      onClick={() =>
-                                        logAffiliateClick("hotels", "Agoda", buildAgodaHotelLink(stopSearchParams), {
+                                      onClick={() => {
+                                        const url = buildAgodaHotelLink(stopSearchParams);
+                                        logAffiliateClick("hotels", partnerLabelFromUrl(url).brandName, url, {
                                           stopId: stop.id,
                                           stopName: stop.name,
-                                        })
-                                      }
+                                        });
+                                      }}
                                       className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-white px-3 py-2 rounded-lg border border-purple-200 hover:bg-purple-50 transition-colors"
                                     >
                                       <Hotel className="w-3.5 h-3.5" />
-                                      Agoda
+                                      {partnerLabelFromUrl(buildAgodaHotelLink(stopSearchParams)).brandName}
+                                      <PartnerAffiliateMark href={buildAgodaHotelLink(stopSearchParams)} />
                                       <ExternalLink className="w-3 h-3 text-purple-400" />
                                     </a>
                                     <a
                                       href={buildTrivagoLink(stopSearchParams)}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      onClick={() =>
-                                        logAffiliateClick("hotels", "trivago", buildTrivagoLink(stopSearchParams), {
+                                      onClick={() => {
+                                        const url = buildTrivagoLink(stopSearchParams);
+                                        logAffiliateClick("hotels", partnerLabelFromUrl(url).brandName, url, {
                                           stopId: stop.id,
                                           stopName: stop.name,
-                                        })
-                                      }
+                                        });
+                                      }}
                                       className="inline-flex items-center gap-1.5 text-xs font-medium text-teal-700 bg-white px-3 py-2 rounded-lg border border-teal-200 hover:bg-teal-50 transition-colors"
                                     >
                                       <Search className="w-3.5 h-3.5" />
-                                      trivago
+                                      {partnerLabelFromUrl(buildTrivagoLink(stopSearchParams)).brandName}
                                       <ExternalLink className="w-3 h-3 text-teal-400" />
                                     </a>
                                   </div>
@@ -3928,16 +4753,30 @@ export default function PlanerPage() {
 
                                   {panel === "booking" && (
                                     <div className="mt-4 border-t border-gray-100 pt-4 space-y-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => openIcsBookingImport(stop.id)}
+                                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-green-300 bg-green-50/80 px-3 py-2 text-xs font-medium text-green-800 hover:bg-green-100 transition-colors"
+                                      >
+                                        <FileUp className="h-3.5 w-3.5 shrink-0" />
+                                        {tt("importIcsBooking")}
+                                      </button>
+                                      {icsImportFeedback[stop.id] === "ok" && (
+                                        <p className="text-[11px] text-green-700 leading-snug">{tt("importIcsSuccess")}</p>
+                                      )}
+                                      {icsImportFeedback[stop.id] === "err" && (
+                                        <p className="text-[11px] text-red-600 leading-snug">{tt("importIcsError")}</p>
+                                      )}
                                       <input
                                         type="text"
-                                        placeholder="Hotelname"
+                                        placeholder={tt("hotelName")}
                                         value={stop.bookingHotelName || ""}
                                         onChange={(e) => updateStopField(stop.id, { bookingHotelName: e.target.value })}
                                         className="w-full px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
                                       />
                                       <input
                                         type="text"
-                                        placeholder="Adresse"
+                                        placeholder={tt("address")}
                                         value={stop.bookingAddress || ""}
                                         onChange={(e) => updateStopField(stop.id, { bookingAddress: e.target.value })}
                                         className="w-full px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
@@ -3945,14 +4784,14 @@ export default function PlanerPage() {
                                       <div className="grid grid-cols-2 gap-2">
                                         <input
                                           type="text"
-                                          placeholder="Buchungsnr."
+                                          placeholder={tt("bookingNo")}
                                           value={stop.bookingConfirmation || ""}
                                           onChange={(e) => updateStopField(stop.id, { bookingConfirmation: e.target.value })}
                                           className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
                                         />
                                         <input
                                           type="text"
-                                          placeholder="Preis (z.B. CHF 120)"
+                                          placeholder={tt("pricePh")}
                                           value={stop.bookingPrice || ""}
                                           onChange={(e) => updateStopField(stop.id, { bookingPrice: e.target.value })}
                                           className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
@@ -3961,7 +4800,7 @@ export default function PlanerPage() {
                                       <div className="grid grid-cols-2 gap-2">
                                         <input
                                           type="text"
-                                          placeholder="Buchungs-Link (URL)"
+                                          placeholder={tt("bookingLinkPh")}
                                           value={stop.bookingLink || ""}
                                           onChange={(e) => updateStopField(stop.id, { bookingLink: e.target.value })}
                                           className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
@@ -3971,13 +4810,13 @@ export default function PlanerPage() {
                                           onChange={(e) => updateStopField(stop.id, { bookingProvider: e.target.value })}
                                           className="px-2 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg focus:ring-1 focus:ring-green-300 focus:border-transparent"
                                         >
-                                          <option value="">Anbieter</option>
+                                          <option value="">{tt("provider")}</option>
                                           <option value="Hotels.com">Hotels.com</option>
                                           <option value="Booking.com">Booking.com</option>
                                           <option value="Expedia">Expedia</option>
                                           <option value="Agoda">Agoda</option>
                                           <option value="trivago">trivago</option>
-                                          <option value="Andere">Andere</option>
+                                          <option value="Andere">{tt("other")}</option>
                                         </select>
                                       </div>
                                       {stop.bookingConfirmation && (
@@ -3985,9 +4824,7 @@ export default function PlanerPage() {
                                           type="button"
                                           onClick={() => updateStopField(stop.id, { bookingHotelName: "", bookingAddress: "", bookingConfirmation: "", bookingPrice: "", bookingLink: "", bookingProvider: "" })}
                                           className="text-[10px] text-gray-400 hover:text-red-500 transition-colors"
-                                        >
-                                          Buchung löschen
-                                        </button>
+                                        >{tt("deleteBooking")}</button>
                                       )}
                                     </div>
                                   )}
@@ -4001,9 +4838,7 @@ export default function PlanerPage() {
                       {/* Quick-add hotel stops */}
                       {allStopsWithHotelOption.filter((s) => !s.isHotel).length > 0 && (
                         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                          <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                            Weitere Stopps als Hotel markieren
-                          </h4>
+                          <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">{tt("moreHotelStops")}</h4>
                           <div className="space-y-2">
                             {allStopsWithHotelOption
                               .filter((s) => !s.isHotel)
@@ -4039,9 +4874,9 @@ export default function PlanerPage() {
                 <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
                   <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
                     <div>
-                      <h3 className="font-semibold text-gray-900">Reisebericht</h3>
+                      <h3 className="font-semibold text-gray-900">{t("tabReport")}</h3>
                       <p className="text-sm text-gray-500 mt-1">
-                        Wähle die PDF-Inhalte und passe das Deckblatt an.
+                        {tt("reportPdfIntro")}
                       </p>
                     </div>
                     <button
@@ -4051,30 +4886,43 @@ export default function PlanerPage() {
                       className="inline-flex items-center gap-2 rounded-full bg-[#0071e3] px-4 py-2 text-sm font-medium text-white hover:bg-[#0077ed] disabled:opacity-50"
                     >
                       {pdfGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-                      PDF erstellen
+                      {tt("pdfCreate")}
                     </button>
                   </div>
 
+                  {pdfExportError && (
+                    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      {pdfExportError}
+                    </div>
+                  )}
+
                   <div className="mb-6">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                      PDF-Inhalte
+                      {tt("pdfContentsHeading")}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
-                      {PDF_EXPORT_OPTION_DEFS.map((def) => (
+                      {applicablePdfExportDefs.length === 0 ? (
+                        <p className="col-span-full text-sm text-gray-500 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3">
+                          {tt("pdfNoOptionalSections")}
+                        </p>
+                      ) : null}
+                      {applicablePdfExportDefs.map((def) => (
                         <label
                           key={def.key}
                           className="flex items-start gap-2.5 rounded-xl border border-gray-100 bg-gray-50 p-3 cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-colors"
                         >
                           <input
                             type="checkbox"
-                            checked={isPdfExportOptionEnabled(trip, def.key)}
+                            checked={isPdfExportOptionEnabled(trip, def.key, pdfExportContext)}
                             onChange={(ev) => updateTrip({ [def.tripField]: ev.target.checked })}
                             className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                           <span className="min-w-0">
-                            <span className="block text-sm font-medium text-gray-900">{def.label}</span>
+                            <span className="block text-sm font-medium text-gray-900">
+                              {tt(def.labelKey as Parameters<typeof tt>[0])}
+                            </span>
                             <span className="block text-[11px] text-gray-500 leading-snug mt-0.5">
-                              {def.description}
+                              {tt(def.descKey as Parameters<typeof tt>[0])}
                             </span>
                           </span>
                         </label>
@@ -4090,7 +4938,7 @@ export default function PlanerPage() {
                             type="button"
                             onClick={() => setShowCoverPreviewModal(true)}
                             className="relative w-[132px] aspect-[1/1.414] rounded-lg overflow-hidden border border-gray-200 bg-gray-50 hover:ring-2 hover:ring-indigo-300 transition-all cursor-zoom-in"
-                            title="Vorschau vergrössern"
+                            title={tt("coverEnlarge")}
                           >
                             <img src={trip.pdfCoverPhotoDataUrl} alt="Titelbild Vorschau" className="w-full h-full object-cover" />
                           </button>
@@ -4098,7 +4946,7 @@ export default function PlanerPage() {
                             type="button"
                             onClick={clearPdfCoverPhoto}
                             className="absolute -top-2 -right-2 z-20 w-6 h-6 rounded-full bg-white border border-gray-300 shadow-sm text-gray-600 hover:text-red-600 hover:border-red-300 flex items-center justify-center"
-                            title="Titelbild entfernen"
+                            title={tt("removeCover")}
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -4107,9 +4955,7 @@ export default function PlanerPage() {
                         <div className="w-[132px] aspect-[1/1.414] rounded-lg border border-dashed border-gray-300 bg-gray-50" />
                       )}
                       <label className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 cursor-pointer">
-                        <FolderOpen className="w-4 h-4" />
-                        Titelbild laden
-                        <input
+                        <FolderOpen className="w-4 h-4" />{tt("loadCover")}<input
                           type="file"
                           accept="image/*"
                           className="hidden"
@@ -4145,7 +4991,7 @@ export default function PlanerPage() {
                             setShowCoverVariantModal("background");
                           }}
                           className="absolute right-2 top-2 z-20 w-6 h-6 rounded-full bg-white/95 border border-gray-300 text-gray-600 hover:text-indigo-700 flex items-center justify-center"
-                          title="Variante vergrössern"
+                          title={tt("enlargeVariant")}
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </button>
@@ -4202,9 +5048,9 @@ export default function PlanerPage() {
                             )}
                           </div>
                         </div>
-                        <p className="mt-1.5 text-[11px] font-semibold text-gray-800">Titelbild als Hintergrund</p>
+                        <p className="mt-1.5 text-[11px] font-semibold text-gray-800">{tt("coverBg")}</p>
                         {trip.pdfCoverPhotoDataUrl && !coverIsPortrait && (
-                          <p className="text-[10px] text-amber-600">Querformat wird im PDF unter dem Titel platziert</p>
+                          <p className="text-[10px] text-amber-600">{tt("coverLandscape")}</p>
                         )}
                       </div>
                       <div
@@ -4230,7 +5076,7 @@ export default function PlanerPage() {
                             setShowCoverVariantModal("belowTitle");
                           }}
                           className="absolute right-2 top-2 z-20 w-6 h-6 rounded-full bg-white/95 border border-gray-300 text-gray-600 hover:text-indigo-700 flex items-center justify-center"
-                          title="Variante vergrössern"
+                          title={tt("enlargeVariant")}
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </button>
@@ -4253,11 +5099,11 @@ export default function PlanerPage() {
                             <div className="absolute inset-x-0 bottom-0 h-[68%] bg-slate-300" />
                           )}
                         </div>
-                        <p className="mt-1.5 text-[11px] font-semibold text-gray-800">Titelbild unter Titel</p>
+                        <p className="mt-1.5 text-[11px] font-semibold text-gray-800">{tt("coverBelow")}</p>
                       </div>
                     </div>
                     <div className="rounded-xl border border-gray-200 bg-white p-3 min-w-[240px]">
-                      <p className="text-[11px] font-semibold text-gray-700 mb-2">Titel</p>
+                      <p className="text-[11px] font-semibold text-gray-700 mb-2">{tt("title")}</p>
                       <div className="flex items-center gap-2 mb-2">
                         <select
                           value={coverTitleFont}
@@ -4282,7 +5128,7 @@ export default function PlanerPage() {
                           value={coverTitleColor}
                           onChange={(ev) => updateTrip({ pdfCoverTitleColor: ev.target.value })}
                           className="w-10 h-9 rounded border border-gray-200 bg-white cursor-pointer"
-                          title="Titelfarbe"
+                          title={tt("titleColor")}
                         />
                       </div>
                       <div className="flex items-center gap-1 mb-2">
@@ -4311,7 +5157,7 @@ export default function PlanerPage() {
                           );
                         })}
                       </div>
-                      <p className="text-[11px] font-semibold text-gray-700 mb-2 mt-2">Datum</p>
+                      <p className="text-[11px] font-semibold text-gray-700 mb-2 mt-2">{tt("date")}</p>
                       <div className="flex items-center gap-2">
                         <select
                           value={coverDateFont}
@@ -4336,7 +5182,7 @@ export default function PlanerPage() {
                           value={coverDateColor}
                           onChange={(ev) => updateTrip({ pdfCoverDateColor: ev.target.value })}
                           className="w-10 h-9 rounded border border-gray-200 bg-white cursor-pointer"
-                          title="Datumsfarbe"
+                          title={tt("dateColor")}
                         />
                       </div>
                       <div className="flex items-center gap-1 mt-2">
@@ -4382,7 +5228,7 @@ export default function PlanerPage() {
                         type="button"
                         onClick={() => setShowCoverPreviewModal(false)}
                         className="absolute -top-3 -right-3 z-30 w-8 h-8 rounded-full bg-white text-gray-700 shadow-lg flex items-center justify-center"
-                        title="Schließen"
+                        title={tt("closeAlt")}
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -4420,7 +5266,7 @@ export default function PlanerPage() {
                         type="button"
                         onClick={() => setShowCoverVariantModal(null)}
                         className="absolute -top-3 -right-3 z-30 w-8 h-8 rounded-full bg-white text-gray-700 shadow-lg flex items-center justify-center"
-                        title="Schließen"
+                        title={tt("closeAlt")}
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -4502,7 +5348,7 @@ export default function PlanerPage() {
                 )}
                 {etappen.length === 0 ? (
                   <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 text-sm text-gray-500">
-                    Sobald Etappen vorhanden sind, kannst du hier pro Etappe Fotos auswählen und das Layout für den PDF-Export festlegen.
+                    {tt("photosLayoutEmpty")}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -4534,26 +5380,26 @@ export default function PlanerPage() {
                               onChange={(ev) => setPdfPhotoPlacementForEtappe(eIdx, ev.target.value as PdfPhotoPlacement)}
                               className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700"
                             >
-                              <option value="afterHotel">Nach Hotel</option>
-                              <option value="afterTeilstrecken">Nach Teilstrecken</option>
-                              <option value="afterEntdecken">Nach Entdecken</option>
+                              <option value="afterHotel">{tt("afterHotel")}</option>
+                              <option value="afterTeilstrecken">{tt("afterLegs")}</option>
+                              <option value="afterEntdecken">{tt("afterDiscover")}</option>
                             </select>
                             <select
                               value={pdfPhotoLayout}
                               onChange={(ev) => setPdfPhotoLayoutForEtappe(eIdx, ev.target.value as PdfPhotoLayout)}
                               className="text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700"
                             >
-                              <option value="auto">Auto Layout</option>
-                              <option value="onePerPageMax">1 Bild ganzseitig</option>
-                              <option value="onePortraitTopHalf">1 Bild halbseitig oben</option>
-                              <option value="onePortraitBottomHalf">1 Bild halbseitig unten</option>
-                              <option value="twoPortraitSideBySide">2 Hochformat nebeneinander</option>
-                              <option value="twoPortraitStacked">2 Hochformat oben/unten</option>
-                              <option value="twoMixedStacked">1 Hoch + 1 Quer oben/unten</option>
-                              <option value="sixPortraitGrid">6 Hochformat Grid</option>
-                              <option value="threePortraitOneLandscape">3 Hoch + 1 Quer</option>
-                              <option value="grid">Raster</option>
-                              <option value="smartPages">Smart Pages</option>
+                              <option value="auto">{tt("autoLayout")}</option>
+                              <option value="onePerPageMax">{tt("layout1full")}</option>
+                              <option value="onePortraitTopHalf">{tt("layout1top")}</option>
+                              <option value="onePortraitBottomHalf">{tt("layout1bottom")}</option>
+                              <option value="twoPortraitSideBySide">{tt("layout2side")}</option>
+                              <option value="twoPortraitStacked">{tt("layout2stack")}</option>
+                              <option value="twoMixedStacked">{tt("layoutMixed")}</option>
+                              <option value="sixPortraitGrid">{tt("layout6")}</option>
+                              <option value="threePortraitOneLandscape">{tt("layout3plus1")}</option>
+                              <option value="grid">{tt("grid")}</option>
+                              <option value="smartPages">{tt("smartPages")}</option>
                             </select>
                             <input
                               type="number"
@@ -4564,9 +5410,7 @@ export default function PlanerPage() {
                               className="w-20 text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700"
                             />
                             <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 cursor-pointer">
-                              <FolderOpen className="w-3.5 h-3.5" />
-                              Fotos auswählen
-                              <input
+                              <FolderOpen className="w-3.5 h-3.5" />{tt("selectPhotos")}<input
                                 type="file"
                                 accept="image/*"
                                 multiple
@@ -4579,11 +5423,36 @@ export default function PlanerPage() {
                             </label>
                           </div>
 
+                          {selectedPdfPhotos.length > 0 && (
+                            <div className="mt-4 space-y-2">
+                              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                                {tt("pdfPhotoCaption")}
+                              </p>
+                              {selectedPdfPhotos.map((url, capIdx) => (
+                                <div key={`cap-${eIdx}-${capIdx}`} className="flex items-center gap-2">
+                                  <img
+                                    src={url}
+                                    alt=""
+                                    className="h-10 w-10 shrink-0 rounded-md object-cover border border-gray-200"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={trip.pdfPhotoCaptionsByEtappe?.[String(eIdx)]?.[url] || ""}
+                                    maxLength={PDF_PHOTO_CAPTION_MAX_LENGTH}
+                                    onChange={(ev) =>
+                                      setPdfPhotoCaptionForEtappe(eIdx, url, ev.target.value)
+                                    }
+                                    placeholder={tt("pdfPhotoCaptionPh")}
+                                    className="flex-1 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           {(selectedPdfPhotos.length > 0 || pdfPhotoLibrary.length > 0) && (
                             <div className="mt-3">
-                              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                Mediathek (klicken zum Aus-/Abwählen)
-                              </p>
+                              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">{tt("library")}</p>
                               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
                                 {pdfPhotoLibrary.map((url, idx) => {
                                   const selected = selectedPdfPhotos.includes(url);
@@ -4626,7 +5495,7 @@ export default function PlanerPage() {
                   </h3>
                   {trip.bucketList.length === 0 ? (
                     <p className="text-sm text-gray-400 py-4 text-center">
-                      Noch keine Orte. Stöbere unten in 1&apos;488 Sehenswürdigkeiten.
+                      {tt("bucketEmptyRoute")}
                     </p>
                   ) : (
                     <div className="space-y-2">
@@ -4642,7 +5511,7 @@ export default function PlanerPage() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="w-9 h-9 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0 hover:ring-2 hover:ring-green-400 transition-all mt-0.5"
-                              title="In Google Maps öffnen"
+                              title={tt("openMaps")}
                             >
                               <MapPin className="w-4 h-4 text-green-600" />
                             </a>
@@ -4682,22 +5551,16 @@ export default function PlanerPage() {
                                     }}
                                     className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
                                   >
-                                    <Plus className="w-3 h-3" />
-                                    Als Stopp
-                                  </button>
+                                    <Plus className="w-3 h-3" />{tt("asStop")}</button>
                                 ) : (
                                   <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
-                                    <Check className="w-3 h-3" />
-                                    In Route
-                                  </span>
+                                    <Check className="w-3 h-3" />{tt("inRoute")}</span>
                                 )}
                                 <button
                                   onClick={() => removeFromBucketList(item.id)}
                                   className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-500 transition-colors"
                                 >
-                                  <X className="w-3 h-3" />
-                                  Entfernen
-                                </button>
+                                  <X className="w-3 h-3" />{tt("remove")}</button>
                               </div>
                             </div>
                           </div>
@@ -4709,18 +5572,52 @@ export default function PlanerPage() {
 
                 {/* Landmark Explorer */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
-                    Sehenswürdigkeiten entdecken
-                  </h3>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">{tt("discoverLandmarks")}</h3>
+                  <p className="text-xs text-gray-500 mb-4">
+                    {bucketTabWorldwide
+                      ? "Weltweite Suche aktiv."
+                      : tt("bucketScopeDefault")}
+                  </p>
+
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBucketDiscoveryScope("route");
+                        setLandmarkQuery("");
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        !bucketTabWorldwide
+                          ? "bg-blue-100 text-blue-700 ring-1 ring-blue-300"
+                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                      }`}
+                    >
+                      {tt("poiAlongRoute")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBucketDiscoveryScope("worldwide")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                        bucketTabWorldwide
+                          ? "bg-blue-100 text-blue-700 ring-1 ring-blue-300"
+                          : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                      }`}
+                    >
+                      <Globe className="w-3 h-3" />{tt("featWorld")}</button>
+                  </div>
 
                   {/* Search */}
                   <div className="relative mb-3">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Suche nach Ort, Land, Stadt..."
+                      placeholder={bucketTabWorldwide ? "Suche nach Ort, Land, Stadt..." : "Anderen Ort weltweit suchen..."}
                       value={landmarkQuery}
-                      onChange={(e) => setLandmarkQuery(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setLandmarkQuery(value);
+                        if (value.trim()) setBucketDiscoveryScope("worldwide");
+                      }}
                       className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </div>
@@ -4743,7 +5640,7 @@ export default function PlanerPage() {
                       onChange={(e) => setLandmarkContinent(e.target.value)}
                       className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border-0 focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="">Alle Kontinente</option>
+                      <option value="">{tt("allContinents")}</option>
                       {CONTINENTS.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
@@ -4753,7 +5650,7 @@ export default function PlanerPage() {
                       onChange={(e) => setLandmarkCategory(e.target.value)}
                       className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border-0 focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="">Alle Kategorien</option>
+                      <option value="">{tt("allCategories")}</option>
                       {CATEGORIES.map((c) => (
                         <option key={c} value={c}>{c}</option>
                       ))}
@@ -4761,7 +5658,8 @@ export default function PlanerPage() {
                   </div>
 
                   <BucketListMap
-                    markers={catalogLandmarkMapMarkers}
+                    markers={bucketTabMapMarkers}
+                    fitPositions={bucketTabFitPositions}
                     onAddAsStop={addBucketPoiAsStop}
                     onAddToBucketList={addLandmarkPoiToBucket}
                     isInRoute={isInCurrentRoute}
@@ -4770,14 +5668,16 @@ export default function PlanerPage() {
 
                   {/* Results */}
                   {(() => {
-                    const filtered = filteredCatalogLandmarks;
+                    const filtered = bucketTabFilteredLandmarks;
                     const shown = filtered.slice(0, 30);
                     const inBucketNames = new Set(trip.bucketList.map((b) => b.name));
+                    const routeLabel = origin && destination ? `${origin} → ${destination}` : "deiner Route";
 
                     return (
                       <>
                         <p className="text-[11px] text-gray-400 mb-3">
                           {filtered.length} Ergebnis{filtered.length !== 1 ? "se" : ""}
+                          {!bucketTabWorldwide ? ` entlang ${routeLabel}` : " weltweit"}
                           {filtered.length > 30 && " (erste 30 angezeigt)"}
                         </p>
                         <div className="space-y-2 max-h-[500px] overflow-y-auto">
@@ -4819,33 +5719,28 @@ export default function PlanerPage() {
                                         }
                                         className="flex items-center gap-1 text-[11px] font-medium text-green-600 hover:text-green-700"
                                       >
-                                        <BookmarkPlus className="w-3 h-3" />
-                                        Bucket List
-                                      </button>
+                                        <BookmarkPlus className="w-3 h-3" />{t("tabBucket")}</button>
                                     ) : (
                                       <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
-                                        <Check className="w-3 h-3" />
-                                        Auf Liste
-                                      </span>
+                                        <Check className="w-3 h-3" />{tt("onList")}</span>
                                     )}
                                     {!isStop && (
                                       <button
                                         onClick={() => addStopSmart(lm.name, lm.latitude, lm.longitude)}
                                         className="flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
                                       >
-                                        <Plus className="w-3 h-3" />
-                                        Als Stopp
-                                      </button>
+                                        <Plus className="w-3 h-3" />{tt("asStop")}</button>
                                     )}
                                     {isStop && (
                                       <span className="flex items-center gap-1 text-[11px] font-medium text-green-600">
-                                        <Check className="w-3 h-3" />
-                                        In Route
-                                      </span>
+                                        <Check className="w-3 h-3" />{tt("inRoute")}</span>
                                     )}
-                                    {lm.wikipediaTitleDe && (
+                                    {(lm.wikipediaTitleDe || lm.wikipediaTitle) && (
                                       <a
-                                        href={`https://de.wikipedia.org/wiki/${lm.wikipediaTitleDe}`}
+                                        href={wikipediaArticleUrl(
+                                          lm.wikipediaTitleDe || lm.wikipediaTitle || "",
+                                          locale,
+                                        )}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-[11px] text-gray-400 hover:text-blue-500 transition-colors"
@@ -4861,13 +5756,19 @@ export default function PlanerPage() {
                           {!landmarksLoaded && (
                             <div className="text-center py-8">
                               <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                              <p className="text-xs text-gray-400">Lade Sehenswürdigkeiten...</p>
+                              <p className="text-xs text-gray-400">{tt("loadingLandmarks")}</p>
                             </div>
                           )}
                           {landmarksLoaded && filtered.length === 0 && (
                             <div className="text-center py-8">
                               <Search className="w-8 h-8 text-gray-200 mx-auto mb-2" />
-                              <p className="text-sm text-gray-400">Keine Ergebnisse gefunden.</p>
+                              <p className="text-sm text-gray-400">
+                                {bucketTabWorldwide
+                                  ? "Keine Ergebnisse gefunden."
+                                  : bucketTabFitPositions.length === 0
+                                    ? "Noch keine Route mit Koordinaten. Berechne zuerst deine Route im Autoroute-Tab."
+                                    : tt("landmarksNearRouteEmpty")}
+                              </p>
                             </div>
                           )}
                         </div>
@@ -4891,21 +5792,19 @@ export default function PlanerPage() {
               <div className="space-y-6">
                 {/* Flight Search Form */}
                 <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">
-                    Flugsuche
-                  </h3>
+                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">{tt("flightSearch")}</h3>
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <AirportSelect
                         value={flightFrom}
                         onChange={setFlightFrom}
-                        placeholder="z.B. Zürich"
+                        placeholder={tt("flightFromPh")}
                         label="Von"
                       />
                       <AirportSelect
                         value={flightTo}
                         onChange={setFlightTo}
-                        placeholder="z.B. Barcelona"
+                        placeholder={tt("flightToPh")}
                         label="Nach"
                       />
                     </div>
@@ -4914,8 +5813,8 @@ export default function PlanerPage() {
                       startDate={flightDepart}
                       endDate={flightReturn}
                       onSelect={(s, e) => { setFlightDepart(s); setFlightReturn(e); }}
-                      startLabel="Hinflug"
-                      endLabel="Rückflug"
+                      startLabel={tt("outbound")}
+                      endLabel={tt("returnFlight")}
                     />
 
                     <div>
@@ -4970,13 +5869,15 @@ export default function PlanerPage() {
                       bg: "bg-orange-50",
                       link: buildKayakLink(flightSearchParams),
                     },
-                  ].map((provider) => (
+                  ].map((provider) => {
+                    const brand = partnerLabelFromUrl(provider.link).brandName;
+                    return (
                     <a
                       key={provider.name}
                       href={provider.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={() => logAffiliateClick("flights", provider.name, provider.link)}
+                      onClick={() => logAffiliateClick("flights", brand, provider.link)}
                       className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
                     >
                       <div className="flex items-start justify-between mb-3">
@@ -4985,14 +5886,16 @@ export default function PlanerPage() {
                         </div>
                         <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
                       </div>
-                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
+                      <h4 className="font-semibold text-gray-900 mb-1">
+                        {brand}
+                        <PartnerAffiliateMark href={provider.link} />
+                      </h4>
                       <p className="text-xs text-gray-400">{provider.desc}</p>
                       <div className={`mt-3 inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
-                        <Search className="w-3 h-3" />
-                        Flüge suchen
-                      </div>
+                        <Search className="w-3 h-3" />{tt("searchFlights")}</div>
                     </a>
-                  ))}
+                  );
+                  })}
                 </div>
               </div>
               );
@@ -5024,13 +5927,15 @@ export default function PlanerPage() {
                       bg: "bg-orange-50",
                       link: buildBilligerMietwagenLink(searchParams),
                     },
-                  ].map((provider) => (
+                  ].map((provider) => {
+                    const brand = partnerLabelFromUrl(provider.link).brandName;
+                    return (
                     <a
                       key={provider.name}
                       href={provider.link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={() => logAffiliateClick("car", provider.name, provider.link)}
+                      onClick={() => logAffiliateClick("car", brand, provider.link)}
                       className="group bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all hover:scale-[1.02]"
                     >
                       <div className="flex items-start justify-between mb-3">
@@ -5039,7 +5944,10 @@ export default function PlanerPage() {
                         </div>
                         <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
                       </div>
-                      <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
+                      <h4 className="font-semibold text-gray-900 mb-1">
+                        {brand}
+                        <PartnerAffiliateMark href={provider.link} />
+                      </h4>
                       <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
                       {destination && (
                         <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
@@ -5048,11 +5956,10 @@ export default function PlanerPage() {
                         </div>
                       )}
                       <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
-                        <Search className="w-3 h-3" />
-                        Mietwagen suchen
-                      </div>
+                        <Search className="w-3 h-3" />{tt("searchCars")}</div>
                     </a>
-                  ))}
+                  );
+                  })}
                 </div>
               </div>
             )}
@@ -5102,9 +6009,7 @@ export default function PlanerPage() {
                         </div>
                       )}
                       <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
-                        <Search className="w-3 h-3" />
-                        Züge suchen
-                      </div>
+                        <Search className="w-3 h-3" />{tt("searchTrains")}</div>
                     </a>
                   ))}
                 </div>
@@ -5118,9 +6023,7 @@ export default function PlanerPage() {
                   <div className="flex items-start gap-3">
                     <Globe className="w-5 h-5 text-pink-500 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium text-pink-800">
-                        eSIM – Internet im Ausland
-                      </p>
+                      <p className="text-sm font-medium text-pink-800">{tt("esimTitle")}</p>
                       <p className="text-sm text-pink-600 mt-1">
                         Bleibe weltweit verbunden ohne teure Roaming-Kosten.
                         Kaufe eine eSIM vor der Abreise und aktiviere sie am Zielort.
@@ -5173,14 +6076,11 @@ export default function PlanerPage() {
                       <h4 className="font-semibold text-gray-900 mb-1">{provider.name}</h4>
                       <p className="text-xs text-gray-400 mb-3">{provider.desc}</p>
                       {destination && (
-                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">
-                          Ziel: <span className="font-medium">{destination}</span>
+                        <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-1.5 mb-3">{tt("destinationLabel")}<span className="font-medium">{destination}</span>
                         </div>
                       )}
                       <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
-                        <Search className="w-3 h-3" />
-                        eSIM finden
-                      </div>
+                        <Search className="w-3 h-3" />{tt("findEsim")}</div>
                     </a>
                   ))}
                 </div>
@@ -5259,11 +6159,10 @@ export default function PlanerPage() {
                     <Map className="w-5 h-5 text-cyan-600 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-cyan-900">
-                        Drohnenkarten für deine Route
+                        {tt("droneMapsRouteTitle")}
                       </p>
                       <p className="text-sm text-cyan-700 mt-1">
-                        Öffne die offiziellen Kartenportale für Flugzonen, Sperrgebiete und lokale Regeln.
-                        Prüfe vor jedem Flug zusätzlich die aktuelle Gesetzeslage vor Ort.
+                        {tt("droneIntro")}
                       </p>
                     </div>
                   </div>
@@ -5272,8 +6171,7 @@ export default function PlanerPage() {
                 {routeCountries.length === 0 ? (
                   <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
                     <p className="text-sm text-gray-600">
-                      Noch keine Länder ermittelt. Sobald deine Route im <strong>Autoroute</strong>-Tab berechnet ist,
-                      erscheinen hier die Drohnenkarten der Länder entlang deiner Route.
+                      {tt("droneNoCountriesHint", { tab: t("tabRoute") })}
                     </p>
                   </div>
                 ) : (
@@ -5310,9 +6208,7 @@ export default function PlanerPage() {
                         <p className="text-sm text-gray-700 mb-1">{portal.name}</p>
                         <p className="text-xs text-gray-500 mb-3">{portal.desc}</p>
                         <div className={`inline-flex items-center gap-1 text-xs font-medium ${portal.color} ${portal.bg} px-2.5 py-1 rounded-full`}>
-                          <Map className="w-3 h-3" />
-                          Karte öffnen
-                        </div>
+                          <Map className="w-3 h-3" />{tt("openMap")}</div>
                       </a>
                     );
                   })}
@@ -5336,7 +6232,7 @@ export default function PlanerPage() {
                     }`}
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    KI-Empfehlungen
+                    {tt("aiRecsTitle")}
                   </button>
                   <button
                     onClick={() => { setPoiScope("route"); setPoisSearchedFor(""); }}
@@ -5376,7 +6272,7 @@ export default function PlanerPage() {
                             Was interessiert dich?
                           </p>
                           <p className="text-xs text-purple-600 mt-1 mb-3">
-                            Wähle deine Interessen -- die KI empfiehlt passende Orte entlang jeder Etappe.
+                            {tt("interestsChooseAi")}
                           </p>
                           <div className="flex flex-wrap gap-2">
                             {interestOptions.map((opt) => {
@@ -5420,14 +6316,10 @@ export default function PlanerPage() {
                           >
                             {aiPoisLoading ? (
                               <>
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                KI analysiert alle Etappen...
-                              </>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{tt("aiAllLoading")}</>
                             ) : (
                               <>
-                                <Sparkles className="w-4 h-4" />
-                                Alle Etappen auf einmal
-                              </>
+                                <Sparkles className="w-4 h-4" />{tt("aiAll")}</>
                             )}
                           </button>
                         )}
@@ -5528,14 +6420,12 @@ export default function PlanerPage() {
                                     }}
                                     className={etappeActionTabClass(isCustomTabActive)}
                                   >
-                                    <Plus className="w-3 h-3" />
-                                    Eigener Stopp
-                                  </button>
+                                    <Plus className="w-3 h-3" />{tt("customStop")}</button>
                                   <button
                                     onClick={() => setOpenEtappeMapIndex(eIdx)}
                                     disabled={suggestions.length === 0}
                                     className={`${etappeActionTabClass(false)} disabled:opacity-40 disabled:cursor-not-allowed`}
-                                    title={suggestions.length > 0 ? "Etappenkarte öffnen" : "Zuerst Highlights laden"}
+                                    title={suggestions.length > 0 ? tt("openEtappeMap") : tt("loadHighlightsFirst")}
                                   >
                                     <Map className="w-3 h-3" />
                                     Karte
@@ -5554,19 +6444,15 @@ export default function PlanerPage() {
                                         onChange={(ev) => setPdfPhotoPlacementForEtappe(eIdx, ev.target.value as PdfPhotoPlacement)}
                                         className="text-xs px-2 py-1 rounded-lg border border-indigo-200 bg-white text-gray-700"
                                       >
-                                        <option value="afterHotel">Nach Hotel</option>
-                                        <option value="afterTeilstrecken">Nach Teilstrecken</option>
-                                        <option value="afterEntdecken">Nach Entdecken</option>
+                                        <option value="afterHotel">{tt("afterHotel")}</option>
+                                        <option value="afterTeilstrecken">{tt("afterLegs")}</option>
+                                        <option value="afterEntdecken">{tt("afterDiscover")}</option>
                                       </select>
                                     </div>
                                   </div>
-                                  <div className="text-xs text-indigo-700 mb-3">
-                                    Wähle Fotos direkt vom Gerät: auf Mac aus Fotos/Dateien, auf Windows aus Explorer/Bildern.
-                                  </div>
+                                  <div className="text-xs text-indigo-700 mb-3">{tt("devicePhotos")}</div>
                                   <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 cursor-pointer">
-                                    <FolderOpen className="w-3.5 h-3.5" />
-                                    Fotos auswählen
-                                    <input
+                                    <FolderOpen className="w-3.5 h-3.5" />{tt("selectPhotos")}<input
                                       type="file"
                                       accept="image/*"
                                       multiple
@@ -5598,9 +6484,7 @@ export default function PlanerPage() {
                                         setPdfPhotoPagesForEtappe(eIdx, targetPagesInput);
                                       }}
                                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-indigo-300 text-indigo-700 text-xs font-semibold hover:bg-indigo-100"
-                                    >
-                                      Auf Anz. Seiten verteilen
-                                    </button>
+                                    >{tt("spreadPages")}</button>
                                   </div>
                                   {(selectedPdfPhotos.length > 0 || pdfPhotoLibrary.length > 0) && (
                                     <>
@@ -5695,9 +6579,7 @@ export default function PlanerPage() {
                                       </div>
 
                                       <div className="mt-3">
-                                        <p className="text-[11px] font-semibold text-indigo-700 mb-2 uppercase tracking-wide">
-                                          Mediathek (erneut verwendbar)
-                                        </p>
+                                        <p className="text-[11px] font-semibold text-indigo-700 mb-2 uppercase tracking-wide">{tt("libraryReuse")}</p>
                                         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
                                           {pdfPhotoLibrary.map((url, idx) => (
                                             <button
@@ -5705,7 +6587,7 @@ export default function PlanerPage() {
                                               type="button"
                                               onClick={() => assignPhotoToEtappeSlot(eIdx, url)}
                                               className="relative rounded-lg overflow-hidden border-2 border-indigo-200 bg-white hover:border-indigo-400 transition-all"
-                                              title="In nächster freier Position einsetzen"
+                                              title={tt("insertNext")}
                                             >
                                               <div className="w-full h-20 p-1">
                                                 <img src={url} alt={`Mediathek ${idx + 1}`} className="w-full h-full object-contain" />
@@ -5731,7 +6613,7 @@ export default function PlanerPage() {
                                       type="text"
                                       value={customStopQuery[eIdx] || ""}
                                       onChange={(e) => setCustomStopQuery((prev) => ({ ...prev, [eIdx]: e.target.value }))}
-                                      placeholder="Ort/POI suchen (Wikipedia)"
+                                      placeholder={tt("wikiPh")}
                                       className="flex-1 px-3 py-2 rounded-lg border border-purple-200 bg-white text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
                                       onKeyDown={(e) => {
                                         if (e.key === "Enter") {
@@ -5799,9 +6681,7 @@ export default function PlanerPage() {
                                                 })
                                               }
                                               className="text-[11px] font-medium text-gray-500 hover:text-green-600"
-                                            >
-                                              Zur Bucket List
-                                            </button>
+                                            >{tt("toBucket")}</button>
                                           </div>
                                         </div>
                                       </div>
@@ -5848,7 +6728,7 @@ export default function PlanerPage() {
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="flex-shrink-0"
-                                            title="In Google Maps öffnen"
+                                            title={tt("openMaps")}
                                           >
                                             {photoUrl ? (
                                               <div className="w-16 h-16 rounded-xl overflow-hidden hover:ring-2 hover:ring-purple-400 transition-all">
@@ -5920,7 +6800,7 @@ export default function PlanerPage() {
                               )}
                               {suggestions.length === 0 && !isLoading && (
                                 <div className="px-5 py-4 text-xs text-gray-400 text-center">
-                                  Klicke «Entdecken» für KI-Empfehlungen auf dieser Etappe
+                                  {tt("discoverTapAi")}
                                 </div>
                               )}
                               {isLoading && (
@@ -5936,7 +6816,7 @@ export default function PlanerPage() {
                     ) : (
                       <div className="text-center py-6">
                         <Route className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                        <p className="text-sm text-gray-400">Erstelle zuerst eine Route mit Hotelstopps, um KI-Empfehlungen pro Etappe zu erhalten.</p>
+                        <p className="text-sm text-gray-400">{tt("routeAiNeedHotels")}</p>
                       </div>
                     )}
                   </div>
@@ -5949,7 +6829,7 @@ export default function PlanerPage() {
                     {destination && (
                       <div>
                         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                          Touren & Aktivitäten buchen
+                          {tt("toursActivitiesTitle")}
                         </h3>
                         <div className="grid sm:grid-cols-2 gap-4 mb-6">
                           <a
@@ -5968,10 +6848,10 @@ export default function PlanerPage() {
                               <ExternalLink className="w-4 h-4 text-gray-300 group-hover:text-blue-500 transition-colors" />
                             </div>
                             <h4 className="font-semibold text-gray-900 mb-1">GetYourGuide</h4>
-                            <p className="text-xs text-gray-400 mb-3">Touren, Tickets & Aktivitäten</p>
+                            <p className="text-xs text-gray-400 mb-3">{tt("toursActivitiesDesc")}</p>
                             <div className="inline-flex items-center gap-1 text-xs font-medium text-orange-700 bg-orange-50 px-2.5 py-1 rounded-full">
                               <Search className="w-3 h-3" />
-                              Aktivitäten entdecken
+                              {tt("activitiesDiscover")}
                             </div>
                           </a>
                           <a
@@ -6004,7 +6884,11 @@ export default function PlanerPage() {
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                          {poiScope === "route" ? "Entlang der Route" : destination ? `In ${destination}` : "Sehenswürdigkeiten"}
+                          {poiScope === "route"
+                            ? tt("poiAlongRoute")
+                            : destination
+                              ? tt("poiInDest", { place: destination })
+                              : tt("poiSights")}
                           {pois.length > 0 && ` (${pois.length})`}
                         </h3>
                         {!poisLoading && pois.length > 0 && (
@@ -6021,7 +6905,7 @@ export default function PlanerPage() {
                         <div className="flex items-center justify-center py-12">
                           <div className="flex items-center gap-3 text-gray-400">
                             <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                            <span className="text-sm">Sehenswürdigkeiten werden geladen...</span>
+                            <span className="text-sm">{tt("poisLoading")}</span>
                           </div>
                         </div>
                       )}
@@ -6029,14 +6913,14 @@ export default function PlanerPage() {
                       {!poisLoading && !destination && (
                         <div className="text-center py-8">
                           <MapPin className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                          <p className="text-sm text-gray-400">Gib ein Reiseziel ein, um Sehenswürdigkeiten zu entdecken.</p>
+                          <p className="text-sm text-gray-400">{tt("enterDestForLandmarks")}</p>
                         </div>
                       )}
 
                       {!poisLoading && destination && displayPOIs.length === 0 && (
                         <div className="text-center py-8">
                           <Search className="w-10 h-10 text-gray-200 mx-auto mb-3" />
-                          <p className="text-sm text-gray-400">Keine Sehenswürdigkeiten gefunden.</p>
+                          <p className="text-sm text-gray-400">{tt("noLandmarksFound")}</p>
                         </div>
                       )}
 
@@ -6082,9 +6966,9 @@ export default function PlanerPage() {
                                   }`}
                                 >
                                   {added ? (
-                                    <><Check className="w-3.5 h-3.5" /> In Bucket List</>
+                                    <><Check className="w-3.5 h-3.5" />{tt("inBucket")}</>
                                   ) : (
-                                    <><Plus className="w-3.5 h-3.5" /> Zur Bucket List</>
+                                    <><Plus className="w-3.5 h-3.5" />{tt("toBucket")}</>
                                   )}
                                 </button>
                               </div>
@@ -6105,12 +6989,9 @@ export default function PlanerPage() {
                   <div className="flex items-start gap-3">
                     <Shield className="w-5 h-5 text-red-500 mt-0.5" />
                     <div>
-                      <p className="text-sm font-medium text-red-800">
-                        Reiseversicherung
-                      </p>
+                      <p className="text-sm font-medium text-red-800">{tt("insuranceTitle")}</p>
                       <p className="text-sm text-red-600 mt-1">
-                        Schütze deine Reise mit einer passenden Versicherung.
-                        Reiserücktritt, Krankenversicherung und Gepäckschutz – alles in einem.
+                        {tt("insuranceBody")}
                       </p>
                     </div>
                   </div>
@@ -6167,9 +7048,7 @@ export default function PlanerPage() {
                         ))}
                       </div>
                       <div className={`inline-flex items-center gap-1 text-xs font-medium ${provider.color} ${provider.bg} px-2.5 py-1 rounded-full`}>
-                        <Search className="w-3 h-3" />
-                        Angebote ansehen
-                      </div>
+                        <Search className="w-3 h-3" />{tt("viewOffers")}</div>
                     </a>
                   ))}
                 </div>
@@ -6177,8 +7056,7 @@ export default function PlanerPage() {
                 {showTips && trip.travelers > 1 && (
                   <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4">
                     <p className="text-sm text-amber-700">
-                      <strong>Tipp:</strong> Mit {trip.travelers} Reisenden lohnt sich oft ein Familientarif
-                      oder eine Gruppenversicherung.
+                      <strong>{tt("tip")}:</strong> {tt("familyTip", { n: trip.travelers })}
                     </p>
                   </div>
                 )}
@@ -6186,6 +7064,7 @@ export default function PlanerPage() {
             )}
 
           </div>
+          )}
         </div>
       </div>
     </div>

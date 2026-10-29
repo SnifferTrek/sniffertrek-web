@@ -1,80 +1,95 @@
 "use client";
 
 import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
+ createContext,
+ useContext,
+ useState,
+ useEffect,
+ ReactNode,
 } from "react";
 import { AuthUser, getCurrentUser, onAuthStateChange, signOut } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { mergeCloudAndLocal, verifySyncBeforeLogout } from "@/lib/cloudSync";
 import { clearAllTrips } from "@/lib/tripStorage";
 
+/** Max. Wartezeit für Cloud-Sync vor Logout – Abmelden darf nie hängen. */
+const LOGOUT_SYNC_TIMEOUT_MS = 4000;
+
 interface AuthContextType {
-  user: AuthUser | null;
-  loading: boolean;
-  configured: boolean;
-  logout: () => Promise<void>;
+ user: AuthUser | null;
+ loading: boolean;
+ configured: boolean;
+ logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  configured: false,
-  logout: async () => {},
+ user: null,
+ loading: true,
+ configured: false,
+ logout: async () => {},
 });
 
 export function useAuth() {
-  return useContext(AuthContext);
+ return useContext(AuthContext);
 }
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const configured = isSupabaseConfigured();
+ const [user, setUser] = useState<AuthUser | null>(null);
+ const [loading, setLoading] = useState(true);
+ const configured = isSupabaseConfigured();
 
-  useEffect(() => {
-    if (!configured) {
-      setLoading(false);
-      return;
-    }
+ useEffect(() => {
+ if (!configured) {
+ setLoading(false);
+ return;
+ }
 
-    async function handleUserLogin(u: AuthUser) {
-      await mergeCloudAndLocal(u.id);
-    }
+ async function handleUserLogin(u: AuthUser) {
+ await mergeCloudAndLocal(u.id);
+ }
 
-    getCurrentUser().then((u) => {
-      setUser(u);
-      setLoading(false);
-      if (u) {
-        handleUserLogin(u);
-      }
-    });
+ getCurrentUser().then((u) => {
+ setUser(u);
+ setLoading(false);
+ if (u) {
+ handleUserLogin(u);
+ }
+ });
 
-    const unsubscribe = onAuthStateChange((u) => {
-      setUser(u);
-      if (u) {
-        handleUserLogin(u);
-      }
-    });
+ const unsubscribe = onAuthStateChange((u) => {
+ setUser(u);
+ if (u) {
+ handleUserLogin(u);
+ }
+ });
 
-    return unsubscribe;
-  }, [configured]);
+ return unsubscribe;
+ }, [configured]);
 
-  const logout = async () => {
-    if (user) {
-      await verifySyncBeforeLogout(user.id);
-    }
-    clearAllTrips();
-    await signOut();
-    setUser(null);
-  };
+ const logout = async () => {
+ if (user) {
+ try {
+ await Promise.race([
+ verifySyncBeforeLogout(user.id).then(() => undefined),
+ new Promise<void>((resolve) => {
+ setTimeout(resolve, LOGOUT_SYNC_TIMEOUT_MS);
+ }),
+ ]);
+ } catch {
+ /* Sync optional – Abmelden geht immer weiter */
+ }
+ }
+ clearAllTrips();
+ if (typeof window !== "undefined") {
+ localStorage.removeItem("sniffertrek_trips_owner");
+ }
+ await signOut();
+ setUser(null);
+ };
 
-  return (
-    <AuthContext.Provider value={{ user, loading, configured, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+ return (
+ <AuthContext.Provider value={{ user, loading, configured, logout }}>
+ {children}
+ </AuthContext.Provider>
+ );
 }

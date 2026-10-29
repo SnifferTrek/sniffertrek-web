@@ -7,6 +7,7 @@ import {
   getInspirationBookingDestination,
 } from "@/lib/inspirationDestinations";
 import { buildBookingHotelLink } from "@/lib/affiliateLinks";
+import { partnerLinkCta } from "@/lib/partnerLabelFromUrl";
 import { Link } from "@/i18n/navigation";
 import { routing } from "@/i18n/routing";
 import { localeLanguages, localeUrl } from "@/i18n/site";
@@ -178,7 +179,7 @@ export default async function InspirationDestinationPage({ params }: Props) {
               rel="noopener noreferrer sponsored"
               className="bcn-apple-btn bcn-apple-btn--blue"
             >
-              {t("bookingCta")}
+              {partnerLinkCta(bookingHref, "open", locale)}
             </a>
             <Link href="/planer?tab=hotels&hptype=hotel" className="bcn-apple-btn bcn-apple-btn--ghost">
               {t("planTrip")}

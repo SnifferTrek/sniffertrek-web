@@ -1,4 +1,5 @@
 import { loadPartners } from "./affiliateConfig";
+import { isBookingAffiliateAid } from "./partnerLabelFromUrl";
 
 interface SearchParams {
   destination?: string;
@@ -37,7 +38,9 @@ export function buildBookingHotelLink(params: SearchParams): string {
   if (params.checkOut) query.set("checkout", formatBookingDate(params.checkOut));
   if (params.travelers) query.set("group_adults", String(params.travelers));
   if (params.rooms) query.set("no_rooms", String(params.rooms));
-  if (partner?.affiliateId) query.set("aid", partner.affiliateId);
+  if (partner?.affiliateId && isBookingAffiliateAid(partner.affiliateId)) {
+    query.set("aid", partner.affiliateId.trim());
+  }
   return `${base}?${query.toString()}`;
 }
 
@@ -203,7 +206,9 @@ export function buildBookingFlightsLink(params: SearchParams): string {
   if (params.checkIn) query.set("depart", params.checkIn);
   if (params.checkOut) query.set("return", params.checkOut);
   if (params.travelers) query.set("adults", String(params.travelers));
-  if (partner?.affiliateId) query.set("aid", partner.affiliateId);
+  if (partner?.affiliateId && isBookingAffiliateAid(partner.affiliateId)) {
+    query.set("aid", partner.affiliateId.trim());
+  }
   return `${base}?${query.toString()}`;
 }
 
@@ -242,7 +247,9 @@ export function buildBookingCarsLink(params: SearchParams): string {
   if (params.destination) query.set("ss", params.destination);
   if (params.checkIn) query.set("pick_date", params.checkIn);
   if (params.checkOut) query.set("drop_date", params.checkOut);
-  if (partner?.affiliateId) query.set("aid", partner.affiliateId);
+  if (partner?.affiliateId && isBookingAffiliateAid(partner.affiliateId)) {
+    query.set("aid", partner.affiliateId.trim());
+  }
   return `${base}?${query.toString()}`;
 }
 
@@ -348,4 +355,67 @@ export function buildAllianzTravelLink(): string {
 
 export function buildWorldNomadsLink(): string {
   return "https://www.worldnomads.com";
+}
+
+
+export function buildLastminutePackagesLink(params?: {
+  clickRef?: string;
+}): string {
+  const partner = getPartnerConfig("lastminute-hotels");
+  const pack = partner?.packageLandingUrl?.trim();
+  const fallback = "https://www.lastminute.de/";
+  const base = pack || fallback;
+  try {
+    const url = new URL(base);
+    if (params?.clickRef?.trim()) {
+      url.searchParams.set("sid", params.clickRef.trim());
+    }
+    return url.toString();
+  } catch {
+    return base;
+  }
+}
+
+export function buildAllianzTravelAtLink(): string {
+  return "https://www.allianz-assistance.at/reiseversicherung.html";
+}
+
+export function buildAllianzTravelChLink(): string {
+  return "https://www.allianz-travel.ch/de_CH/reiseversicherungen.html";
+}
+
+export function buildCheck24ReiseversicherungAtLink(): string {
+  return "https://www.check24.at/reiseversicherung";
+}
+
+export function buildCheck24ReiseversicherungLink(): string {
+  return "https://www.check24.de/reiseversicherung/lp/vergleichen";
+}
+
+export function buildComparisReiseversicherungLink(): string {
+  return "https://www.comparis.ch/reiseversicherung";
+}
+
+export function buildErgoReiseversicherungLink(): string {
+  return "https://www.ergo-reiseversicherung.de/";
+}
+
+export function buildErvReiseversicherungLink(): string {
+  return "https://www.erv.ch/ch/site/de/home/insurance/travel/einzelreise.html";
+}
+
+export function buildGeneraliReiseversicherungAtLink(): string {
+  return "https://www.europaeische.at/reiseversicherungen/komplettschutz";
+}
+
+export function buildHanseMerkurReiseLink(): string {
+  return "https://www.hmrv.de/";
+}
+
+export function buildHelvetiaReiseversicherungLink(): string {
+  return "https://www.helvetia.com/ch/web/de/privatkunden/versicherungen/reiseversicherung.html";
+}
+
+export function buildUniqaReiseversicherungAtLink(): string {
+  return "https://www.uniqa.at/rechner/reiseversicherung";
 }

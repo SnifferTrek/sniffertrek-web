@@ -1,6 +1,8 @@
 import { supabase, isSupabaseConfigured } from "./supabase";
 import { Trip } from "./types";
-import { getAllTrips, saveTrip } from "./tripStorage";
+import { getAllTrips, notifyTripsMerged, saveTrip } from "./tripStorage";
+import { mergeTripRecords } from "./tripStopMerge";
+import { hydrateTripMedia } from "./tripMediaSidecar";
 
 function buildTripPayload(trip: Trip, userId: string, includeRoutes: boolean) {
   const base: Record<string, unknown> = {
@@ -17,6 +19,26 @@ function buildTripPayload(trip: Trip, userId: string, includeRoutes: boolean) {
     hotels: trip.hotels,
     bucket_list: trip.bucketList,
     notes: trip.notes,
+    pdf_photos_by_etappe: trip.pdfPhotosByEtappe || null,
+    pdf_photo_library_by_etappe: trip.pdfPhotoLibraryByEtappe || null,
+    pdf_photo_captions_by_etappe: trip.pdfPhotoCaptionsByEtappe || null,
+    pdf_photo_placement_by_etappe: trip.pdfPhotoPlacementByEtappe || null,
+    pdf_photo_layout_by_etappe: trip.pdfPhotoLayoutByEtappe || null,
+    pdf_photo_pages_by_etappe: trip.pdfPhotoPagesByEtappe || null,
+    pdf_cover_photo_style: trip.pdfCoverPhotoStyle || null,
+    pdf_cover_title_color: trip.pdfCoverTitleColor || null,
+    pdf_cover_title_size: trip.pdfCoverTitleSize ?? null,
+    pdf_cover_title_font: trip.pdfCoverTitleFont || null,
+    pdf_cover_title_align: trip.pdfCoverTitleAlign || null,
+    pdf_cover_date_color: trip.pdfCoverDateColor || null,
+    pdf_cover_date_size: trip.pdfCoverDateSize ?? null,
+    pdf_cover_date_font: trip.pdfCoverDateFont || null,
+    pdf_cover_date_align: trip.pdfCoverDateAlign || null,
+    pdf_include_stop_briefs: trip.pdfIncludeStopBriefs ?? null,
+    pdf_include_table_of_contents: trip.pdfIncludeTableOfContents ?? null,
+    pdf_include_etappe_maps: trip.pdfIncludeEtappeMaps ?? null,
+    pdf_include_teilstrecken: trip.pdfIncludeTeilstrecken ?? null,
+    pdf_include_entdecken_highlights: trip.pdfIncludeEntdeckenHighlights ?? null,
     created_at: trip.createdAt,
     updated_at: trip.updatedAt,
   };
@@ -33,20 +55,42 @@ async function upsertTrip(payload: Record<string, unknown>): Promise<boolean> {
     .from("trips")
     .upsert(payload, { onConflict: "id" });
 
-  if (error) {
-    if (error.message?.includes("routes") || error.code === "PGRST204") {
-      return false;
+  if (!error) return true;
+
+  const missingColumn =
+    error.code === "PGRST204" ||
+    error.message?.includes("column") ||
+    error.message?.includes("schema cache");
+
+  if (missingColumn) {
+    const slim: Record<string, unknown> = { ...payload };
+    for (const key of Object.keys(slim)) {
+      if (key.startsWith("pdf_")) delete slim[key];
     }
-    console.error("Upsert error:", error.message);
+    if ("routes" in slim) {
+      const { error: routesErr } = await supabase.from("trips").upsert(slim, { onConflict: "id" });
+      if (!routesErr) return true;
+    }
+    const minimal = { ...slim };
+    delete minimal.routes;
+    const { error: minErr } = await supabase.from("trips").upsert(minimal, { onConflict: "id" });
+    if (!minErr) return true;
+  }
+
+  if (error.message?.includes("routes")) {
     return false;
   }
-  return true;
+  console.error("Upsert error:", error.message);
+  return false;
 }
 
 export async function syncTripsToCloud(userId: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
-  const localTrips = getAllTrips();
+  // Wichtig: Fotos aus dem Sidecar wieder anhaengen. Die lokal gespeicherten
+  // Reisen sind schlank (ohne Bilddaten) – wuerden sie so hochgeladen, wuerde
+  // die Cloud-Kopie bei jedem App-Start bildlos ueberschrieben.
+  const localTrips = getAllTrips().map((t) => hydrateTripMedia(t));
   if (localTrips.length === 0) return;
 
   for (const trip of localTrips) {
@@ -86,6 +130,26 @@ export async function loadTripsFromCloud(userId: string): Promise<Trip[]> {
       hotels: row.hotels || [],
       bucketList: row.bucket_list || [],
       notes: row.notes || "",
+      pdfPhotosByEtappe: row.pdf_photos_by_etappe || undefined,
+      pdfPhotoLibraryByEtappe: row.pdf_photo_library_by_etappe || undefined,
+      pdfPhotoCaptionsByEtappe: row.pdf_photo_captions_by_etappe || undefined,
+      pdfPhotoPlacementByEtappe: row.pdf_photo_placement_by_etappe || undefined,
+      pdfPhotoLayoutByEtappe: row.pdf_photo_layout_by_etappe || undefined,
+      pdfPhotoPagesByEtappe: row.pdf_photo_pages_by_etappe || undefined,
+      pdfCoverPhotoStyle: row.pdf_cover_photo_style || undefined,
+      pdfCoverTitleColor: row.pdf_cover_title_color || undefined,
+      pdfCoverTitleSize: row.pdf_cover_title_size ?? undefined,
+      pdfCoverTitleFont: row.pdf_cover_title_font || undefined,
+      pdfCoverTitleAlign: row.pdf_cover_title_align || undefined,
+      pdfCoverDateColor: row.pdf_cover_date_color || undefined,
+      pdfCoverDateSize: row.pdf_cover_date_size ?? undefined,
+      pdfCoverDateFont: row.pdf_cover_date_font || undefined,
+      pdfCoverDateAlign: row.pdf_cover_date_align || undefined,
+      pdfIncludeStopBriefs: row.pdf_include_stop_briefs ?? undefined,
+      pdfIncludeTableOfContents: row.pdf_include_table_of_contents ?? undefined,
+      pdfIncludeEtappeMaps: row.pdf_include_etappe_maps ?? undefined,
+      pdfIncludeTeilstrecken: row.pdf_include_teilstrecken ?? undefined,
+      pdfIncludeEntdeckenHighlights: row.pdf_include_entdecken_highlights ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -153,8 +217,10 @@ export async function mergeCloudAndLocal(userId: string): Promise<void> {
 
   for (const trip of cloudTrips) {
     const existing = merged.get(trip.id);
-    if (!existing || new Date(trip.updatedAt) > new Date(existing.updatedAt)) {
+    if (!existing) {
       merged.set(trip.id, trip);
+    } else {
+      merged.set(trip.id, mergeTripRecords(existing, trip));
     }
   }
 
@@ -162,5 +228,6 @@ export async function mergeCloudAndLocal(userId: string): Promise<void> {
     saveTrip(trip);
   }
 
+  notifyTripsMerged();
   await syncTripsToCloud(userId);
 }
