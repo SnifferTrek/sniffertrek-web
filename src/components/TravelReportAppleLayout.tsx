@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { useTranslations } from "next-intl";
-import { buildBookingHotelLink } from "@/lib/affiliateLinks";
+import { useLocale, useTranslations } from "next-intl";
+import { buildHotelsComLink } from "@/lib/affiliateLinks";
+import { partnerLinkCta } from "@/lib/partnerLabelFromUrl";
+import { PartnerAffiliateMark } from "@/components/PartnerLinkBadge";
 import { Link } from "@/i18n/navigation";
 
 export type TravelReportAppleViewModel = {
@@ -142,15 +144,31 @@ function ExtLink({
   );
 }
 
+function HotelPickPartnerLink({
+  href,
+  className,
+}: {
+  href: string;
+  className?: string;
+}) {
+  const locale = useLocale();
+  return (
+    <ExtLink href={href} className={className} sponsored>
+      {partnerLinkCta(href, "search", locale)}
+      <PartnerAffiliateMark href={href} />
+    </ExtLink>
+  );
+}
+
 export default function TravelReportAppleLayout({ model }: Props) {
   const t = useTranslations("reportUi");
-  const bookingHref = buildBookingHotelLink({
+  const locale = useLocale();
+  const hotelsComHref = buildHotelsComLink({
     destination: model.hotelDestination,
     checkIn: model.hotelCheckIn,
     checkOut: model.hotelCheckOut,
     travelers: 2,
     rooms: 1,
-    clickRef: model.bookingClickRef,
   });
 
   return (
@@ -183,12 +201,13 @@ export default function TravelReportAppleLayout({ model }: Props) {
               {t("viewRoute")}
             </a>
             <a
-              href={bookingHref}
+              href={hotelsComHref}
               target="_blank"
               rel="noopener noreferrer sponsored"
               className="bcn-apple-btn bcn-apple-btn--ghost"
             >
-              {t("hotelsBooking")}
+              {partnerLinkCta(hotelsComHref, "open", locale)}
+              <PartnerAffiliateMark href={hotelsComHref} className="ml-1.5 text-[10px] font-normal uppercase tracking-wide opacity-80" />
             </a>
           </div>
         </div>
@@ -382,25 +401,26 @@ export default function TravelReportAppleLayout({ model }: Props) {
                   {pick.stars} · {pick.area}
                 </p>
                 <p className="bcn-apple-hotel__note">{pick.note}</p>
-                <ExtLink
+                <HotelPickPartnerLink
                   href={pick.href}
                   className="bcn-apple-link bcn-apple-link--on-dark"
-                  sponsored
-                >
-                  {t("searchBooking")}
-                </ExtLink>
+                />
               </Reveal>
             </li>
           ))}
         </ul>
+        <p className="bcn-apple-sub bcn-apple-sub--on-dark" style={{ textAlign: "center", marginTop: "1.25rem" }}>
+          {model.hotelSearchLabel}
+        </p>
         <div className="bcn-apple-hero__cta" style={{ justifyContent: "center" }}>
           <a
-            href={bookingHref}
+            href={hotelsComHref}
             target="_blank"
             rel="noopener noreferrer sponsored"
             className="bcn-apple-btn bcn-apple-btn--blue"
           >
-            {model.hotelSearchLabel}
+            {partnerLinkCta(hotelsComHref, "open", locale)}
+            <PartnerAffiliateMark href={hotelsComHref} className="ml-1.5 text-[10px] font-normal uppercase tracking-wide opacity-80" />
           </a>
           <Link href={model.planerHref} className="bcn-apple-btn bcn-apple-btn--ghost">
             {t("addInPlanner")}
