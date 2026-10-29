@@ -162,6 +162,8 @@ import { trackAffiliateClick } from "@/lib/affiliateTracking";
 import { partnerLabelFromUrl, partnerLinkCta } from "@/lib/partnerLabelFromUrl";
 import { PartnerAffiliateMark } from "@/components/PartnerLinkBadge";
 import { parseHotelBookingIcs } from "@/lib/parseHotelBookingIcs";
+import TripLocalFileBar from "@/components/TripLocalFileBar";
+import { tripLocalFileSession } from "@/lib/tripLocalFileAccess";
 import {
   computeHotelStaysTimeline,
   getBookedHotelDatesOnly,
@@ -614,7 +616,23 @@ export default function PlanerPage() {
     if (user) {
       saveTripToCloud(trip, user.id);
     }
+    void tripLocalFileSession.flushWrite(trip);
   }, [trip, user]);
+
+  const persistBrowserCopyForFile = useCallback(() => {
+    if (endStopLooksLikeTripTitleOnly(trip)) return;
+    saveTrip(trip);
+    setActiveTripId(trip.id);
+    setSavedTrips(getAllTrips());
+  }, [trip]);
+
+  const handleTripFileImported = useCallback((imported: Trip) => {
+    saveTrip(imported);
+    setTrip(imported);
+    setActiveTripId(imported.id);
+    setSavedTrips(getAllTrips());
+    setHasUnsavedChanges(false);
+  }, []);
 
   // Auto-save after 3 seconds of inactivity
   useEffect(() => {
@@ -631,8 +649,10 @@ export default function PlanerPage() {
 
     const flushPendingTrip = () => {
       if (!hasUnsavedChanges) return;
-      saveTrip({ ...trip, updatedAt: new Date().toISOString() });
+      const snapshot = { ...trip, updatedAt: new Date().toISOString() };
+      saveTrip(snapshot);
       setActiveTripId(trip.id);
+      void tripLocalFileSession.flushWrite(snapshot);
     };
 
     const handleVisibility = () => {
@@ -3431,6 +3451,12 @@ export default function PlanerPage() {
           )}
         </div>
       </div>
+
+      <TripLocalFileBar
+        trip={trip}
+        onTripImported={handleTripFileImported}
+        onFileWriteAfterBrowserSave={persistBrowserCopyForFile}
+      />
 
       {/* Account Hint Banner – only show when not logged in */}
       {!user && (

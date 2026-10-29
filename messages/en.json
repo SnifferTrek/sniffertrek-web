@@ -592,7 +592,22 @@
     "tabsScrollLeft": "Scroll tabs left",
     "tabsScrollRight": "Scroll tabs right",
     "tabMoveStart": "Move tab to the start",
-    "tabMoveEnd": "Move tab to the end"
+    "tabMoveEnd": "Move tab to the end",
+    "localFileBanner": "Save your trip as a file on your computer. After «Save as», it updates automatically in that file (Chrome/Edge). In Safari you may need «Link file» after restart.",
+    "localFileBannerDismiss": "Later",
+    "localFileSaveAs": "Save as…",
+    "localFileOpen": "Open trip…",
+    "localFileDownload": "Download copy",
+    "localFileDownloadTitle": "One-off backup download (no automatic overwrite)",
+    "localFileLinked": "File: {name}",
+    "localFileNotLinked": "No trip file linked yet",
+    "localFileNeedsReconnect": "Link file again: {name}",
+    "localFileReconnect": "Link file",
+    "localFileReconnectFailed": "Link failed – choose the correct trip file (same trip id).",
+    "localFileWriteFailed": "Could not write to file – use «Link file» or «Save as».",
+    "localFileUnlinkTitle": "Remove file link (browser copy stays)",
+    "localFileInvalid": "Not a valid SnifferTrek trip file.",
+    "localFileSafariHint": "Safari: auto-save to the same file often needs «Link file» after a tab restart."
   },
   "velo": {
     "title": "Cycling Switzerland",

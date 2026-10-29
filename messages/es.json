@@ -592,7 +592,22 @@
     "tabsScrollLeft": "Desplazar pestañas a la izquierda",
     "tabsScrollRight": "Desplazar pestañas a la derecha",
     "tabMoveStart": "Mover pestaña al inicio",
-    "tabMoveEnd": "Mover pestaña al final"
+    "tabMoveEnd": "Mover pestaña al final",
+    "localFileBanner": "Guarda el viaje como archivo en el ordenador. Tras «Guardar como», se actualiza solo en ese archivo (Chrome/Edge). En Safari puede hacer falta «Vincular archivo» tras reiniciar.",
+    "localFileBannerDismiss": "Más tarde",
+    "localFileSaveAs": "Guardar como…",
+    "localFileOpen": "Abrir viaje…",
+    "localFileDownload": "Descargar copia",
+    "localFileDownloadTitle": "Copia de seguridad puntual (sin sobrescritura automática)",
+    "localFileLinked": "Archivo: {name}",
+    "localFileNotLinked": "Sin archivo de viaje vinculado",
+    "localFileNeedsReconnect": "Vincular de nuevo: {name}",
+    "localFileReconnect": "Vincular archivo",
+    "localFileReconnectFailed": "Error al vincular – elige el archivo correcto (mismo id).",
+    "localFileWriteFailed": "No se pudo guardar en el archivo – «Vincular» o «Guardar como».",
+    "localFileUnlinkTitle": "Quitar vínculo (copia del navegador permanece)",
+    "localFileInvalid": "No es un archivo de viaje SnifferTrek válido.",
+    "localFileSafariHint": "Safari: guardar en el mismo archivo suele requerir «Vincular archivo» tras reiniciar."
   },
   "velo": {
     "title": "Bici Suiza",

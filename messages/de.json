@@ -592,7 +592,22 @@
     "tabsScrollLeft": "Tabs nach links scrollen",
     "tabsScrollRight": "Tabs nach rechts scrollen",
     "tabMoveStart": "Tab an den Anfang verschieben",
-    "tabMoveEnd": "Tab ans Ende verschieben"
+    "tabMoveEnd": "Tab ans Ende verschieben",
+    "localFileBanner": "Sichere deine Reise als Datei auf dem Computer. Nach «Speichern unter» wird sie automatisch in dieser Datei aktualisiert (Chrome/Edge). In Safari nach Neustart ggf. «Datei verbinden».",
+    "localFileBannerDismiss": "Später",
+    "localFileSaveAs": "Speichern unter …",
+    "localFileOpen": "Reise öffnen …",
+    "localFileDownload": "Kopie laden",
+    "localFileDownloadTitle": "Einmalige Sicherungskopie herunterladen (ohne automatisches Überschreiben)",
+    "localFileLinked": "Datei: {name}",
+    "localFileNotLinked": "Noch keine Reisedatei verknüpft",
+    "localFileNeedsReconnect": "Datei erneut verbinden: {name}",
+    "localFileReconnect": "Datei verbinden",
+    "localFileReconnectFailed": "Verbindung fehlgeschlagen – richtige Reisedatei wählen (gleiche Reise-ID).",
+    "localFileWriteFailed": "In Datei speichern fehlgeschlagen – «Datei verbinden» oder «Speichern unter».",
+    "localFileUnlinkTitle": "Verknüpfung zur Datei lösen (Browser-Speicher bleibt)",
+    "localFileInvalid": "Datei ist keine gültige SnifferTrek-Reise.",
+    "localFileSafariHint": "Safari: Auto-Speichern in dieselbe Datei oft nach Tab-Neustart nur mit «Datei verbinden»."
   },
   "velo": {
     "title": "Velo Schweiz",
