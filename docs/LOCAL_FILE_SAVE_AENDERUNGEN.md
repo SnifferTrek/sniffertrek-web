@@ -17,12 +17,12 @@ Browser-`localStorage`/Sidecar bleiben **Arbeitskopie**; die verknüpfte Datei i
 | `src/components/TripLocalFileBar.tsx` | Banner, Status, Buttons im Planer |
 | `docs/LOCAL_FILE_SAVE_AENDERUNGEN.md` | Dieses Dokument |
 
-## Geänderte Dateien
+## Geänderte Dateien (2026-03-29 Ergänzung)
 
 | Datei | Änderung |
 |--------|-----------|
-| `src/app/[locale]/planer/page.tsx` | `TripLocalFileBar`, `flushWrite` nach Auto-Save / Tab schliessen |
-| `messages/de.json`, `en.json`, `es.json` | Keys `planer.localFile*` |
+| `src/app/[locale]/meine-reisen/page.tsx` | Gäste: 1 Reise sichtbar; «Als Datei speichern»; Login für mehrere |
+| `messages/*.json` | `myTripsPage.*`, plattformneutrale Datei-Hinweise (Windows & Mac) |
 
 ## LocalStorage / IndexedDB (neu)
 
