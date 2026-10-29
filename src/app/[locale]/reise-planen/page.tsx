@@ -182,12 +182,12 @@ export default function ReisePlanenPage() {
                     type="button"
                     onClick={() => item.active && toggleModule(item.id)}
                     disabled={!item.active}
-                    className={`group relative flex flex-col overflow-hidden rounded-[12px] border-2 bg-white text-left transition-[border-color] duration-200 ${
+                    className={`group relative flex flex-col overflow-hidden rounded-[12px] border-2 bg-white text-left transition-all duration-200 ${
                       !item.active
                         ? "cursor-not-allowed border-[#e8e8ed] opacity-[0.55]"
                         : isSelected
-                          ? "border-[#0071e3]"
-                          : "border-[#d2d2d7] hover:border-[#86868b]"
+                          ? "border-[#0071e3] bg-[#f5f9ff] shadow-[0_4px_14px_rgba(0,113,227,0.18)] ring-2 ring-[#0071e3]/20"
+                          : "border-[#e5e5ea] hover:border-[#86868b] hover:shadow-sm"
                     }`}
                   >
                     <div className="relative h-[4.75rem] overflow-hidden sm:h-[5.75rem]">
@@ -210,8 +210,8 @@ export default function ReisePlanenPage() {
                       </span>
 
                       {item.active && isSelected && (
-                        <span className="absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-[var(--st-primary)] text-white shadow-sm">
-                          <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        <span className="absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-[#0071e3] text-white shadow-md ring-2 ring-white">
+                          <Check className="h-4 w-4" strokeWidth={2.5} />
                         </span>
                       )}
                       {!item.active && (
@@ -221,8 +221,16 @@ export default function ReisePlanenPage() {
                       )}
                     </div>
 
-                    <div className="flex flex-1 flex-col p-3 sm:p-3.5">
-                      <p className="text-sm font-semibold tracking-tight text-[#1d1d1f] leading-tight">
+                    <div
+                      className={`flex flex-1 flex-col p-3 sm:p-3.5 ${
+                        isSelected && item.active ? "bg-[#eef6ff]" : ""
+                      }`}
+                    >
+                      <p
+                        className={`text-sm font-semibold tracking-tight leading-tight ${
+                          isSelected && item.active ? "text-[#0071e3]" : "text-[#1d1d1f]"
+                        }`}
+                      >
                         {t(`${item.id}_name` as Parameters<typeof t>[0])}
                       </p>
                       <p className="mt-1 line-clamp-2 text-xs leading-snug text-[var(--st-muted)]">
