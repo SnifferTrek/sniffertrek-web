@@ -450,11 +450,12 @@ function travelBriefPrompts(
   const rules =
     lang === "de"
       ? [
-          "Aufgabe: Aus dem Wikipedia-Rohstoff einen knappen Ortstext für jemanden schreiben, der dort bereits auf der Reise ist (nicht für Erstinformation über das Land).",
-          "Stil: intellektuell klar, konkret, leicht essayistisch – eine Idee oder ein Detail, das man vor Ort begreift (Stadtbild, Geschichte, Kontrast, Kultur).",
-          "Verboten: Verwaltungsgeographie und Reisebüro-Klischees – kein Kanton, Bezirk, Kreis, Land, keine Formulierungen wie «in der Schweiz», «im Tessin», «beliebtes Reiseziel», «mediterranes Flair», «ideal für einen Zwischenstopp», «Autoreise».",
-          "Länge: 95–105 Wörter, Fliesstext, keine Aufzählungen, keine Emojis, kein Werbeton.",
-          "Faktenregel (streng): Nur Informationen aus dem Rohstoff. Keine neuen Zahlen, Daten, Personen oder Anekdoten erfinden. Unsicheres weglassen.",
+          "Aufgabe: Aus dem Wikipedia-Rohstoff einen knappen Ortstext für jemanden schreiben, der dort auf der Reise ankommt.",
+          "Inhalt: Wenn im Rohstoff vorhanden, mindestens ein harter Fakt (Einwohnerzahl, Fläche, Lage oder vergleichbare Grösse) und ein prägendes historisches Detail oder Ereignis einbauen – nur wenn explizit im Rohstoff.",
+          "Stil: klar, konkret, leicht essayistisch; danach Kurzporträt des Ortes (Stadtbild, Kultur, Besonderheit).",
+          "Verboten: erfundene Zahlen oder Daten; Reisebüro-Klischees («beliebtes Reiseziel», «mediterranes Flair», «ideal für einen Zwischenstopp»); lange Absätze nur über Kanton, Land oder Region ohne Bezug zum Ort selbst.",
+          "Länge: 95–110 Wörter, Fliesstext, keine Aufzählungen, keine Emojis, kein Werbeton.",
+          "Faktenregel (streng): Nur Informationen aus dem Rohstoff. Keine neuen Personen, Daten oder Anekdoten erfinden. Unsicheres weglassen.",
           "Sprache: ausschließlich Deutsch.",
         ].join("\n")
       : lang === "es"
@@ -544,7 +545,7 @@ async function callTravelBriefModel(
     if (!response.ok) return undefined;
     const data = await response.json();
     const summary = (data?.choices?.[0]?.message?.content || "").toString().trim();
-    return summary ? clampToApproxWords(summary, 105) : undefined;
+    return summary ? clampToApproxWords(summary, 110) : undefined;
   } catch {
     return undefined;
   }

@@ -21,8 +21,8 @@ type RouteStopBriefPanelProps = {
   onAlternatePhoto: () => void;
   imageUrlToDataUrl: (url: string) => Promise<string | undefined>;
   fileToDataUrl: (file: File) => Promise<string | undefined>;
-  /** Im Tab «Ortsinfos»: ohne Einklapp-Zeile unter der Route. */
-  layout?: "nested" | "card";
+  /** nested = unter Route; list = Ortsinfo-Tab (Stopp-Liste); card = immer offen. */
+  layout?: "nested" | "card" | "list";
 };
 
 export default function RouteStopBriefPanel({
@@ -56,7 +56,49 @@ export default function RouteStopBriefPanel({
   const showBody = layout === "card" || expanded;
 
   return (
-    <div className={layout === "card" ? "mb-2" : "ml-9 mr-1 -mt-0.5 mb-1"}>
+    <div
+      className={
+        layout === "list"
+          ? "mb-1"
+          : layout === "card"
+            ? "mb-2"
+            : "ml-9 mr-1 -mt-0.5 mb-1"
+      }
+    >
+      {layout === "list" && (
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          aria-expanded={expanded}
+          className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+            expanded
+              ? "border-blue-200 bg-blue-50/60 shadow-sm"
+              : "border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50/80"
+          }`}
+        >
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-gray-900">{stop.name}</span>
+            <span className="text-xs font-medium text-gray-500">{roleLabel(stop, locale)}</span>
+          </span>
+          <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+            {hasContent ? (
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                {tt("stopBriefLabel")}
+              </span>
+            ) : null}
+            {included ? (
+              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-800">
+                PDF
+              </span>
+            ) : null}
+            {expanded ? (
+              <ChevronUp className="h-4 w-4 text-gray-500" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-gray-500" />
+            )}
+          </span>
+        </button>
+      )}
       {layout === "nested" && (
         <button
           type="button"

@@ -3481,9 +3481,6 @@ export default function PlanerPage() {
                     >{tt("ortsinfoLoadAll")}</button>
                   )}
                 </div>
-                <p className="text-xs text-gray-600 leading-relaxed">
-                  {tt("ortsinfoIntro")}
-                </p>
                 <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
                   <input
                     type="checkbox"
@@ -3491,26 +3488,24 @@ export default function PlanerPage() {
                     onChange={(e) => setAutoEnrichStopBriefs(e.target.checked)}
                     className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />{tt("ortsinfoAutoLoad")}</label>
-                <div className="space-y-6">
+                <div className="space-y-2">
                   {trip.stops.filter((s) => s.name.trim()).length === 0 ? (
                     <p className="text-sm text-gray-500">{tt("ortsinfoNeedStops")}</p>
                   ) : (
                     trip.stops
                       .filter((s) => s.name.trim())
                       .map((stop) => (
-                        <div
-                          key={stop.id}
-                          className="rounded-xl border border-gray-100 bg-gray-50/50 p-3 pt-4"
-                        >
-                          <p className="mb-2 text-sm font-semibold text-gray-800">
-                            {stop.name}
-                            <span className="ml-2 text-xs font-medium text-gray-400">{roleLabel(stop, locale)}</span>
-                          </p>
-                          <RouteStopBriefPanel
+                        <RouteStopBriefPanel
+                            key={stop.id}
                             stop={stop}
-                            layout="card"
-                            expanded
-                            onToggleExpand={() => {}}
+                            layout="list"
+                            expanded={!!expandedStopBriefIds[stop.id]}
+                            onToggleExpand={() =>
+                              setExpandedStopBriefIds((prev) => ({
+                                ...prev,
+                                [stop.id]: !prev[stop.id],
+                              }))
+                            }
                             loading={stopBriefLoadingId === stop.id}
                             included={stopBriefIncluded(stop)}
                             onSetIncluded={(on) => void setStopBriefPdfIncluded(stop.id, on)}
@@ -3552,7 +3547,6 @@ export default function PlanerPage() {
                             imageUrlToDataUrl={imageUrlToPrintableDataUrl}
                             fileToDataUrl={fileToPrintableDataUrl}
                           />
-                        </div>
                       ))
                   )}
                 </div>
