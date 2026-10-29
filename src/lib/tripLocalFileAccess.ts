@@ -26,7 +26,8 @@ export type TripFileLinkState =
   | { status: "none" }
   | { status: "linked"; fileName: string }
   | { status: "needs_reconnect"; fileName: string }
-  | { status: "write_failed"; fileName: string; message?: string };
+  | { status: "write_failed"; fileName: string; message?: string }
+  | { status: "picker_failed" };
 
 declare global {
   interface Window {
@@ -41,15 +42,33 @@ declare global {
   }
 }
 
-const PICKER_TYPES = [
+const PICKER_TYPES_JSON = [
   {
-    description: "SnifferTrek Reise",
-    accept: { [TRIP_FILE_MIME]: [TRIP_FILE_EXTENSION] },
+    description: "JSON",
+    accept: { "application/json": [".json", TRIP_FILE_EXTENSION] },
   },
 ];
 
 export function isFileSystemAccessSupported(): boolean {
   return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+}
+
+/** Safari bricht oft bei strikten custom types ab – zuerst ohne, dann mit .json. */
+async function pickSaveFileHandle(suggestedName: string): Promise<FileSystemFileHandle | null> {
+  if (!isFileSystemAccessSupported()) return null;
+  const attempts: (() => Promise<FileSystemFileHandle>)[] = [
+    () => window.showSaveFilePicker!({ suggestedName }),
+    () => window.showSaveFilePicker!({ suggestedName, types: PICKER_TYPES_JSON }),
+  ];
+  for (const attempt of attempts) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return null;
+      console.warn("[TripLocalFileSession] showSaveFilePicker attempt failed", err);
+    }
+  }
+  return null;
 }
 
 function readLinkMetaMap(): Record<string, FileLinkMeta> {
@@ -191,39 +210,33 @@ export class TripLocalFileSession {
     this.tripId = trip.id;
     const suggested = suggestTripFileName(trip);
 
-    if (isFileSystemAccessSupported()) {
-      try {
-        const handle = await window.showSaveFilePicker!({
-          suggestedName: suggested,
-          types: PICKER_TYPES,
-        });
-        const ok = await ensureWritePermission(handle);
-        if (!ok) throw new Error("permission_denied");
-        await writeToHandle(handle, trip);
-        this.handle = handle;
-        this.fileName = handle.name || suggested;
-        setTripFileLinkMeta(trip.id, { fileName: this.fileName, linkedAt: new Date().toISOString() });
-        await idbPutHandle(trip.id, handle, this.fileName);
-        return { status: "linked", fileName: this.fileName };
-      } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return this.resolveLinkState(trip.id);
-        }
-        console.warn("[TripLocalFileSession] save picker failed", err);
+    const handle = await pickSaveFileHandle(suggested);
+    if (!handle) {
+      if (!isFileSystemAccessSupported()) {
+        return { status: "picker_failed" };
       }
+      return this.resolveLinkState(trip.id);
     }
 
-    const { downloadTripFile } = await import("./tripLocalFileDocument");
-    downloadTripFile(trip, suggested);
-    setTripFileLinkMeta(trip.id, { fileName: suggested, linkedAt: new Date().toISOString() });
-    this.fileName = suggested;
-    return { status: "needs_reconnect", fileName: suggested };
+    try {
+      const ok = await ensureWritePermission(handle);
+      if (!ok) return { status: "picker_failed" };
+      await writeToHandle(handle, trip);
+      this.handle = handle;
+      this.fileName = handle.name || suggested;
+      setTripFileLinkMeta(trip.id, { fileName: this.fileName, linkedAt: new Date().toISOString() });
+      await idbPutHandle(trip.id, handle, this.fileName);
+      return { status: "linked", fileName: this.fileName };
+    } catch (err) {
+      console.warn("[TripLocalFileSession] save picker failed", err);
+      return { status: "picker_failed" };
+    }
   }
 
   async reconnectOpen(tripId: string): Promise<TripFileLinkState | null> {
     if (!isFileSystemAccessSupported()) return null;
     try {
-      const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES });
+      const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_JSON });
       const handle = handles[0];
       const file = await handle.getFile();
       const text = await file.text();
@@ -256,7 +269,7 @@ export class TripLocalFileSession {
       let handle: FileSystemFileHandle | null = null;
 
       if (isFileSystemAccessSupported()) {
-        const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES });
+        const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_JSON });
         handle = handles[0];
         const file = await handle.getFile();
         text = await file.text();

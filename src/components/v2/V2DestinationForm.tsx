@@ -54,6 +54,7 @@ export default function V2DestinationForm({
           placeholder={placeholder}
           className="v2-input v2-destination-input"
           aria-label={label}
+          size={28}
         />
         <button type="submit" className="v2-btn v2-destination-btn">
           {buttonLabel}

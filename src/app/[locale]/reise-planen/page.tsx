@@ -157,7 +157,7 @@ export default function ReisePlanenPage() {
                 {t("hint")}
               </p>
 
-              <div className="mt-6 max-w-md">
+              <div className="mt-6 max-w-xl">
                 <label htmlFor="plan-destination" className="mb-2 block text-sm font-semibold text-[#1d1d1f]">
                   {t("destinationLabel")}
                 </label>

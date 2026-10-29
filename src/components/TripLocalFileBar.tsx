@@ -64,7 +64,11 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       onFileWriteAfterBrowserSave();
       const state = await tripLocalFileSession.linkSaveAs(trip);
       setLinkState(state);
-      setBannerOpen(false);
+      if (state.status === "picker_failed") {
+        window.alert(t("localFilePickerFailed"));
+      } else {
+        setBannerOpen(false);
+      }
     } finally {
       setFileBusy(false);
     }
@@ -142,31 +146,41 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
         </div>
       )}
 
-      <div className="bg-slate-900/90 border-b border-white/10 px-4 py-2">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-200">
+      <div className="bg-slate-800 border-b border-slate-600/80 px-4 py-3">
+        <div className="max-w-7xl mx-auto flex flex-col gap-3">
+          <div className="min-w-0 text-sm text-slate-100 leading-snug">
             {linkState.status === "linked" && (
-              <span className="inline-flex items-center gap-1 text-green-200 bg-green-500/15 px-2 py-1 rounded-md">
-                <Check className="w-3.5 h-3.5" />
-                {t("localFileLinked", { name: linkState.fileName })}
-              </span>
+              <p className="flex flex-wrap items-start gap-2">
+                <span className="inline-flex shrink-0 items-center gap-1 text-green-200 bg-green-500/20 px-2 py-0.5 rounded-md text-xs font-medium">
+                  <Check className="w-3.5 h-3.5" />
+                  {t("localFileLinkedShort")}
+                </span>
+                <span className="break-all font-medium" title={linkState.fileName}>
+                  {linkState.fileName}
+                </span>
+              </p>
             )}
             {linkState.status === "needs_reconnect" && (
-              <span className="inline-flex items-center gap-1 text-amber-200 bg-amber-500/15 px-2 py-1 rounded-md">
-                <AlertCircle className="w-3.5 h-3.5" />
-                {t("localFileNeedsReconnect", { name: linkState.fileName })}
-              </span>
+              <p className="space-y-1">
+                <span className="inline-flex items-center gap-1 text-amber-100 bg-amber-500/25 px-2 py-0.5 rounded-md text-xs font-medium">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  {t("localFileNeedsReconnectShort")}
+                </span>
+                <span className="block break-all font-medium text-amber-50" title={linkState.fileName}>
+                  {linkState.fileName}
+                </span>
+              </p>
             )}
             {linkState.status === "write_failed" && (
-              <span className="inline-flex items-center gap-1 text-red-200 bg-red-500/15 px-2 py-1 rounded-md">
-                <AlertCircle className="w-3.5 h-3.5" />
-                {t("localFileWriteFailed")}
-              </span>
+              <p className="text-red-100">{t("localFileWriteFailed")}</p>
+            )}
+            {linkState.status === "picker_failed" && (
+              <p className="text-amber-100">{t("localFilePickerFailedInline")}</p>
             )}
             {linkState.status === "none" && (
-              <span className="text-slate-400">{t("localFileNotLinked")}</span>
+              <p className="text-slate-300">{t("localFileNotLinked")}</p>
             )}
-            {fsaHint && <span className="text-slate-500">{fsaHint}</span>}
+            {fsaHint && <p className="mt-1 text-xs text-slate-400">{fsaHint}</p>}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
