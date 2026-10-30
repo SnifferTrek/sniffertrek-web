@@ -11,9 +11,8 @@ import {
   isLinkedFileAutoSaveReliable,
   isSafariBrowser,
   markSafariSaveHintShown,
-  pickSaveFileForTrip,
   saveTripToChosenHandle,
-  saveTripToFile,
+  startSaveFilePickerInUserGesture,
   SAFARI_SAVE_HINT_INTERVAL_MS,
   shouldShowSafariSaveHint,
   tripLocalFileSession,
@@ -118,7 +117,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
 
   const closeMenu = () => setMenuOpen(false);
 
-  const showSaveFeedback = (result: Awaited<ReturnType<typeof saveTripToFile>>) => {
+  const showSaveFeedback = (result: Awaited<ReturnType<typeof saveTripToChosenHandle>>) => {
     if (result.outcome === "linked" && result.linkState.status === "linked") {
       setSaveToast(t("localFileSavedLinked", { name: result.linkState.fileName }));
       setBannerOpen(false);
@@ -130,10 +129,10 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
     }
   };
 
-  const handleSaveToFile = async () => {
+  const handleSaveToFile = () => {
     if (linkState.status === "needs_reconnect") {
       setMenuOpen(false);
-      await handleReconnect();
+      void handleReconnect();
       return;
     }
 
@@ -143,39 +142,45 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
     if (useSilentFlush) {
       setMenuOpen(false);
       setFileBusy(true);
-      try {
-        onFileWriteAfterBrowserSave();
-        const state = await tripLocalFileSession.flushWrite(trip);
-        setLinkState(state);
-        if (state.status === "linked") {
-          setSaveToast(t("localFileSavedLinked", { name: state.fileName }));
-        } else if (state.status === "write_failed") {
-          setSaveToast(t("localFileWriteFailed"));
+      void (async () => {
+        try {
+          onFileWriteAfterBrowserSave();
+          const state = await tripLocalFileSession.flushWrite(trip);
+          setLinkState(state);
+          if (state.status === "linked") {
+            setSaveToast(t("localFileSavedLinked", { name: state.fileName }));
+          } else if (state.status === "write_failed") {
+            setSaveToast(t("localFileWriteFailed"));
+          }
+        } finally {
+          setFileBusy(false);
         }
-      } finally {
-        setFileBusy(false);
-      }
+      })();
       return;
     }
 
-    const pick = await pickSaveFileForTrip(trip);
+    const started = startSaveFilePickerInUserGesture(trip);
     setMenuOpen(false);
-    if (pick.cancelled) return;
-    if (!pick.handle) {
-      setSaveToast(
-        t(isFileSystemAccessSupported() ? "localFilePickerFailed" : "localFileSafariNoPicker")
-      );
+    if (started.kind === "unsupported") {
+      setSaveToast(t("localFileSafariNoPicker"));
       return;
     }
 
     setFileBusy(true);
-    try {
-      const result = await saveTripToChosenHandle(trip, pick.handle, tripLocalFileSession, onFileWriteAfterBrowserSave);
-      setLinkState(result.linkState);
-      showSaveFeedback(result);
-    } finally {
-      setFileBusy(false);
-    }
+    void started.promise
+      .then((handle) =>
+        saveTripToChosenHandle(trip, handle, tripLocalFileSession, onFileWriteAfterBrowserSave)
+      )
+      .then((result) => {
+        setLinkState(result.linkState);
+        showSaveFeedback(result);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.warn("[TripLocalFileBar] save picker failed", err);
+        setSaveToast(t("localFilePickerFailed"));
+      })
+      .finally(() => setFileBusy(false));
   };
 
   const handleOpen = async () => {
@@ -319,7 +324,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
                       role="menuitem"
                       disabled={fileBusy}
                       className={menuItemClass}
-                      onClick={() => void handleSaveToFile()}
+                      onClick={() => handleSaveToFile()}
                     >
                       <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
                       {t("localFileSaveAs")}

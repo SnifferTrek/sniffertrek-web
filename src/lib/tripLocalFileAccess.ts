@@ -98,7 +98,28 @@ export type SaveTripToFileResult = {
 
 export type PickSaveFileResult = { handle: FileSystemFileHandle | null; cancelled: boolean };
 
-/** Sofort aus Klick-Handler aufrufen (Safari: vor setState / Menü schließen). */
+/** Im Klick-Handler synchron aufrufen – showSaveFilePicker muss in derselben User-Gesture starten. */
+export function startSaveFilePickerInUserGesture(trip: Trip):
+  | { kind: "unsupported" }
+  | { kind: "started"; promise: Promise<FileSystemFileHandle> } {
+  if (typeof window === "undefined" || typeof window.showSaveFilePicker !== "function") {
+    return { kind: "unsupported" };
+  }
+  const suggestedName = suggestTripFileName(trip);
+  const promise = window.showSaveFilePicker({ suggestedName }).catch((err: unknown) => {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    return window.showSaveFilePicker!({
+      suggestedName,
+      types: [{ description: "SnifferTrek Reise", accept: { "application/json": [TRIP_FILE_EXTENSION] } }],
+    });
+  }).catch((err: unknown) => {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    return window.showSaveFilePicker!({ suggestedName, types: PICKER_TYPES_JSON });
+  });
+  return { kind: "started", promise };
+}
+
+/** @deprecated Prefer startSaveFilePickerInUserGesture from click handler. */
 export function pickSaveFileForTrip(trip: Trip): Promise<PickSaveFileResult> {
   return pickSaveFileHandle(suggestTripFileName(trip));
 }

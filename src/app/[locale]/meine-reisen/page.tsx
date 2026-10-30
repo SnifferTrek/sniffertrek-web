@@ -31,7 +31,7 @@ import {
 } from "@/lib/tripStorage";
 import { useAuth } from "@/components/AuthProvider";
 import { deleteTripFromCloud } from "@/lib/cloudSync";
-import { getTripFileLinkMeta, saveTripToFile, tripLocalFileSession } from "@/lib/tripLocalFileAccess";
+import { getTripFileLinkMeta, saveTripToChosenHandle, startSaveFilePickerInUserGesture, tripLocalFileSession } from "@/lib/tripLocalFileAccess";
 
 const modeIcons: Record<TravelMode, typeof Car> = {
   auto: Car,
@@ -78,19 +78,28 @@ export default function MeineReisenPage() {
     setActiveTripId(id);
   };
 
-  const handleSaveToFile = async (tripId: string) => {
-    setFileBusyId(tripId);
-    try {
-      const trip = loadTripHydrated(tripId);
-      if (!trip) return;
-      const result = await saveTripToFile(trip, tripLocalFileSession, () => saveTrip(trip));
-      if (result.outcome === "failed") {
-        window.alert(t("saveFileFailed"));
-      }
-      refreshTrips();
-    } finally {
-      setFileBusyId(null);
+  const handleSaveToFile = (tripId: string) => {
+    const trip = loadTripHydrated(tripId);
+    if (!trip) return;
+
+    const started = startSaveFilePickerInUserGesture(trip);
+    if (started.kind === "unsupported") {
+      window.alert(t("saveFileFailed"));
+      return;
     }
+
+    setFileBusyId(tripId);
+    void started.promise
+      .then((handle) => saveTripToChosenHandle(trip, handle, tripLocalFileSession, () => saveTrip(trip)))
+      .then((result) => {
+        if (result.outcome === "failed") window.alert(t("saveFileFailed"));
+        refreshTrips();
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        window.alert(t("saveFileFailed"));
+      })
+      .finally(() => setFileBusyId(null));
   };
 
   const subtitle =
@@ -280,7 +289,7 @@ export default function MeineReisenPage() {
                         type="button"
                         disabled={saving}
                         title={t("saveToFileHint")}
-                        onClick={() => void handleSaveToFile(trip.id)}
+                        onClick={() => handleSaveToFile(trip.id)}
                         className="inline-flex flex-1 min-w-[10rem] items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
                       >
                         <FileDown className="w-3.5 h-3.5" />

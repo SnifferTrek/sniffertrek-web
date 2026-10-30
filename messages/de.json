@@ -619,7 +619,7 @@
     "localFileReconnectSteps": "Klicke «Datei wieder wählen» und wähle dieselbe Datei ({name}) – danach speichert SnifferTrek wieder automatisch.",
     "localFileReconnectFailed": "Verbindung fehlgeschlagen – richtige Reisedatei wählen (gleiche Reise-ID).",
     "localFileWriteFailed": "In Datei speichern fehlgeschlagen – «Datei speichern» erneut wählen.",
-    "localFilePickerFailed": "Speichern-Dialog konnte nicht geöffnet werden. Safari/macOS: Seite neu laden und erneut «Datei speichern» – oder Chrome/Edge. Es wird nicht still in Downloads gespeichert.",
+    "localFilePickerFailed": "Speichern-Dialog konnte nicht geöffnet werden. Prüfe Safari → Einstellungen → Websites → Downloads (kein Auto-Öffnen nötig), Seite neu laden, erneut versuchen – oder Chrome/Edge.",
     "localFilePickerFailedInline": "Speichern fehlgeschlagen – «Datei speichern» erneut versuchen.",
     "localFileUnlinkTitle": "Verknüpfung zur Datei lösen (Browser-Speicher bleibt)",
     "localFileUnlink": "Verknüpfung lösen",
