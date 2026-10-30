@@ -596,6 +596,7 @@
     "localFileBanner": "Guarda el viaje como archivo en el ordenador. Tras «Guardar como», se actualiza solo en ese archivo (Chrome/Edge). En Safari puede hacer falta «Vincular archivo» tras reiniciar.",
     "localFileBannerDismiss": "Más tarde",
     "localFileBannerShort": "Guarda el viaje como archivo en tu ordenador (Windows y Mac). Chrome/Edge actualiza ese archivo solo.",
+    "localFileSaveMenu": "Guardar",
     "localFileSaveAs": "Guardar archivo",
     "localFileOpen": "Abrir archivo",
     "localFileDownload": "Backup",
@@ -614,6 +615,7 @@
     "localFilePickerFailed": "No se pudo abrir el diálogo de guardar. Reintenta en Safari o usa «Descargar copia».",
     "localFilePickerFailedInline": "Guardar como falló – reintenta o usa «Descargar copia».",
     "localFileUnlinkTitle": "Quitar vínculo (copia del navegador permanece)",
+    "localFileUnlink": "Quitar vínculo",
     "localFileInvalid": "No es un archivo de viaje SnifferTrek válido.",
     "localFileSafariHint": "Chrome/Edge (Windows y Mac): archivo vinculado. Safari/Firefox: tras reiniciar «Vincular archivo» o «Descargar copia» en el planificador."
   },

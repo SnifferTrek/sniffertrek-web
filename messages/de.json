@@ -596,6 +596,7 @@
     "localFileBanner": "Sichere deine Reise als Datei auf dem Computer (Windows & Mac). Nach «Speichern unter» wird sie in Chrome/Edge automatisch in dieser Datei aktualisiert. Safari/Firefox: ggf. «Datei verbinden».",
     "localFileBannerShort": "Reise als Datei auf dem Computer sichern (Windows & Mac). In Chrome/Edge danach automatisch mitgespeichert.",
     "localFileBannerDismiss": "Später",
+    "localFileSaveMenu": "Speichern",
     "localFileSaveAs": "Datei speichern",
     "localFileOpen": "Datei öffnen",
     "localFileDownload": "Backup laden",
@@ -614,6 +615,7 @@
     "localFilePickerFailed": "Speichern-Dialog konnte nicht geöffnet werden. In Safari erneut versuchen oder «Kopie laden» für den Download-Ordner.",
     "localFilePickerFailedInline": "Speichern unter fehlgeschlagen – erneut versuchen oder «Kopie laden».",
     "localFileUnlinkTitle": "Verknüpfung zur Datei lösen (Browser-Speicher bleibt)",
+    "localFileUnlink": "Verknüpfung lösen",
     "localFileInvalid": "Datei ist keine gültige SnifferTrek-Reise.",
     "localFileSafariHint": "Chrome/Edge (Windows & Mac): Datei bleibt verknüpft. Safari/Firefox: nach Neustart «Datei verbinden» oder «Kopie laden»."
   },

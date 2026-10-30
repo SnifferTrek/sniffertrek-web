@@ -596,6 +596,7 @@
     "localFileBanner": "Save your trip as a file on your computer. After «Save as», it updates automatically in that file (Chrome/Edge). In Safari you may need «Link file» after restart.",
     "localFileBannerShort": "Save the trip as a file on your computer (Windows & Mac). Chrome/Edge then auto-save to that file.",
     "localFileBannerDismiss": "Later",
+    "localFileSaveMenu": "Save",
     "localFileSaveAs": "Save to file",
     "localFileOpen": "Open file",
     "localFileDownload": "Download backup",
@@ -614,6 +615,7 @@
     "localFilePickerFailed": "Could not open the save dialog. Try again in Safari, or use «Download copy».",
     "localFilePickerFailedInline": "Save as failed – try again or use «Download copy».",
     "localFileUnlinkTitle": "Remove file link (browser copy stays)",
+    "localFileUnlink": "Remove link",
     "localFileInvalid": "Not a valid SnifferTrek trip file.",
     "localFileSafariHint": "Chrome/Edge (Windows & Mac): file stays linked. Safari/Firefox: after restart use «Link file» or «Download copy» in the planner."
   },
