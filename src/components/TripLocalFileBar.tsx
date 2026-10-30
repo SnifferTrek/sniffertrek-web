@@ -13,6 +13,7 @@ import {
   markSafariSaveHintShown,
   saveTripToChosenHandle,
   startSaveFilePickerInUserGesture,
+  startShareTripFileInUserGesture,
   SAFARI_SAVE_HINT_INTERVAL_MS,
   shouldShowSafariSaveHint,
   tripLocalFileSession,
@@ -183,6 +184,26 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       .finally(() => setFileBusy(false));
   };
 
+  const handleExportViaShare = () => {
+    const started = startShareTripFileInUserGesture(trip, onFileWriteAfterBrowserSave);
+    setMenuOpen(false);
+    if (started.kind === "unsupported") {
+      setSaveToast(t("localFileShareUnsupported"));
+      return;
+    }
+    setFileBusy(true);
+    void started.promise
+      .then(() => {
+        setSaveToast(t("localFileSavedShare", { name: started.fileName }));
+        setBannerOpen(false);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setSaveToast(t("localFileShareFailed"));
+      })
+      .finally(() => setFileBusy(false));
+  };
+
   const handleOpen = async () => {
     setFileBusy(true);
     try {
@@ -328,6 +349,18 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
                     >
                       <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
                       {t("localFileSaveAs")}
+                    </button>
+                  )}
+                  {isSafariBrowser() && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={fileBusy}
+                      className={menuItemClass}
+                      onClick={() => handleExportViaShare()}
+                    >
+                      <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
+                      {t("localFileExportSafari")}
                     </button>
                   )}
                   {linkState.status === "linked" && showRelinkActions && (

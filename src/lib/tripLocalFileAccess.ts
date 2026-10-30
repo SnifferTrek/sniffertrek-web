@@ -98,25 +98,43 @@ export type SaveTripToFileResult = {
 
 export type PickSaveFileResult = { handle: FileSystemFileHandle | null; cancelled: boolean };
 
-/** Im Klick-Handler synchron aufrufen – showSaveFilePicker muss in derselben User-Gesture starten. */
+/** Im Klick-Handler synchron aufrufen – nur ein showSaveFilePicker (Retries verlieren die User-Gesture). */
 export function startSaveFilePickerInUserGesture(trip: Trip):
   | { kind: "unsupported" }
   | { kind: "started"; promise: Promise<FileSystemFileHandle> } {
   if (typeof window === "undefined" || typeof window.showSaveFilePicker !== "function") {
     return { kind: "unsupported" };
   }
+  if (!window.isSecureContext) {
+    return { kind: "unsupported" };
+  }
   const suggestedName = suggestTripFileName(trip);
-  const promise = window.showSaveFilePicker({ suggestedName }).catch((err: unknown) => {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-    return window.showSaveFilePicker!({
-      suggestedName,
-      types: [{ description: "SnifferTrek Reise", accept: { "application/json": [TRIP_FILE_EXTENSION] } }],
-    });
-  }).catch((err: unknown) => {
-    if (err instanceof DOMException && err.name === "AbortError") throw err;
-    return window.showSaveFilePicker!({ suggestedName, types: PICKER_TYPES_JSON });
+  const promise = window.showSaveFilePicker({
+    suggestedName,
+    types: [{ description: "SnifferTrek Reise", accept: { "application/json": [TRIP_FILE_EXTENSION, ".json"] } }],
   });
   return { kind: "started", promise };
+}
+
+/** Safari-Fallback: Teilen-Sheet → «In Dateien sichern» / Speicherort wählen. Im Klick synchron starten. */
+export function startShareTripFileInUserGesture(
+  trip: Trip,
+  beforeWrite?: () => void
+): { kind: "unsupported" } | { kind: "started"; promise: Promise<void>; fileName: string } {
+  if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+    return { kind: "unsupported" };
+  }
+  beforeWrite?.();
+  const fileName = suggestTripFileName(trip);
+  const file = new File([buildTripFileContents(trip)], fileName, { type: TRIP_FILE_MIME });
+  if (typeof navigator.canShare === "function" && !navigator.canShare({ files: [file] })) {
+    return { kind: "unsupported" };
+  }
+  const promise = navigator.share({
+    files: [file],
+    title: trip.name && trip.name !== "Neue Reise" ? trip.name : "SnifferTrek-Reise",
+  });
+  return { kind: "started", promise, fileName };
 }
 
 /** @deprecated Prefer startSaveFilePickerInUserGesture from click handler. */
