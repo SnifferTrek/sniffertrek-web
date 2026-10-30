@@ -218,16 +218,33 @@ async function fetchWikiMediaThumbs(
   return urls;
 }
 
+const PHOTO_POOL_TARGET = 12;
+
+function commonsPagesToUrls(pages: unknown): string[] {
+  if (!pages || typeof pages !== "object") return [];
+  const out: string[] = [];
+  for (const page of Object.values(pages as Record<string, unknown>) as Array<{
+    title?: string;
+    imageinfo?: Array<{ thumburl?: string; url?: string }>;
+  }>) {
+    const info = page?.imageinfo?.[0];
+    addUniquePhotoUrl(out, info?.thumburl || info?.url, page?.title);
+  }
+  return out;
+}
+
 async function fetchCommonsImageUrls(search: string, limit = 12): Promise<string[]> {
   const term = search.trim();
   if (!term) return [];
+  // Prefer real photos over diagrams; filetype:bitmap skips many SVGs early.
+  const query = `${term} filetype:bitmap`;
   const params = new URLSearchParams({
     action: "query",
     format: "json",
     origin: "*",
     generator: "search",
     gsrnamespace: "6",
-    gsrsearch: term,
+    gsrsearch: query,
     gsrlimit: String(limit),
     prop: "imageinfo",
     iiprop: "url",
@@ -237,20 +254,56 @@ async function fetchCommonsImageUrls(search: string, limit = 12): Promise<string
     const resp = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`);
     if (!resp.ok) return [];
     const data = await resp.json();
-    const pages = data?.query?.pages;
-    if (!pages || typeof pages !== "object") return [];
-    const out: string[] = [];
-    for (const page of Object.values(pages) as Array<{
-      title?: string;
-      imageinfo?: Array<{ thumburl?: string; url?: string }>;
-    }>) {
-      const info = page?.imageinfo?.[0];
-      addUniquePhotoUrl(out, info?.thumburl || info?.url, page?.title);
-    }
-    return out;
+    return commonsPagesToUrls(data?.query?.pages);
   } catch {
     return [];
   }
+}
+
+/** Commons-Bilder in der Nähe der Stopp-Koordinaten. */
+async function fetchCommonsImagesNear(
+  lat: number,
+  lng: number,
+  radiusM = 10_000,
+  limit = 20,
+): Promise<string[]> {
+  const params = new URLSearchParams({
+    action: "query",
+    format: "json",
+    origin: "*",
+    generator: "geosearch",
+    ggscoord: `${lat}|${lng}`,
+    ggsradius: String(Math.min(10_000, Math.max(500, radiusM))),
+    ggsnamespace: "6",
+    ggslimit: String(limit),
+    prop: "imageinfo",
+    iiprop: "url",
+    iiurlwidth: "1200",
+  });
+  try {
+    const resp = await fetch(`https://commons.wikimedia.org/w/api.php?${params}`);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return commonsPagesToUrls(data?.query?.pages);
+  } catch {
+    return [];
+  }
+}
+
+function photoSearchTerms(pageTitle: string, placeName: string): string[] {
+  const terms: string[] = [];
+  const push = (v: string) => {
+    const t = v.trim();
+    if (!t || terms.some((x) => normalizeWikiKey(x) === normalizeWikiKey(t))) return;
+    terms.push(t);
+  };
+  const titleShort = pageTitle.split(/[,(]/)[0]?.trim() || "";
+  const nameShort = placeName.split(/[,(]/)[0]?.trim() || "";
+  push(titleShort);
+  push(nameShort);
+  push(pageTitle);
+  push(placeName);
+  return terms;
 }
 
 async function buildStopPhotoPool(
@@ -265,6 +318,38 @@ async function buildStopPhotoPool(
     addUniquePhotoUrl(pool, summary?.photo);
     for (const t of thumbs) addUniquePhotoUrl(pool, t);
   }
+  return pool;
+}
+
+/** Füllt den Pool mit Commons-Suche (+ optional Geosearch), bis Zielgrösse erreicht. */
+async function enrichPhotoPoolWithCommons(
+  pool: string[],
+  opts: {
+    pageTitle: string;
+    placeName: string;
+    lat?: number;
+    lng?: number;
+    target?: number;
+  },
+): Promise<string[]> {
+  const target = opts.target ?? PHOTO_POOL_TARGET;
+  if (pool.length >= target) return pool;
+
+  for (const term of photoSearchTerms(opts.pageTitle, opts.placeName)) {
+    if (pool.length >= target) break;
+    const commons = await fetchCommonsImageUrls(term, 20);
+    for (const url of commons) addUniquePhotoUrl(pool, url);
+  }
+
+  if (
+    pool.length < target &&
+    typeof opts.lat === "number" &&
+    typeof opts.lng === "number"
+  ) {
+    const near = await fetchCommonsImagesNear(opts.lat, opts.lng, 10_000, 24);
+    for (const url of near) addUniquePhotoUrl(pool, url);
+  }
+
   return pool;
 }
 
@@ -695,6 +780,18 @@ async function resolveBriefFromProject(input: {
     const other: WikiMediaProject = project === "wikivoyage" ? "wikipedia" : "wikivoyage";
     photoUrl = await resolvePhotoForTitle(pageTitle, locale, wikiFallback, other);
   }
+  // Letzter Fallback: Commons-Suche / Geosearch.
+  if (!photoUrl) {
+    const commonsPool: string[] = [];
+    await enrichPhotoPoolWithCommons(commonsPool, {
+      pageTitle,
+      placeName: name,
+      lat: coords?.lat,
+      lng: coords?.lng,
+      target: 4,
+    });
+    photoUrl = commonsPool[0];
+  }
 
   return { wikiRaw, photoUrl, pageTitle, project };
 }
@@ -758,7 +855,7 @@ export async function fetchStopBrief(input: {
   };
 }
 
-/** Nur Foto(s) von Wikivoyage/Wikipedia – Text unverändert lassen. */
+/** Fotos aus Wikivoyage/Wikipedia + Commons (Suche & Geosearch). */
 export async function fetchStopBriefPhoto(input: {
   name: string;
   wikipediaTitle?: string;
@@ -799,27 +896,23 @@ export async function fetchStopBriefPhoto(input: {
   }
 
   const pool = await buildStopPhotoPool(pageTitle, locale, wikiFallback);
+  // Commons früh nachladen (nicht erst wenn Wiki-Pool leer ist) → mehr «anderes Bild».
+  if (input.mode === "alternate" || pool.length < PHOTO_POOL_TARGET) {
+    await enrichPhotoPoolWithCommons(pool, {
+      pageTitle,
+      placeName: name,
+      lat: typeof input.lat === "number" ? input.lat : undefined,
+      lng: typeof input.lng === "number" ? input.lng : undefined,
+      target: PHOTO_POOL_TARGET,
+    });
+  }
+
   let picked = pickPhotoFromPool(
     pool,
     input.mode,
     input.currentPhotoUrl,
     input.variantIndex,
   );
-
-  if (input.mode === "alternate" && !picked.photoUrl && input.currentPhotoUrl) {
-    const searchTerm = pageTitle.split(/[,(]/)[0]?.trim() || name;
-    const commons = await fetchCommonsImageUrls(searchTerm, 15);
-    const currentKey = wikiImageDedupeKey(input.currentPhotoUrl);
-    for (const url of commons) {
-      if (wikiImageDedupeKey(url) === currentKey) continue;
-      const idx = pool.length;
-      return {
-        photoUrl: url,
-        wikipediaTitle: pageTitle,
-        variantIndex: idx,
-      };
-    }
-  }
 
   if (!picked.photoUrl && pool.length > 0) {
     picked = { photoUrl: pool[0], variantIndex: 0 };
