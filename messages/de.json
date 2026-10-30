@@ -622,7 +622,7 @@
     "localFileSavedShare": "Im Teilen-Fenster «In Dateien sichern» wählen ({name}) – dort den Speicherort festlegen.",
     "localFileShareFailed": "Teilen fehlgeschlagen – erneut «Datei speichern» oder Chrome/Edge nutzen.",
     "localFileShareUnsupported": "Ordnerwahl in Safari nur über Teilen. Sonst Chrome/Edge – oder Safari → Einstellungen → Allgemein → Download-Speicherort «Jedes Mal nachfragen».",
-    "localFileSavedDownloadSafari": "Speichern gestartet ({name}). Wenn kein Dialog kam: Safari neu laden und erneut versuchen. Mit «Für jeden Download fragen» solltest du den Ordner wählen können.",
+    "localFileSavedDownloadSafari": "Speichern gestartet ({name}). Es sollte der Safari-Dialog für den Speicherort erscheinen (nicht das Teilen-Menü). Optional: Einstellung «„Sichere“ Dateien nach dem Download öffnen» ausschalten.",
     "localFilePickerFailedInline": "Speichern fehlgeschlagen – «Datei speichern» erneut versuchen.",
     "localFileUnlinkTitle": "Verknüpfung zur Datei lösen (Browser-Speicher bleibt)",
     "localFileUnlink": "Verknüpfung lösen",

@@ -54,11 +54,16 @@ export function parseTripFileContents(text: string): Trip {
 export function downloadTripFile(trip: Trip, fileName?: string): void {
   if (typeof window === "undefined") return;
   const name = fileName || suggestTripFileName(trip);
-  const blob = new Blob([buildTripFileContents(trip)], { type: TRIP_FILE_MIME });
+  // octet-stream: Safari öffnet JSON sonst als «sichere» Textdatei → Teilen-Sheet statt Speicherort.
+  const blob = new Blob([buildTripFileContents(trip)], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 2500);
 }
