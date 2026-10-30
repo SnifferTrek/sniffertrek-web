@@ -5,14 +5,20 @@ import { useTranslations } from "next-intl";
 import { FileDown, FolderOpen, Link2, Unlink, X, Check, ChevronDown } from "lucide-react";
 import type { Trip } from "@/lib/types";
 import {
+  disableSafariSaveHintForever,
   getTripFileLinkMeta,
+  isLinkedFileAutoSaveReliable,
   isSafariBrowser,
+  markSafariSaveHintShown,
+  saveTripToFile,
+  SAFARI_SAVE_HINT_INTERVAL_MS,
+  shouldShowSafariSaveHint,
   tripLocalFileSession,
   type TripFileLinkState,
 } from "@/lib/tripLocalFileAccess";
-import { downloadTripFile } from "@/lib/tripLocalFileDocument";
 
 const BANNER_DISMISS_PREFIX = "sniffertrek_file_banner_dismiss:";
+const TOAST_AUTO_HIDE_MS = 8000;
 
 type Props = {
   trip: Trip;
@@ -26,6 +32,8 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   const [bannerOpen, setBannerOpen] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [safariHintOpen, setSafariHintOpen] = useState(false);
   const lastTripIdRef = useRef(trip.id);
   const autoRestoreTried = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -77,6 +85,28 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [menuOpen]);
 
+  const openSafariHintIfDue = useCallback(() => {
+    if (linkState.status === "linked" || !isSafariBrowser()) return;
+    if (!shouldShowSafariSaveHint()) return;
+    markSafariSaveHintShown();
+    setSafariHintOpen(true);
+  }, [linkState.status]);
+
+  useEffect(() => {
+    if (!isSafariBrowser()) return;
+    openSafariHintIfDue();
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") openSafariHintIfDue();
+    }, SAFARI_SAVE_HINT_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [openSafariHintIfDue]);
+
+  useEffect(() => {
+    if (!saveToast) return;
+    const id = window.setTimeout(() => setSaveToast(null), TOAST_AUTO_HIDE_MS);
+    return () => window.clearTimeout(id);
+  }, [saveToast]);
+
   const dismissBanner = () => {
     localStorage.setItem(BANNER_DISMISS_PREFIX + trip.id, "1");
     setBannerOpen(false);
@@ -84,26 +114,29 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
 
   const closeMenu = () => setMenuOpen(false);
 
-  const handleSaveAs = async () => {
-    if (linkState.status === "needs_reconnect") {
+  const showSaveFeedback = (result: Awaited<ReturnType<typeof saveTripToFile>>) => {
+    if (result.outcome === "linked" && result.linkState.status === "linked") {
+      setSaveToast(t("localFileSavedLinked", { name: result.linkState.fileName }));
+      setBannerOpen(false);
+    } else if (result.outcome === "download") {
+      setSaveToast(t("localFileSavedDownload", { name: result.fileName ?? "" }));
+      setBannerOpen(false);
+    } else if (result.outcome === "failed") {
+      setSaveToast(t("localFileSaveFailed"));
+    }
+  };
+
+  const handleSaveToFile = async () => {
+    if (linkState.status === "needs_reconnect" && isLinkedFileAutoSaveReliable()) {
       await handleReconnect();
       return;
     }
     setFileBusy(true);
     try {
       onFileWriteAfterBrowserSave();
-      const state = await tripLocalFileSession.linkSaveAs(trip);
-      setLinkState(state);
-      if (state.status === "picker_failed") {
-        if (isSafariBrowser()) {
-          handleDownloadBackup();
-          window.alert(t("localFileSafariBackupDone"));
-        } else {
-          window.alert(t("localFilePickerFailed"));
-        }
-      } else {
-        setBannerOpen(false);
-      }
+      const result = await saveTripToFile(trip);
+      setLinkState(result.linkState);
+      showSaveFeedback(result);
     } finally {
       setFileBusy(false);
     }
@@ -146,11 +179,6 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
     }
   };
 
-  const handleDownloadBackup = () => {
-    onFileWriteAfterBrowserSave();
-    downloadTripFile(trip);
-  };
-
   const handleUnlink = async () => {
     await tripLocalFileSession.unlink(trip.id);
     setLinkState({ status: "none" });
@@ -168,20 +196,13 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       : getTripFileLinkMeta(trip.id)?.fileName ?? suggestFallbackName(trip);
 
   const showIntroBanner = bannerOpen && linkState.status === "none";
-
-  const showSafariHint =
-    isSafariBrowser() && linkState.status !== "linked";
-
-  const introText = showIntroBanner
-    ? isSafariBrowser()
-      ? t("localFileBannerShortSafari")
-      : t("localFileBannerShort")
-    : null;
+  const showRelinkActions = isLinkedFileAutoSaveReliable();
 
   const menuItemClass =
     "flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 text-left";
 
   return (
+    <>
       <div
         className={`border-b px-4 py-2.5 ${
           showIntroBanner ? "bg-amber-50 border-amber-200" : "bg-gray-50/90 border-gray-200"
@@ -190,7 +211,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
         <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-x-4 gap-y-2 justify-between">
           <div className="min-w-0 flex-1 text-sm leading-snug">
             {showIntroBanner && (
-              <p className="text-sm text-amber-950 leading-relaxed">{introText}</p>
+              <p className="text-sm text-amber-950 leading-relaxed">{t("localFileBannerShort")}</p>
             )}
             {linkState.status === "linked" && (
               <p className="flex flex-wrap items-center gap-2 text-gray-600">
@@ -203,7 +224,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
                 </span>
               </p>
             )}
-            {linkState.status === "needs_reconnect" && (
+            {linkState.status === "needs_reconnect" && showRelinkActions && (
               <p className="text-amber-900 text-xs sm:text-sm">
                 {t("localFileReconnectSteps", { name: fileNameForHint })}
               </p>
@@ -211,122 +232,156 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
             {linkState.status === "write_failed" && (
               <p className="text-red-700 text-sm">{t("localFileWriteFailed")}</p>
             )}
-            {linkState.status === "picker_failed" && (
-              <p className="text-amber-800 text-sm">{t("localFilePickerFailedInline")}</p>
-            )}
-            {showSafariHint && linkState.status === "none" && !showIntroBanner && (
-              <p className="text-xs text-gray-500">{t("localFileSafariHint")}</p>
-            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {showIntroBanner && (
-            <button
-              type="button"
-              onClick={dismissBanner}
-              className="inline-flex items-center gap-1 text-sm text-amber-800 hover:text-amber-950 px-2 py-2"
-            >
-              <X className="w-4 h-4" />
-              {t("localFileBannerDismiss")}
-            </button>
-          )}
-          <div className="relative shrink-0" ref={menuRef}>
-            <button
-              type="button"
-              disabled={fileBusy}
-              onClick={() => setMenuOpen((o) => !o)}
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-            >
-              <FileDown className="w-4 h-4 text-gray-600 shrink-0" aria-hidden />
-              {t("localFileSaveMenu")}
-              <ChevronDown className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
-            </button>
-
-            {menuOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 top-full z-50 mt-1.5 min-w-[15rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+            {showIntroBanner && (
+              <button
+                type="button"
+                onClick={dismissBanner}
+                className="inline-flex items-center gap-1 text-sm text-amber-800 hover:text-amber-950 px-2 py-2"
               >
-                {linkState.status === "needs_reconnect" ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={fileBusy}
-                    className={`${menuItemClass} font-medium text-amber-900 hover:bg-amber-50`}
-                    onClick={() => runMenuAction(handleReconnect)}
-                  >
-                    <Link2 className="w-4 h-4 shrink-0 text-amber-700" />
-                    {t("localFileReconnect")}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={fileBusy}
-                    className={menuItemClass}
-                    onClick={() => runMenuAction(handleSaveAs)}
-                  >
-                    <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
-                    {t("localFileSaveAs")}
-                  </button>
-                )}
-                {linkState.status === "linked" && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    disabled={fileBusy}
-                    className={menuItemClass}
-                    onClick={() => runMenuAction(handleReconnect)}
-                  >
-                    <Link2 className="w-4 h-4 shrink-0 text-gray-500" />
-                    {t("localFileRelink")}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={fileBusy}
-                  className={menuItemClass}
-                  onClick={() => runMenuAction(handleOpen)}
+                <X className="w-4 h-4" />
+                {t("localFileBannerDismiss")}
+              </button>
+            )}
+            <div className="relative shrink-0" ref={menuRef}>
+              <button
+                type="button"
+                disabled={fileBusy}
+                onClick={() => setMenuOpen((o) => !o)}
+                aria-expanded={menuOpen}
+                aria-haspopup="menu"
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+              >
+                <FileDown className="w-4 h-4 text-gray-600 shrink-0" aria-hidden />
+                {t("localFileSaveMenu")}
+                <ChevronDown
+                  className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-1.5 min-w-[15rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
                 >
-                  <FolderOpen className="w-4 h-4 shrink-0 text-gray-500" />
-                  {t("localFileOpen")}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={fileBusy}
-                  className={menuItemClass}
-                  onClick={() => runMenuAction(handleDownloadBackup)}
-                  title={t("localFileDownloadTitle")}
-                >
-                  <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
-                  {t("localFileDownload")}
-                </button>
-                {(linkState.status === "linked" || linkState.status === "needs_reconnect") && (
-                  <>
-                    <div className="my-1 border-t border-gray-100" />
+                  {linkState.status === "needs_reconnect" && showRelinkActions ? (
                     <button
                       type="button"
                       role="menuitem"
                       disabled={fileBusy}
-                      className={`${menuItemClass} text-gray-600`}
-                      onClick={() => runMenuAction(handleUnlink)}
-                      title={t("localFileUnlinkTitle")}
+                      className={`${menuItemClass} font-medium text-amber-900 hover:bg-amber-50`}
+                      onClick={() => runMenuAction(handleReconnect)}
                     >
-                      <Unlink className="w-4 h-4 shrink-0" />
-                      {t("localFileUnlink")}
+                      <Link2 className="w-4 h-4 shrink-0 text-amber-700" />
+                      {t("localFileReconnect")}
                     </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+                  ) : (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={fileBusy}
+                      className={menuItemClass}
+                      onClick={() => runMenuAction(handleSaveToFile)}
+                    >
+                      <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
+                      {t("localFileSaveAs")}
+                    </button>
+                  )}
+                  {linkState.status === "linked" && showRelinkActions && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={fileBusy}
+                      className={menuItemClass}
+                      onClick={() => runMenuAction(handleReconnect)}
+                    >
+                      <Link2 className="w-4 h-4 shrink-0 text-gray-500" />
+                      {t("localFileRelink")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={fileBusy}
+                    className={menuItemClass}
+                    onClick={() => runMenuAction(handleOpen)}
+                  >
+                    <FolderOpen className="w-4 h-4 shrink-0 text-gray-500" />
+                    {t("localFileOpen")}
+                  </button>
+                  {(linkState.status === "linked" || linkState.status === "needs_reconnect") && showRelinkActions && (
+                    <>
+                      <div className="my-1 border-t border-gray-100" />
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={fileBusy}
+                        className={`${menuItemClass} text-gray-600`}
+                        onClick={() => runMenuAction(handleUnlink)}
+                        title={t("localFileUnlinkTitle")}
+                      >
+                        <Unlink className="w-4 h-4 shrink-0" />
+                        {t("localFileUnlink")}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {safariHintOpen && (
+        <div
+          role="status"
+          className="fixed bottom-6 left-4 right-4 z-[100] mx-auto max-w-lg rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 shadow-lg sm:left-auto sm:right-6"
+        >
+          <div className="flex gap-3 items-start">
+            <p className="text-sm text-amber-950 leading-relaxed flex-1">{t("localFileSafariToast")}</p>
+            <button
+              type="button"
+              onClick={() => setSafariHintOpen(false)}
+              className="shrink-0 p-1 text-amber-800 hover:text-amber-950"
+              aria-label={t("localFileSafariToastClose")}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              disableSafariSaveHintForever();
+              setSafariHintOpen(false);
+            }}
+            className="mt-2 text-xs font-medium text-amber-800 hover:text-amber-950 underline"
+          >
+            {t("localFileSafariToastDismissForever")}
+          </button>
+        </div>
+      )}
+
+      {saveToast && (
+        <div
+          role="status"
+          className="fixed bottom-6 left-4 right-4 z-[100] mx-auto max-w-lg rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 shadow-lg sm:left-auto sm:right-6"
+        >
+          <div className="flex gap-3 items-start">
+            <p className="flex-1 leading-relaxed">{saveToast}</p>
+            <button
+              type="button"
+              onClick={() => setSaveToast(null)}
+              className="shrink-0 p-1 text-gray-500 hover:text-gray-800"
+              aria-label={t("localFileSafariToastClose")}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

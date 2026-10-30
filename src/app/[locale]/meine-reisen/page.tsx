@@ -31,7 +31,7 @@ import {
 } from "@/lib/tripStorage";
 import { useAuth } from "@/components/AuthProvider";
 import { deleteTripFromCloud } from "@/lib/cloudSync";
-import { getTripFileLinkMeta, tripLocalFileSession } from "@/lib/tripLocalFileAccess";
+import { getTripFileLinkMeta, saveTripToFile, tripLocalFileSession } from "@/lib/tripLocalFileAccess";
 
 const modeIcons: Record<TravelMode, typeof Car> = {
   auto: Car,
@@ -84,8 +84,8 @@ export default function MeineReisenPage() {
       const trip = loadTripHydrated(tripId);
       if (!trip) return;
       saveTrip(trip);
-      const state = await tripLocalFileSession.linkSaveAs(trip);
-      if (state.status === "picker_failed") {
+      const result = await saveTripToFile(trip);
+      if (result.outcome === "failed") {
         window.alert(t("saveFileFailed"));
       }
       refreshTrips();

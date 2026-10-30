@@ -1,5 +1,6 @@
 import {
   buildTripFileContents,
+  downloadTripFile,
   parseTripFileContents,
   suggestTripFileName,
   TRIP_FILE_EXTENSION,
@@ -62,6 +63,63 @@ export function isSafariBrowser(): boolean {
 
 export function isLinkedFileAutoSaveReliable(): boolean {
   return isFileSystemAccessSupported() && !isSafariBrowser();
+}
+
+const SAFARI_HINT_LAST_KEY = "sniffertrek_safari_save_hint_last";
+const SAFARI_HINT_OFF_KEY = "sniffertrek_safari_save_hint_off";
+export const SAFARI_SAVE_HINT_INTERVAL_MS = 5 * 60 * 1000;
+
+export function isSafariSaveHintDisabled(): boolean {
+  if (typeof window === "undefined") return true;
+  return localStorage.getItem(SAFARI_HINT_OFF_KEY) === "1";
+}
+
+export function disableSafariSaveHintForever(): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(SAFARI_HINT_OFF_KEY, "1");
+}
+
+export function shouldShowSafariSaveHint(): boolean {
+  if (typeof window === "undefined" || !isSafariBrowser() || isSafariSaveHintDisabled()) return false;
+  const last = Number(localStorage.getItem(SAFARI_HINT_LAST_KEY) || 0);
+  return Date.now() - last >= SAFARI_SAVE_HINT_INTERVAL_MS;
+}
+
+export function markSafariSaveHintShown(): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(SAFARI_HINT_LAST_KEY, String(Date.now()));
+}
+
+export type SaveTripToFileResult = {
+  linkState: TripFileLinkState;
+  outcome: "linked" | "download" | "cancelled" | "failed";
+  fileName?: string;
+};
+
+/** Ein Einstieg «Datei speichern»: Chrome/Edge verknüpft Datei, Safari/Fallback = Download. */
+export async function saveTripToFile(
+  trip: Trip,
+  session: TripLocalFileSession = tripLocalFileSession
+): Promise<SaveTripToFileResult> {
+  const suggested = suggestTripFileName(trip);
+
+  if (isSafariBrowser()) {
+    downloadTripFile(trip, suggested);
+    return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
+  }
+
+  const state = await session.linkSaveAs(trip);
+  if (state.status === "linked") {
+    return { linkState: state, outcome: "linked", fileName: state.fileName };
+  }
+  if (state.status === "picker_failed") {
+    downloadTripFile(trip, suggested);
+    return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
+  }
+  if (state.status === "none") {
+    return { linkState: state, outcome: "cancelled" };
+  }
+  return { linkState: state, outcome: "failed" };
 }
 
 /** Safari bricht oft bei strikten custom types ab – zuerst ohne, dann mit .json. */
@@ -310,7 +368,7 @@ export class TripLocalFileSession {
       let fileName = "";
       let handle: FileSystemFileHandle | null = null;
 
-      if (isFileSystemAccessSupported()) {
+      if (isFileSystemAccessSupported() && !isSafariBrowser()) {
         const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_JSON });
         handle = handles[0];
         const file = await handle.getFile();
