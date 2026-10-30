@@ -3034,17 +3034,24 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       const x = M + col * colW;
       const ly = y + line * legendRowH;
       const rgb = hexToRgb(row.color) || [100, 100, 100];
+      const cx = x + 6;
+      const cy = ly - 3;
+      const wide = row.label.length > 1;
+      const radius = wide ? 5.4 : 4.5;
+      const labelSize = wide ? 5.5 : 7;
       doc.setFillColor(rgb[0], rgb[1], rgb[2]);
-      doc.circle(x + 5, ly - 2.5, 4.2, "F");
+      doc.circle(cx, cy, radius, "F");
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(7);
+      doc.setFontSize(labelSize);
       setColor(doc, [255, 255, 255]);
-      doc.text(row.label, x + 5, ly - 1, { align: "center" });
+      // Explicit width centering — jsPDF align:"center" drifts on multi-digit labels.
+      const labelW = doc.getTextWidth(row.label);
+      doc.text(row.label, cx - labelW / 2, cy + labelSize * 0.35);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       setColor(doc, INK);
-      const name = doc.splitTextToSize(row.name, colW - 18)[0] || row.name;
-      doc.text(name, x + 14, ly);
+      const name = doc.splitTextToSize(row.name, colW - 20)[0] || row.name;
+      doc.text(name, x + 16, ly);
     });
   }
   }
