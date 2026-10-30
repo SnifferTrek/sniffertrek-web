@@ -234,10 +234,27 @@ export class TripLocalFileSession {
   }
 
   async reconnectOpen(tripId: string): Promise<TripFileLinkState | null> {
+    const restored = await this.tryRestoreLinkedFile(tripId);
+    if (restored) return restored;
+
     if (!isFileSystemAccessSupported()) return null;
     try {
-      const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_JSON });
-      const handle = handles[0];
+      let handle: FileSystemFileHandle | undefined;
+      const attempts = [
+        () => window.showOpenFilePicker!({ multiple: false }),
+        () => window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_JSON }),
+      ];
+      for (const attempt of attempts) {
+        try {
+          const handles = await attempt();
+          handle = handles[0];
+          break;
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return null;
+        }
+      }
+      if (!handle) return null;
+
       const file = await handle.getFile();
       const text = await file.text();
       const trip = parseTripFileContents(text);
@@ -260,6 +277,20 @@ export class TripLocalFileSession {
       console.warn("[TripLocalFileSession] reconnect failed", err);
       return null;
     }
+  }
+
+  /** Nach Tab-Neustart: oft reicht Berechtigung ohne Datei-Dialog (Chrome/Edge). */
+  async tryRestoreLinkedFile(tripId: string): Promise<TripFileLinkState | null> {
+    const meta = getTripFileLinkMeta(tripId);
+    if (!meta) return null;
+    const stored = await idbGetHandle(tripId);
+    if (!stored?.handle) return null;
+    const ok = await ensureWritePermission(stored.handle);
+    if (!ok) return null;
+    this.tripId = tripId;
+    this.handle = stored.handle;
+    this.fileName = meta.fileName;
+    return { status: "linked", fileName: meta.fileName };
   }
 
   async openFileAsNewTrip(): Promise<Trip | null> {

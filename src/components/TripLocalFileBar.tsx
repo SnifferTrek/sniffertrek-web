@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { FileDown, FolderOpen, Link2, Unlink, X, AlertCircle, Check } from "lucide-react";
 import type { Trip } from "@/lib/types";
 import {
+  getTripFileLinkMeta,
   isFileSystemAccessSupported,
   tripLocalFileSession,
   type TripFileLinkState,
@@ -12,6 +13,9 @@ import {
 import { downloadTripFile } from "@/lib/tripLocalFileDocument";
 
 const BANNER_DISMISS_PREFIX = "sniffertrek_file_banner_dismiss:";
+
+const fileBtn =
+  "inline-flex items-center justify-center gap-2 rounded-xl border px-3 sm:px-4 py-2.5 min-h-[2.75rem] text-sm font-medium leading-normal whitespace-normal text-center disabled:opacity-50";
 
 type Props = {
   trip: Trip;
@@ -25,6 +29,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   const [bannerOpen, setBannerOpen] = useState(false);
   const [fileBusy, setFileBusy] = useState(false);
   const lastTripIdRef = useRef(trip.id);
+  const autoRestoreTried = useRef(false);
 
   const refreshState = useCallback(async () => {
     const state = await tripLocalFileSession.resolveLinkState(trip.id);
@@ -40,9 +45,18 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   useEffect(() => {
     if (lastTripIdRef.current !== trip.id) {
       lastTripIdRef.current = trip.id;
+      autoRestoreTried.current = false;
     }
     void refreshState();
   }, [trip.id, refreshState]);
+
+  useEffect(() => {
+    if (linkState.status !== "needs_reconnect" || autoRestoreTried.current) return;
+    autoRestoreTried.current = true;
+    void tripLocalFileSession.tryRestoreLinkedFile(trip.id).then((restored) => {
+      if (restored) setLinkState(restored);
+    });
+  }, [linkState.status, trip.id]);
 
   useEffect(() => {
     if (linkState.status !== "linked") return;
@@ -59,6 +73,10 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   };
 
   const handleSaveAs = async () => {
+    if (linkState.status === "needs_reconnect") {
+      await handleReconnect();
+      return;
+    }
     setFileBusy(true);
     try {
       onFileWriteAfterBrowserSave();
@@ -93,6 +111,13 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   const handleReconnect = async () => {
     setFileBusy(true);
     try {
+      onFileWriteAfterBrowserSave();
+      const restored = await tripLocalFileSession.tryRestoreLinkedFile(trip.id);
+      if (restored) {
+        await tripLocalFileSession.flushWrite(trip);
+        setLinkState(restored);
+        return;
+      }
       const state = await tripLocalFileSession.reconnectOpen(trip.id);
       if (state) {
         setLinkState(state);
@@ -115,28 +140,34 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
     setBannerOpen(true);
   };
 
-  const fsaHint = !isFileSystemAccessSupported() ? t("localFileSafariHint") : null;
+  const fileNameForHint =
+    linkState.status === "needs_reconnect" || linkState.status === "linked"
+      ? linkState.fileName
+      : getTripFileLinkMeta(trip.id)?.fileName ?? suggestFallbackName(trip);
+
+  const showSafariHint =
+    !isFileSystemAccessSupported() && linkState.status !== "linked";
 
   return (
     <>
-      {bannerOpen && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-            <p className="text-sm text-amber-950">{t("localFileBanner")}</p>
-            <div className="flex flex-wrap items-center gap-2">
+      {bannerOpen && linkState.status === "none" && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 overflow-visible">
+          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+            <p className="text-sm text-amber-950 leading-relaxed">{t("localFileBannerShort")}</p>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
               <button
                 type="button"
                 disabled={fileBusy}
                 onClick={() => void handleSaveAs()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 text-white px-3 py-1.5 text-sm font-medium hover:bg-amber-700 disabled:opacity-50"
+                className={`${fileBtn} bg-amber-600 text-white border-amber-700 hover:bg-amber-700`}
               >
-                <FileDown className="w-4 h-4" />
+                <FileDown className="w-4 h-4 shrink-0" aria-hidden />
                 {t("localFileSaveAs")}
               </button>
               <button
                 type="button"
                 onClick={dismissBanner}
-                className="inline-flex items-center gap-1 text-sm text-amber-800 hover:text-amber-950"
+                className="inline-flex items-center gap-1 text-sm text-amber-800 hover:text-amber-950 px-2 py-2"
               >
                 <X className="w-4 h-4" />
                 {t("localFileBannerDismiss")}
@@ -146,12 +177,12 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
         </div>
       )}
 
-      <div className="bg-slate-800 border-b border-slate-600/80 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex flex-col gap-3">
-          <div className="min-w-0 text-sm text-slate-100 leading-snug">
+      <div className="bg-slate-800 border-b border-slate-600/80 px-4 py-3 overflow-visible">
+        <div className="max-w-7xl mx-auto flex flex-col gap-3 overflow-visible">
+          <div className="min-w-0 text-sm text-slate-100 leading-relaxed">
             {linkState.status === "linked" && (
               <p className="flex flex-wrap items-start gap-2">
-                <span className="inline-flex shrink-0 items-center gap-1 text-green-200 bg-green-500/20 px-2 py-0.5 rounded-md text-xs font-medium">
+                <span className="inline-flex shrink-0 items-center gap-1 text-green-200 bg-green-500/20 px-2.5 py-1 rounded-md text-xs font-medium">
                   <Check className="w-3.5 h-3.5" />
                   {t("localFileLinkedShort")}
                 </span>
@@ -161,15 +192,12 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
               </p>
             )}
             {linkState.status === "needs_reconnect" && (
-              <p className="space-y-1">
-                <span className="inline-flex items-center gap-1 text-amber-100 bg-amber-500/25 px-2 py-0.5 rounded-md text-xs font-medium">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  {t("localFileNeedsReconnectShort")}
-                </span>
-                <span className="block break-all font-medium text-amber-50" title={linkState.fileName}>
-                  {linkState.fileName}
-                </span>
-              </p>
+              <div className="space-y-2 rounded-lg bg-amber-500/15 border border-amber-400/30 px-3 py-2.5">
+                <p className="font-medium text-amber-50">{t("localFileReconnectTitle")}</p>
+                <p className="text-amber-100/95 text-xs sm:text-sm leading-relaxed">
+                  {t("localFileReconnectSteps", { name: fileNameForHint })}
+                </p>
+              </div>
             )}
             {linkState.status === "write_failed" && (
               <p className="text-red-100">{t("localFileWriteFailed")}</p>
@@ -180,46 +208,57 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
             {linkState.status === "none" && (
               <p className="text-slate-300">{t("localFileNotLinked")}</p>
             )}
-            {fsaHint && <p className="mt-1 text-xs text-slate-400">{fsaHint}</p>}
+            {showSafariHint && (
+              <p className="mt-2 text-xs text-slate-400 leading-relaxed">{t("localFileSafariHint")}</p>
+            )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-stretch gap-2 overflow-visible">
             <button
               type="button"
               disabled={fileBusy}
               onClick={() => void handleSaveAs()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white px-3 py-1.5 text-xs font-medium border border-white/15 disabled:opacity-50"
+              className={`${fileBtn} ${
+                linkState.status === "needs_reconnect"
+                  ? "bg-amber-500 hover:bg-amber-400 text-white border-amber-600"
+                  : "bg-white/10 hover:bg-white/15 text-white border-white/20"
+              }`}
             >
-              <FileDown className="w-3.5 h-3.5" />
-              {t("localFileSaveAs")}
+              {linkState.status === "needs_reconnect" ? (
+                <Link2 className="w-4 h-4 shrink-0" aria-hidden />
+              ) : (
+                <FileDown className="w-4 h-4 shrink-0" aria-hidden />
+              )}
+              {linkState.status === "needs_reconnect" ? t("localFileReconnect") : t("localFileSaveAs")}
             </button>
-            <button
-              type="button"
-              disabled={fileBusy}
-              onClick={() => void handleOpen()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white px-3 py-1.5 text-xs font-medium border border-white/15 disabled:opacity-50"
-            >
-              <FolderOpen className="w-3.5 h-3.5" />
-              {t("localFileOpen")}
-            </button>
-            {linkState.status === "needs_reconnect" && (
+            {linkState.status === "linked" && (
               <button
                 type="button"
                 disabled={fileBusy}
                 onClick={() => void handleReconnect()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/90 hover:bg-amber-500 text-white px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                className={`${fileBtn} bg-white/10 hover:bg-white/15 text-white border-white/20`}
+                title={t("localFileReconnectTitle")}
               >
-                <Link2 className="w-3.5 h-3.5" />
-                {t("localFileReconnect")}
+                <Link2 className="w-4 h-4 shrink-0" aria-hidden />
+                {t("localFileRelink")}
               </button>
             )}
             <button
               type="button"
               disabled={fileBusy}
+              onClick={() => void handleOpen()}
+              className={`${fileBtn} bg-white/10 hover:bg-white/15 text-white border-white/20`}
+            >
+              <FolderOpen className="w-4 h-4 shrink-0" aria-hidden />
+              {t("localFileOpen")}
+            </button>
+            <button
+              type="button"
+              disabled={fileBusy}
               onClick={handleDownloadBackup}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white px-3 py-1.5 text-xs font-medium border border-white/15 disabled:opacity-50"
+              className={`${fileBtn} bg-white/10 hover:bg-white/15 text-white border-white/20`}
               title={t("localFileDownloadTitle")}
             >
-              <FileDown className="w-3.5 h-3.5" />
+              <FileDown className="w-4 h-4 shrink-0" aria-hidden />
               {t("localFileDownload")}
             </button>
             {(linkState.status === "linked" || linkState.status === "needs_reconnect") && (
@@ -227,10 +266,10 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
                 type="button"
                 disabled={fileBusy}
                 onClick={() => void handleUnlink()}
-                className="inline-flex items-center gap-1.5 rounded-lg text-slate-400 hover:text-white px-2 py-1.5 text-xs"
+                className="inline-flex items-center justify-center min-h-[2.75rem] px-3 rounded-xl text-slate-400 hover:text-white hover:bg-white/10"
                 title={t("localFileUnlinkTitle")}
               >
-                <Unlink className="w-3.5 h-3.5" />
+                <Unlink className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -238,4 +277,9 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       </div>
     </>
   );
+}
+
+function suggestFallbackName(trip: Trip): string {
+  const base = trip.name && trip.name !== "Neue Reise" ? trip.name : "SnifferTrek-Reise";
+  return `${base}.sniffertrek.json`;
 }
