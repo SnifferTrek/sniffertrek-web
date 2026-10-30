@@ -3028,6 +3028,20 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     y += 16;
 
     const colW = CONTENT_W / legendCols;
+    const drawFlowArrow = (ax: number, ay: number, kind: "right" | "wrap") => {
+      doc.setDrawColor(GRAY[0], GRAY[1], GRAY[2]);
+      doc.setFillColor(GRAY[0], GRAY[1], GRAY[2]);
+      doc.setLineWidth(0.7);
+      if (kind === "right") {
+        doc.line(ax - 3.5, ay, ax + 2.5, ay);
+        doc.triangle(ax + 2.5, ay, ax + 0.2, ay - 1.8, ax + 0.2, ay + 1.8, "F");
+      } else {
+        // End of row → next row: down then right hint
+        doc.line(ax - 1, ay - 3, ax - 1, ay + 2);
+        doc.line(ax - 1, ay + 2, ax + 3, ay + 2);
+        doc.triangle(ax + 3, ay + 2, ax + 0.8, ay + 0.4, ax + 0.8, ay + 3.6, "F");
+      }
+    };
     legendRows.forEach((row, idx) => {
       const col = idx % legendCols;
       const line = Math.floor(idx / legendCols);
@@ -3050,8 +3064,12 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       setColor(doc, INK);
-      const name = doc.splitTextToSize(row.name, colW - 20)[0] || row.name;
+      const name = doc.splitTextToSize(row.name, colW - 22)[0] || row.name;
       doc.text(name, x + 16, ly);
+      if (idx < legendRows.length - 1) {
+        const atRowEnd = col === legendCols - 1;
+        drawFlowArrow(x + colW - (atRowEnd ? 5 : 3), cy, atRowEnd ? "wrap" : "right");
+      }
     });
   }
   }
