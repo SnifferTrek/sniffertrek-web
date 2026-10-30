@@ -2978,7 +2978,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     color: markerColorForStop(s, i, legendStops.length),
     name: extractCity(s.name) || s.name.trim(),
   }));
-  const legendCols = Math.min(5, Math.max(1, legendRows.length));
+  const legendCols = Math.min(6, Math.max(1, legendRows.length));
   const legendRowH = 16;
   const legendLines = Math.ceil(legendRows.length / legendCols);
   const legendBlockH = legendRows.length > 0 ? 18 + legendLines * legendRowH : 0;
@@ -3019,7 +3019,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     y += 44;
   }
 
-  // Stop legend — up to 5 columns
+  // Stop legend — up to 6 columns
   if (legendRows.length > 0) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
