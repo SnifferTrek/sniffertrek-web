@@ -53,6 +53,12 @@ export function parseTripFileContents(text: string): Trip {
 
 export function downloadTripFile(trip: Trip, fileName?: string): void {
   if (typeof window === "undefined") return;
+  const ua = navigator.userAgent;
+  const safari = /Safari/i.test(ua) && !/Chrom|Edg|CriOS|FxiOS|OPR/i.test(ua);
+  if (safari) {
+    console.warn("[downloadTripFile] blocked on Safari – use showSaveFilePicker");
+    return;
+  }
   const name = fileName || suggestTripFileName(trip);
   const blob = new Blob([buildTripFileContents(trip)], { type: TRIP_FILE_MIME });
   const url = URL.createObjectURL(blob);

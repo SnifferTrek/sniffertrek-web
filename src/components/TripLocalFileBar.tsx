@@ -8,8 +8,11 @@ import {
   disableSafariSaveHintForever,
   getTripFileLinkMeta,
   isFileSystemAccessSupported,
+  isLinkedFileAutoSaveReliable,
   isSafariBrowser,
   markSafariSaveHintShown,
+  pickSaveFileForTrip,
+  saveTripToChosenHandle,
   saveTripToFile,
   SAFARI_SAVE_HINT_INTERVAL_MS,
   shouldShowSafariSaveHint,
@@ -129,10 +132,16 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
 
   const handleSaveToFile = async () => {
     if (linkState.status === "needs_reconnect") {
+      setMenuOpen(false);
       await handleReconnect();
       return;
     }
-    if (linkState.status === "linked") {
+
+    const useSilentFlush =
+      linkState.status === "linked" && !isSafariBrowser() && isLinkedFileAutoSaveReliable();
+
+    if (useSilentFlush) {
+      setMenuOpen(false);
       setFileBusy(true);
       try {
         onFileWriteAfterBrowserSave();
@@ -148,9 +157,20 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       }
       return;
     }
+
+    const pick = await pickSaveFileForTrip(trip);
+    setMenuOpen(false);
+    if (pick.cancelled) return;
+    if (!pick.handle) {
+      setSaveToast(
+        t(isFileSystemAccessSupported() ? "localFilePickerFailed" : "localFileSafariNoPicker")
+      );
+      return;
+    }
+
     setFileBusy(true);
     try {
-      const result = await saveTripToFile(trip, tripLocalFileSession, onFileWriteAfterBrowserSave);
+      const result = await saveTripToChosenHandle(trip, pick.handle, tripLocalFileSession, onFileWriteAfterBrowserSave);
       setLinkState(result.linkState);
       showSaveFeedback(result);
     } finally {
@@ -299,7 +319,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
                       role="menuitem"
                       disabled={fileBusy}
                       className={menuItemClass}
-                      onClick={() => runMenuAction(handleSaveToFile)}
+                      onClick={() => void handleSaveToFile()}
                     >
                       <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
                       {t("localFileSaveAs")}

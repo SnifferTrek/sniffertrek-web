@@ -96,6 +96,26 @@ export type SaveTripToFileResult = {
   fileName?: string;
 };
 
+export type PickSaveFileResult = { handle: FileSystemFileHandle | null; cancelled: boolean };
+
+/** Sofort aus Klick-Handler aufrufen (Safari: vor setState / Menü schließen). */
+export function pickSaveFileForTrip(trip: Trip): Promise<PickSaveFileResult> {
+  return pickSaveFileHandle(suggestTripFileName(trip));
+}
+
+export async function saveTripToChosenHandle(
+  trip: Trip,
+  handle: FileSystemFileHandle,
+  session: TripLocalFileSession = tripLocalFileSession,
+  beforeWrite?: () => void
+): Promise<SaveTripToFileResult> {
+  const state = await session.linkToSaveHandle(trip, handle, beforeWrite);
+  if (state.status === "linked") {
+    return { linkState: state, outcome: "linked", fileName: state.fileName };
+  }
+  return { linkState: state, outcome: "failed" };
+}
+
 /** Ein Einstieg «Datei speichern»: Systemdialog wenn möglich, Download nur ohne API (nicht Safari). */
 export async function saveTripToFile(
   trip: Trip,
@@ -103,25 +123,19 @@ export async function saveTripToFile(
   beforeWrite?: () => void
 ): Promise<SaveTripToFileResult> {
   const suggested = suggestTripFileName(trip);
-
-  const state = await session.linkSaveAs(trip, beforeWrite);
-  if (state.status === "linked") {
-    return { linkState: state, outcome: "linked", fileName: state.fileName };
+  const pick = await pickSaveFileHandle(suggested);
+  if (pick.cancelled) {
+    return { linkState: { status: "none" }, outcome: "cancelled" };
   }
-  if (state.status === "none") {
-    return { linkState: state, outcome: "cancelled" };
+  if (pick.handle) {
+    return saveTripToChosenHandle(trip, pick.handle, session, beforeWrite);
   }
-  if (state.status === "picker_failed") {
-    if (isSafariBrowser() || isFileSystemAccessSupported()) {
-      return { linkState: state, outcome: "failed" };
-    }
-    downloadTripFile(trip, suggested);
-    return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
+  if (isSafariBrowser() || isFileSystemAccessSupported()) {
+    return { linkState: { status: "picker_failed" }, outcome: "failed" };
   }
-  return { linkState: state, outcome: "failed" };
+  downloadTripFile(trip, suggested);
+  return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
 }
-
-type PickSaveFileResult = { handle: FileSystemFileHandle | null; cancelled: boolean };
 
 /** Safari bricht oft bei strikten custom types ab – zuerst ohne, dann mit .json. */
 async function pickSaveFileHandle(suggestedName: string): Promise<PickSaveFileResult> {
@@ -293,6 +307,16 @@ export class TripLocalFileSession {
       if (!isFileSystemAccessSupported()) return { status: "picker_failed" };
       return { status: "picker_failed" };
     }
+    return this.linkToSaveHandle(trip, handle, beforeWrite);
+  }
+
+  async linkToSaveHandle(
+    trip: Trip,
+    handle: FileSystemFileHandle,
+    beforeWrite?: () => void
+  ): Promise<TripFileLinkState> {
+    this.tripId = trip.id;
+    const suggested = suggestTripFileName(trip);
 
     try {
       const ok = await ensureWritePermission(handle);
@@ -305,7 +329,7 @@ export class TripLocalFileSession {
       await idbPutHandle(trip.id, handle, this.fileName);
       return { status: "linked", fileName: this.fileName };
     } catch (err) {
-      console.warn("[TripLocalFileSession] save picker failed", err);
+      console.warn("[TripLocalFileSession] save to handle failed", err);
       return { status: "picker_failed" };
     }
   }
