@@ -409,16 +409,30 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
               <X className="w-4 h-4" />
             </button>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              disableSafariSaveHintForever();
-              setSafariHintOpen(false);
-            }}
-            className="mt-2 text-xs font-medium text-amber-800 hover:text-amber-950 underline"
-          >
-            {t("localFileSafariToastDismissForever")}
-          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={fileBusy}
+              onClick={() => {
+                setSafariHintOpen(false);
+                handleSaveToFile();
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-semibold text-amber-50 hover:bg-amber-950 disabled:opacity-50"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              {t("localFileSaveAs")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                disableSafariSaveHintForever();
+                setSafariHintOpen(false);
+              }}
+              className="text-xs font-medium text-amber-800 hover:text-amber-950 underline"
+            >
+              {t("localFileSafariToastDismissForever")}
+            </button>
+          </div>
         </div>
       )}
 
