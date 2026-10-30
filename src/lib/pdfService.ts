@@ -2494,7 +2494,7 @@ async function renderPdfPlaceCard(
   onNewPage: () => void,
   tripId?: string,
 ): Promise<number> {
-  if (y > PAGE_H - 150) {
+  if (y > PAGE_H - 280) {
     doc.addPage();
     onNewPage();
     y = M;
@@ -2539,8 +2539,9 @@ async function renderPdfPlaceCard(
   }
   const info = discoveryInfoCache.get(key) || {};
 
-  const photoW = 74;
-  const photoH = 56;
+  // Doppelt so gross wie zuvor (74×56), Seitenverhältnis Hoch-/Querformat beibehalten.
+  const PHOTO_MAX_W = 148;
+  const PHOTO_MAX_H = 168;
   const isMapOrBucketPoi =
     stop.discoverySource === "custom" ||
     stop.discoverySource === "google" ||
@@ -2553,6 +2554,8 @@ async function renderPdfPlaceCard(
 
   let embeddedImage = false;
   let blockH = 0;
+  let photoW = PHOTO_MAX_W;
+  let photoH = Math.round((PHOTO_MAX_W * 56) / 74);
   if (imageUrl) {
     try {
       let img = await loadImageAsDataURL(imageUrl);
@@ -2565,6 +2568,16 @@ async function renderPdfPlaceCard(
             format = "JPEG";
           }
         }
+        try {
+          const props = doc.getImageProperties(img);
+          const natW = Math.max(1, props.width || 1);
+          const natH = Math.max(1, props.height || 1);
+          const scale = Math.min(PHOTO_MAX_W / natW, PHOTO_MAX_H / natH);
+          photoW = Math.max(1, natW * scale);
+          photoH = Math.max(1, natH * scale);
+        } catch {
+          /* Fallback: Querformat-Box 2× */
+        }
         doc.addImage(img, format, M, y, photoW, photoH);
         embeddedImage = true;
         blockH = photoH;
@@ -2574,16 +2587,22 @@ async function renderPdfPlaceCard(
     }
   }
 
-  const textX = embeddedImage ? M + photoW + 10 : M;
-  const textW = embeddedImage ? RIGHT - textX : CONTENT_W;
-  const textLines = buildSentenceExcerpt(doc, rawText, textW, 5);
-  blockH = Math.max(blockH, textLines.length * 10);
+  const textBeside = embeddedImage && photoW <= CONTENT_W * 0.62;
+  const textX = textBeside ? M + photoW + 10 : M;
+  const textW = textBeside ? RIGHT - textX : CONTENT_W;
+  const textY = textBeside ? y : y + blockH + 8;
+  const textLines = buildSentenceExcerpt(doc, rawText, textW, textBeside ? 8 : 6);
+  if (textBeside) {
+    blockH = Math.max(blockH, textLines.length * 10);
+  } else if (textLines.length > 0) {
+    blockH = blockH + 8 + textLines.length * 10;
+  }
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   setColor(doc, BLACK);
   if (textLines.length > 0) {
-    doc.text(textLines, textX, y + 9, { maxWidth: textW, align: "justify" });
+    doc.text(textLines, textX, textY + 9, { maxWidth: textW, align: "justify" });
   } else if (!embeddedImage && blockH < 8) {
     blockH = Math.max(blockH, 8);
   }
