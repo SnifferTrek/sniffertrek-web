@@ -33,6 +33,10 @@ const RED = [255, 59, 48] as const;
 const BLACK = [0, 0, 0] as const;
 const GRAY = [142, 142, 147] as const;
 const LIGHT_GRAY = [210, 210, 210] as const;
+/** Editorial ink for overview-map chapter page */
+const INK = [28, 36, 44] as const;
+const ROUTE_LINE = "#1a4a6b";
+const ROUTE_LINE_HALO = "#ffffff";
 
 function setColor(doc: jsPDF, c: readonly [number, number, number]) {
   doc.setTextColor(c[0], c[1], c[2]);
@@ -1214,7 +1218,9 @@ async function loadMapImage(
   encodedRouteOverride?: string | null,
   markerStops?: RouteStop[],
   hotelLabelByCityKey?: Map<string, string>,
-  useTiledOverview?: boolean
+  useTiledOverview?: boolean,
+  /** Portrait + muted styles for the PDF Gesamtroute chapter page. */
+  asOverviewChapter?: boolean,
 ): Promise<string | null> {
   const isValidCoord = (lat?: number, lng?: number) => {
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
@@ -1287,8 +1293,9 @@ async function loadMapImage(
   // For print/PDF stability we use Google Static Maps as primary source.
   // Tiled/OSM rendering remains available in codebase, but is intentionally
   // disabled here because it introduced mismatched/straight-line artifacts.
-  const STATIC_MAP_W = 640;
-  const STATIC_MAP_H = 500;
+  // Overview chapter: portrait. Etappe maps: landscape (max Static Maps edge 640).
+  const STATIC_MAP_W = asOverviewChapter ? 480 : 640;
+  const STATIC_MAP_H = asOverviewChapter ? 640 : 500;
   const STATIC_MAP_SCALE = 2;
   const viewport = computeStaticMapViewport(
     routePoints.length >= 2
@@ -1298,7 +1305,8 @@ async function loadMapImage(
     STATIC_MAP_H
   );
   if (!viewport) return null;
-  const baseUrl = `https://maps.googleapis.com/maps/api/staticmap?size=${STATIC_MAP_W}x${STATIC_MAP_H}&scale=${STATIC_MAP_SCALE}&maptype=roadmap&center=${encodeURIComponent(`${viewport.centerLat},${viewport.centerLng}`)}&zoom=${viewport.zoom}`;
+  const styleQuery = asOverviewChapter ? buildOverviewMapStyleQuery() : "";
+  const baseUrl = `https://maps.googleapis.com/maps/api/staticmap?size=${STATIC_MAP_W}x${STATIC_MAP_H}&scale=${STATIC_MAP_SCALE}&maptype=roadmap&center=${encodeURIComponent(`${viewport.centerLat},${viewport.centerLng}`)}&zoom=${viewport.zoom}${styleQuery}`;
   const url = `${baseUrl}&key=${apiKey}`;
   const baseDataUrl = await fetchStaticMapDataUrl(url);
   if (!baseDataUrl) return null;
@@ -1325,22 +1333,50 @@ async function loadMapImage(
         y: (w.y - centerWorld.y) * worldScale + canvas.height / 2,
       };
     };
-    ctx.strokeStyle = "#ff0000";
-    ctx.lineWidth = 3;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
-    ctx.beginPath();
-    for (let i = 0; i < routePoints.length; i++) {
-      const pos = toPx(routePoints[i]);
-      if (i === 0) ctx.moveTo(pos.x, pos.y);
-      else ctx.lineTo(pos.x, pos.y);
+    const drawRoute = (color: string, width: number) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      for (let i = 0; i < routePoints.length; i++) {
+        const pos = toPx(routePoints[i]);
+        if (i === 0) ctx.moveTo(pos.x, pos.y);
+        else ctx.lineTo(pos.x, pos.y);
+      }
+      ctx.stroke();
+    };
+    if (asOverviewChapter) {
+      drawRoute(ROUTE_LINE_HALO, 8);
+      drawRoute(ROUTE_LINE, 4.5);
+    } else {
+      drawRoute("#ff0000", 3);
     }
-    ctx.stroke();
     drawNumberedRouteMarkers(ctx, valid, toPx);
     return canvas.toDataURL("image/png", 0.95);
   } catch {
     return baseDataUrl;
   }
+}
+
+/** Calm print-oriented Static Maps styling — route & markers stay the focus. */
+function buildOverviewMapStyleQuery(): string {
+  const styles = [
+    "feature:poi|visibility:off",
+    "feature:transit|visibility:off",
+    "feature:road.highway|element:labels|visibility:off",
+    "feature:road.arterial|element:labels|visibility:simplified",
+    "feature:administrative.locality|element:labels.text.fill|color:0x8a8f98",
+    "feature:administrative.locality|element:labels.text.stroke|color:0xffffff",
+    "feature:administrative.country|element:labels.text.fill|color:0x6b7280",
+    "feature:administrative.country|element:geometry.stroke|color:0xd0d5dd",
+    "feature:water|element:geometry|color:0xc5dcec",
+    "feature:landscape|element:geometry|color:0xf3f0e8",
+    "feature:landscape.natural|element:geometry|color:0xe8efe4",
+    "feature:road|element:geometry|color:0xffffff",
+    "feature:road.highway|element:geometry|color:0xf0ebe0",
+  ];
+  return styles.map((s) => `&style=${encodeURIComponent(s)}`).join("");
 }
 
 function latLngToWorld(lat: number, lng: number): { x: number; y: number } {
@@ -1640,7 +1676,7 @@ async function loadOsmOverviewMap(
   return canvas.toDataURL("image/png", 0.95);
 }
 
-const OVERVIEW_MAP_CACHE_PREFIX = "sniffertrek_pdf_overview_map_v12:";
+const OVERVIEW_MAP_CACHE_PREFIX = "sniffertrek_pdf_overview_map_v13:";
 const overviewMapMemoryCache = new Map<string, string>();
 
 function isHotelLikeStop(s: RouteStop): boolean {
@@ -1694,11 +1730,11 @@ function markerLabelForStop(stop: RouteStop, index: number, total: number): stri
 }
 
 function markerColorForStop(stop: RouteStop, index: number, total: number): string {
-  if (index === 0) return "#3b82f6";
-  if (index === total - 1) return "#ef4444";
-  if (stop.isHotel && stopHasLodgingBooking(stop)) return "#22c55e";
-  if (stop.isHotel) return "#a855f7";
-  return "#f97316";
+  if (index === 0) return "#1d4ed8";
+  if (index === total - 1) return "#b91c1c";
+  if (stop.isHotel && stopHasLodgingBooking(stop)) return "#15803d";
+  if (stop.isHotel) return "#7c3aed";
+  return "#c2410c";
 }
 
 function drawNumberedRouteMarkers(
@@ -1713,12 +1749,17 @@ function drawNumberedRouteMarkers(
     const pos = toPx({ lat: Number(s.lat), lng: Number(s.lng) });
     const color = markerColorForStop(s, i, valid.length);
     const label = markerLabelForStop(s, i, valid.length);
-    const radius = 13;
+    const radius = i === 0 || i === valid.length - 1 ? 15 : 13;
+    // Soft drop shadow
+    ctx.beginPath();
+    ctx.arc(pos.x + 1, pos.y + 1.5, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fill();
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.strokeStyle = "#ffffff";
     ctx.stroke();
     ctx.fillStyle = "#ffffff";
@@ -2516,7 +2557,8 @@ export async function prewarmOverviewMapForPdf(trip: Trip, googleApiKey?: string
     preferredPolyline || undefined,
     overviewHotelMarkerStops.length > 0 ? overviewHotelMarkerStops : overviewMarkerStops,
     labelByCityKey,
-    false
+    false,
+    true,
   );
   if (mapData) {
     writeOverviewMapCache(cacheKey, mapData);
@@ -2673,6 +2715,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   const discoveryInfoCache = new Map<string, { text?: string; photo?: string }>();
   const overviewHotelLegend: string[] = [];
   const overviewHotelLabelByCityKey = new Map<string, string>();
+  let overviewLegendStops: RouteStop[] = [];
   let pageNumber = 1;
 
   const progress = (pct: number, msg: string) => onProgress?.(pct, msg);
@@ -2692,6 +2735,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   if (googleApiKey) {
     const mainStops = buildOverviewRouteStops(trip);
     const overviewMarkerStops = buildOverviewMarkerStops(mainStops);
+    overviewLegendStops = overviewMarkerStops;
     const { legend, labelByCityKey } = buildOverviewHotelLabels(hotelStops);
     const overviewHotelMarkerStops = buildOverviewHotelMarkerStops(mainStops, hotelStops);
     const overviewRouteByNames = buildOverviewRouteByNames(mainStops);
@@ -2710,7 +2754,8 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
           preferredPolyline || undefined,
           overviewHotelMarkerStops.length > 0 ? overviewHotelMarkerStops : overviewMarkerStops,
           overviewHotelLabelByCityKey,
-          false
+          false,
+          true,
         );
         if (overviewMapData) writeOverviewMapCache(overviewCacheKey, overviewMapData);
       }
@@ -2878,7 +2923,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   doc.text("sniffertrek.com", PAGE_W / 2, PAGE_H - 25, { align: "center" });
 
   // =====================================================================
-  // PAGE 2 — Gesamtroute Karte
+  // PAGE 2 — Gesamtroute Karte (editorial chapter page)
   // =====================================================================
   if (exportOpts.overviewMap) {
   progress(22, "Erstelle Gesamtroute-Karte...");
@@ -2886,32 +2931,121 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   pageNumber++;
   y = M;
 
+  // Chapter eyebrow + title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  setColor(doc, BLUE);
+  doc.text("GESAMTROUTE", M, y);
+  y += 18;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  setColor(doc, INK);
+  const overviewTitle = trip.name || "Reise";
+  const titleLines = doc.splitTextToSize(overviewTitle, CONTENT_W);
+  doc.text(titleLines.slice(0, 2), M, y);
+  y += titleLines.slice(0, 2).length * 24 + 4;
+
+  // Meta line: dates · distance · duration
+  const metaBits: string[] = [];
+  if (trip.startDate && trip.endDate) {
+    metaBits.push(`${formatDateDE(trip.startDate)} – ${formatDateDE(trip.endDate)}`);
+  }
+  if (routeInfo?.distance) metaBits.push(routeInfo.distance);
+  if (routeInfo?.duration) metaBits.push(routeInfo.duration);
+  if (overviewLegendStops.length > 0) {
+    metaBits.push(`${overviewLegendStops.length} Stopps`);
+  }
+  if (metaBits.length > 0) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    setColor(doc, GRAY);
+    doc.text(metaBits.join("  ·  "), M, y);
+    y += 12;
+  }
+
+  // Accent rule
+  doc.setDrawColor(BLUE[0], BLUE[1], BLUE[2]);
+  doc.setLineWidth(1.2);
+  doc.line(M, y, M + 48, y);
+  y += 14;
+
+  const legendStops = overviewLegendStops.length > 0
+    ? overviewLegendStops
+    : buildOverviewMarkerStops(buildOverviewRouteStops(trip));
+  const legendRows = legendStops.map((s, i) => ({
+    label: markerLabelForStop(s, i, legendStops.length),
+    color: markerColorForStop(s, i, legendStops.length),
+    name: extractCity(s.name) || s.name.trim(),
+  }));
+  const legendCols = legendRows.length > 8 ? 3 : 2;
+  const legendRowH = 13;
+  const legendLines = Math.ceil(legendRows.length / legendCols);
+  const legendBlockH = legendRows.length > 0 ? 10 + legendLines * legendRowH : 0;
+  const footerReserve = 40;
+  const mapMaxH = Math.max(220, PAGE_H - y - legendBlockH - footerReserve - 12);
+
   if (overviewMapData) {
     try {
       const mapAspect = await getDataUrlAspect(overviewMapData);
-      let drawW = PAGE_W;
-      let drawH = mapAspect && mapAspect > 0 ? drawW / mapAspect : PAGE_W;
-      let drawX = 0;
-      let drawY = 0;
-
-      // Left/right edge-to-edge, vertically centered when spare height exists.
-      drawW = PAGE_W;
-      drawH = mapAspect && mapAspect > 0 ? drawW / mapAspect : drawW;
-      if (drawH > PAGE_H) {
-        drawH = PAGE_H;
-        drawW = drawH * (mapAspect || 1);
-        drawX = (PAGE_W - drawW) / 2;
+      let drawW = CONTENT_W;
+      let drawH = mapAspect && mapAspect > 0 ? drawW / mapAspect : drawW * 1.25;
+      if (drawH > mapMaxH) {
+        drawH = mapMaxH;
+        drawW = drawH * (mapAspect || 0.75);
       }
-      drawY = (PAGE_H - drawH) / 2;
+      const drawX = M + (CONTENT_W - drawW) / 2;
+      const drawY = y;
+
+      // Soft frame
+      doc.setDrawColor(LIGHT_GRAY[0], LIGHT_GRAY[1], LIGHT_GRAY[2]);
+      doc.setLineWidth(0.6);
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(drawX - 3, drawY - 3, drawW + 6, drawH + 6, 4, 4, "FD");
       doc.addImage(overviewMapData, "PNG", drawX, drawY, drawW, drawH);
+      y = drawY + drawH + 16;
     } catch {
-      // ignore map draw failure
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(10);
+      setColor(doc, GRAY);
+      doc.text("Karte konnte nicht geladen werden.", M, y + 20);
+      y += 40;
     }
   } else {
     doc.setFont("helvetica", "italic");
     doc.setFontSize(10);
     setColor(doc, GRAY);
     doc.text("Karte konnte nicht geladen werden.", M, y + 20);
+    y += 40;
+  }
+
+  // Stop legend
+  if (legendRows.length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    setColor(doc, GRAY);
+    doc.text("STOPPS", M, y);
+    y += 12;
+
+    const colW = CONTENT_W / legendCols;
+    legendRows.forEach((row, idx) => {
+      const col = idx % legendCols;
+      const line = Math.floor(idx / legendCols);
+      const x = M + col * colW;
+      const ly = y + line * legendRowH;
+      const rgb = hexToRgb(row.color) || [100, 100, 100];
+      doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+      doc.circle(x + 5, ly - 2.5, 4.2, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      setColor(doc, [255, 255, 255]);
+      doc.text(row.label, x + 5, ly - 1, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      setColor(doc, INK);
+      const name = doc.splitTextToSize(row.name, colW - 18)[0] || row.name;
+      doc.text(name, x + 14, ly);
+    });
   }
   }
 
