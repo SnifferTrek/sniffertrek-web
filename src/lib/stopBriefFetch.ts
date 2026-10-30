@@ -1,19 +1,40 @@
 import { asAppLocale } from "@/lib/localeCopy";
 import {
-  wikipediaGeosearchUrls,
-  wikipediaIntroExtractUrls,
+  type WikiMediaProject,
+  wikiIntroExtractUrls,
+  wikiMediaHost,
+  wikiOpenSearchUrls,
+  wikiSummaryUrls,
   wikipediaLangsForLocale,
-  wikipediaOpenSearchUrls,
-  wikipediaSummaryUrls,
 } from "@/lib/wikipediaLocale";
 
 export type StopBriefResult = {
   description: string;
   photoUrl?: string;
   wikipediaTitle?: string;
-  source: "wikipedia" | "ai" | "none";
-  briefSource?: "wikipedia-refined" | "wikipedia" | "ai";
+  source: "wikivoyage" | "wikipedia" | "ai" | "none";
+  briefSource?:
+    | "wikivoyage-refined"
+    | "wikivoyage"
+    | "wikipedia-refined"
+    | "wikipedia"
+    | "ai";
   qualityHint?: string;
+};
+
+type WikiPageHit = {
+  title: string;
+  text?: string;
+  photo?: string;
+  lat?: number;
+  lng?: number;
+};
+
+type ResolvedWikiBrief = {
+  wikiRaw: string;
+  photoUrl?: string;
+  pageTitle: string;
+  project: WikiMediaProject;
 };
 
 function normalizeDiscoveryText(text: string): string {
@@ -38,6 +59,7 @@ function isWeakWikipediaText(text?: string): boolean {
   if (!t) return true;
   if (t.includes("vorlage:") || t.includes("wikidata")) return true;
   if (t.includes("begriffsklärung") || t.includes("begriffsklarung")) return true;
+  if (t.includes("disambiguation")) return true;
   return t.length < 80;
 }
 
@@ -56,7 +78,10 @@ function briefNameCandidates(name: string): string[] {
   if (!base) return [];
   const out = [base];
   const stripped = base
-    .replace(/,?\s*(schweiz|switzerland|suisse|svizzera|deutschland|germany|österreich|austria|italien|italy|frankreich|france)\s*$/i, "")
+    .replace(
+      /,?\s*(schweiz|switzerland|suisse|svizzera|deutschland|germany|österreich|austria|italien|italy|frankreich|france)\s*$/i,
+      "",
+    )
     .trim();
   if (stripped && stripped !== base) out.push(stripped);
   const firstPart = base.split(",")[0]?.trim();
@@ -68,10 +93,11 @@ async function resolvePhotoForTitle(
   title: string,
   locale: string,
   wikiFallback: boolean,
+  project: WikiMediaProject,
 ): Promise<string | undefined> {
-  const page = await fetchSummaryByTitle(title, locale, wikiFallback);
+  const page = await fetchSummaryByTitle(title, locale, wikiFallback, project);
   if (page?.photo) return page.photo;
-  const thumbs = await fetchWikipediaMediaThumbs(title, locale, wikiFallback);
+  const thumbs = await fetchWikiMediaThumbs(title, locale, wikiFallback, project);
   return thumbs[0];
 }
 
@@ -162,10 +188,11 @@ function addUniquePhotoUrl(pool: string[], url: string | undefined, title?: stri
   pool.push(url);
 }
 
-async function fetchWikipediaMediaThumbs(
+async function fetchWikiMediaThumbs(
   title: string,
   locale: string,
   allowLangFallback: boolean,
+  project: WikiMediaProject,
 ): Promise<string[]> {
   const q = title.trim();
   if (!q) return [];
@@ -173,7 +200,7 @@ async function fetchWikipediaMediaThumbs(
   for (const lang of wikipediaLangsForLocale(locale, allowLangFallback)) {
     try {
       const resp = await fetch(
-        `https://${lang}.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(q)}`,
+        `https://${wikiMediaHost(project, lang)}/api/rest_v1/page/media-list/${encodeURIComponent(q)}`,
       );
       if (!resp.ok) continue;
       const data = await resp.json();
@@ -213,7 +240,10 @@ async function fetchCommonsImageUrls(search: string, limit = 12): Promise<string
     const pages = data?.query?.pages;
     if (!pages || typeof pages !== "object") return [];
     const out: string[] = [];
-    for (const page of Object.values(pages) as Array<{ title?: string; imageinfo?: Array<{ thumburl?: string; url?: string }> }>) {
+    for (const page of Object.values(pages) as Array<{
+      title?: string;
+      imageinfo?: Array<{ thumburl?: string; url?: string }>;
+    }>) {
       const info = page?.imageinfo?.[0];
       addUniquePhotoUrl(out, info?.thumburl || info?.url, page?.title);
     }
@@ -228,11 +258,13 @@ async function buildStopPhotoPool(
   locale: string,
   wikiFallback: boolean,
 ): Promise<string[]> {
-  const summary = await fetchSummaryByTitle(pageTitle, locale, wikiFallback);
-  const thumbs = await fetchWikipediaMediaThumbs(pageTitle, locale, wikiFallback);
   const pool: string[] = [];
-  addUniquePhotoUrl(pool, summary?.photo);
-  for (const t of thumbs) addUniquePhotoUrl(pool, t);
+  for (const project of ["wikivoyage", "wikipedia"] as WikiMediaProject[]) {
+    const summary = await fetchSummaryByTitle(pageTitle, locale, wikiFallback, project);
+    const thumbs = await fetchWikiMediaThumbs(pageTitle, locale, wikiFallback, project);
+    addUniquePhotoUrl(pool, summary?.photo);
+    for (const t of thumbs) addUniquePhotoUrl(pool, t);
+  }
   return pool;
 }
 
@@ -282,17 +314,18 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 function coordPromptLine(lat?: number, lng?: number): string {
   if (typeof lat !== "number" || typeof lng !== "number") return "";
-  return `\nPosition des Routenstopps (WGS84, nur zur Einordnung / richtiger Wikipedia-Artikel, keine neuen Fakten daraus): ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  return `\nPosition des Routenstopps (WGS84, nur zur Einordnung / richtiger Artikel, keine neuen Fakten daraus): ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
 
 async function fetchSummaryByTitle(
   title: string,
   locale: string,
   allowLangFallback: boolean,
-): Promise<{ title: string; text?: string; photo?: string; lat?: number; lng?: number } | null> {
+  project: WikiMediaProject,
+): Promise<WikiPageHit | null> {
   const q = title.trim();
   if (!q) return null;
-  for (const url of wikipediaSummaryUrls(q, locale, allowLangFallback)) {
+  for (const url of wikiSummaryUrls(q, locale, allowLangFallback, project)) {
     try {
       const resp = await fetch(url);
       if (!resp.ok) continue;
@@ -319,10 +352,11 @@ async function fetchIntroByTitle(
   title: string,
   locale: string,
   allowLangFallback: boolean,
+  project: WikiMediaProject,
 ): Promise<string | undefined> {
   const q = title.trim();
   if (!q) return undefined;
-  for (const url of wikipediaIntroExtractUrls(q, locale, allowLangFallback)) {
+  for (const url of wikiIntroExtractUrls(q, locale, allowLangFallback, project)) {
     try {
       const resp = await fetch(url);
       if (!resp.ok) continue;
@@ -345,11 +379,12 @@ async function openSearchTitles(
   query: string,
   locale: string,
   allowLangFallback: boolean,
+  project: WikiMediaProject,
 ): Promise<string[]> {
   const q = query.trim();
   if (!q) return [];
   const out: string[] = [];
-  for (const url of wikipediaOpenSearchUrls(q, locale, allowLangFallback)) {
+  for (const url of wikiOpenSearchUrls(q, locale, allowLangFallback, project)) {
     try {
       const resp = await fetch(url);
       if (!resp.ok) continue;
@@ -388,6 +423,7 @@ async function geosearchHits(
   lng: number,
   locale: string,
   allowLangFallback: boolean,
+  project: WikiMediaProject,
   radiusM = 12_000,
   limit = 12,
 ): Promise<Array<{ title: string; distM: number }>> {
@@ -395,7 +431,7 @@ async function geosearchHits(
   const out: Array<{ title: string; distM: number }> = [];
   for (const lang of langs) {
     try {
-      const url = `https://${lang}.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lng}&gsradius=${radiusM}&gslimit=${limit}&format=json&origin=*`;
+      const url = `https://${wikiMediaHost(project, lang)}/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lng}&gsradius=${radiusM}&gslimit=${limit}&format=json&origin=*`;
       const resp = await fetch(url);
       if (!resp.ok) continue;
       const data = await resp.json();
@@ -414,7 +450,10 @@ async function geosearchHits(
   return out.sort((a, b) => a.distM - b.distM);
 }
 
-function pickGeosearchTitle(stopName: string, hits: Array<{ title: string; distM: number }>): string | undefined {
+function pickGeosearchTitle(
+  stopName: string,
+  hits: Array<{ title: string; distM: number }>,
+): string | undefined {
   if (!hits.length) return undefined;
   let best: { title: string; score: number } | undefined;
   for (const h of hits) {
@@ -435,9 +474,10 @@ async function titleByCoords(
   lng: number,
   locale: string,
   allowLangFallback: boolean,
+  project: WikiMediaProject,
   stopName = "",
 ): Promise<string | undefined> {
-  const hits = await geosearchHits(lat, lng, locale, allowLangFallback);
+  const hits = await geosearchHits(lat, lng, locale, allowLangFallback, project);
   return pickGeosearchTitle(stopName, hits) ?? hits[0]?.title;
 }
 
@@ -450,7 +490,7 @@ function travelBriefPrompts(
   const rules =
     lang === "de"
       ? [
-          "Aufgabe: Aus dem Wikipedia-Rohstoff einen knappen Ortstext für jemanden schreiben, der dort auf der Reise ankommt.",
+          "Aufgabe: Aus dem Quellen-Rohstoff (Wikivoyage oder Wikipedia) einen knappen Ortstext für jemanden schreiben, der dort auf der Reise ankommt.",
           "Inhalt: Wenn im Rohstoff vorhanden, mindestens ein harter Fakt (Einwohnerzahl, Fläche, Lage oder vergleichbare Grösse) und ein prägendes historisches Detail oder Ereignis einbauen – nur wenn explizit im Rohstoff.",
           "Stil: klar, konkret, leicht essayistisch; danach Kurzporträt des Ortes (Stadtbild, Kultur, Besonderheit).",
           "Verboten: erfundene Zahlen oder Daten; Reisebüro-Klischees («beliebtes Reiseziel», «mediterranes Flair», «ideal für einen Zwischenstopp»); lange Absätze nur über Kanton, Land oder Region ohne Bezug zum Ort selbst.",
@@ -459,15 +499,15 @@ function travelBriefPrompts(
           "Sprache: ausschließlich Deutsch.",
         ].join("\n")
       : lang === "es"
-        ? "Reescribe material de Wikipedia: 95–105 palabras, solo hechos del texto fuente, sin inventar."
-        : "Rewrite Wikipedia source: 95–105 words, facts only from source, no invention.";
+        ? "Reescribe material de Wikivoyage/Wikipedia: 95–105 palabras, solo hechos del texto fuente, sin inventar."
+        : "Rewrite Wikivoyage/Wikipedia source: 95–105 words, facts only from source, no invention.";
 
   if (lang === "de") {
     if (raw) {
       return {
         system:
-          "Du bist sachlicher Redakteur bei SnifferTrek. Du formulierst Wikipedia-Inhalte um – ohne Halluzinationen. Wenn ein Fakt nicht im Rohstoff steht, darf er nicht im Text stehen.",
-        user: `${rules}\n\nOrt: «${placeName}»${coordPromptLine(coords?.lat, coords?.lng)}\n\nWikipedia-Rohstoff:\n${raw}`,
+          "Du bist sachlicher Redakteur bei SnifferTrek. Du formulierst Wikivoyage-/Wikipedia-Inhalte um – ohne Halluzinationen. Wenn ein Fakt nicht im Rohstoff steht, darf er nicht im Text stehen.",
+        user: `${rules}\n\nOrt: «${placeName}»${coordPromptLine(coords?.lat, coords?.lng)}\n\nQuellen-Rohstoff:\n${raw}`,
       };
     }
     return {
@@ -500,11 +540,12 @@ async function pickOpenSearchTitleNearCoords(
   lng: number,
   locale: string,
   allowLangFallback: boolean,
+  project: WikiMediaProject,
   maxKm = 45,
 ): Promise<string | undefined> {
   const scored: Array<{ title: string; dist: number }> = [];
   for (const title of titles.slice(0, 8)) {
-    const page = await fetchSummaryByTitle(title, locale, allowLangFallback);
+    const page = await fetchSummaryByTitle(title, locale, allowLangFallback, project);
     if (!page?.lat || !page?.lng) continue;
     const dist = haversineKm(lat, lng, page.lat, page.lng);
     if (dist <= maxKm) scored.push({ title: page.title, dist });
@@ -563,6 +604,101 @@ async function refineWikipediaBrief(
   return clampToApproxWords(cleaned, 100);
 }
 
+async function resolveBriefFromProject(input: {
+  name: string;
+  locale: string;
+  wikiFallback: boolean;
+  coords?: { lat: number; lng: number };
+  project: WikiMediaProject;
+}): Promise<ResolvedWikiBrief | null> {
+  const { name, locale, wikiFallback, coords, project } = input;
+  let wikiRaw = "";
+  let photoUrl: string | undefined;
+  let pageTitle: string | undefined;
+
+  const adoptWikiPage = async (title: string, maxDistKm?: number): Promise<boolean> => {
+    const page = await fetchSummaryByTitle(title, locale, wikiFallback, project);
+    if (!page) return false;
+    if (
+      maxDistKm != null &&
+      coords &&
+      typeof page.lat === "number" &&
+      typeof page.lng === "number" &&
+      haversineKm(coords.lat, coords.lng, page.lat, page.lng) > maxDistKm
+    ) {
+      return false;
+    }
+    const intro = await fetchIntroByTitle(page.title, locale, wikiFallback, project);
+    const picked = cleanWikipediaText(intro || page.text || "");
+    if (isWeakWikipediaText(picked)) return false;
+    wikiRaw = picked;
+    photoUrl = page.photo;
+    pageTitle = page.title;
+    return true;
+  };
+
+  const maxDist = coords ? 40 : undefined;
+  if (!isGenericStopLabel(name)) {
+    for (const candidate of briefNameCandidates(name)) {
+      if (await adoptWikiPage(candidate, maxDist)) break;
+    }
+  }
+
+  if (!wikiRaw) {
+    for (const candidate of briefNameCandidates(name)) {
+      const titles = await openSearchTitles(candidate, locale, wikiFallback, project);
+      let best = pickBestWikipediaTitle(candidate, titles);
+      if (coords && titles.length > 0) {
+        const near = await pickOpenSearchTitleNearCoords(
+          candidate,
+          titles,
+          coords.lat,
+          coords.lng,
+          locale,
+          wikiFallback,
+          project,
+        );
+        if (near) best = near;
+      }
+      if (best && (await adoptWikiPage(best, maxDist))) break;
+    }
+  }
+
+  if (!wikiRaw && coords) {
+    const hits = await geosearchHits(coords.lat, coords.lng, locale, wikiFallback, project);
+    const ordered: string[] = [];
+    const picked = pickGeosearchTitle(name, hits);
+    if (picked) ordered.push(picked);
+    for (const h of hits) {
+      if (!ordered.includes(h.title)) ordered.push(h.title);
+    }
+    for (const title of ordered) {
+      if (!wikiTitleMatchesStopName(name, title) && !isGenericStopLabel(name)) continue;
+      const distCap = wikiTitleMatchesStopName(name, title) ? maxDist : 12;
+      if (await adoptWikiPage(title, distCap)) break;
+    }
+  }
+
+  if (!wikiRaw || !pageTitle) return null;
+
+  if (!photoUrl) {
+    photoUrl = await resolvePhotoForTitle(pageTitle, locale, wikiFallback, project);
+  }
+  if (!photoUrl && coords) {
+    const nearby = await titleByCoords(coords.lat, coords.lng, locale, wikiFallback, project, name);
+    if (nearby) {
+      photoUrl = await resolvePhotoForTitle(nearby, locale, wikiFallback, project);
+    }
+  }
+  // Foto-Fallback aus dem anderen Projekt (Titel oft gleich).
+  if (!photoUrl) {
+    const other: WikiMediaProject = project === "wikivoyage" ? "wikipedia" : "wikivoyage";
+    photoUrl = await resolvePhotoForTitle(pageTitle, locale, wikiFallback, other);
+  }
+
+  return { wikiRaw, photoUrl, pageTitle, project };
+}
+
 export async function fetchStopBrief(input: {
   name: string;
   lat?: number;
@@ -578,103 +714,51 @@ export async function fetchStopBrief(input: {
   const hasCoords = typeof input.lat === "number" && typeof input.lng === "number";
   const coords = hasCoords ? { lat: input.lat!, lng: input.lng! } : undefined;
 
-  let wikiRaw = "";
-  let photoUrl: string | undefined;
-  let wikipediaTitle: string | undefined;
+  // Wikivoyage zuerst (Reiseinhalt), sonst Wikipedia.
+  let resolved =
+    (await resolveBriefFromProject({
+      name,
+      locale,
+      wikiFallback,
+      coords,
+      project: "wikivoyage",
+    })) ||
+    (await resolveBriefFromProject({
+      name,
+      locale,
+      wikiFallback,
+      coords,
+      project: "wikipedia",
+    }));
 
-  const adoptWikiPage = async (title: string, maxDistKm?: number): Promise<boolean> => {
-    const page = await fetchSummaryByTitle(title, locale, wikiFallback);
-    if (!page) return false;
-    if (
-      maxDistKm != null &&
-      coords &&
-      typeof page.lat === "number" &&
-      typeof page.lng === "number" &&
-      haversineKm(coords.lat, coords.lng, page.lat, page.lng) > maxDistKm
-    ) {
-      return false;
-    }
-    const intro = await fetchIntroByTitle(page.title, locale, wikiFallback);
-    const picked = cleanWikipediaText(intro || page.text || "");
-    if (isWeakWikipediaText(picked)) return false;
-    wikiRaw = picked;
-    photoUrl = page.photo;
-    wikipediaTitle = page.title;
-    return true;
-  };
-
-  const maxDist = coords ? 40 : undefined;
-  if (!isGenericStopLabel(name)) {
-    for (const candidate of briefNameCandidates(name)) {
-      if (await adoptWikiPage(candidate, maxDist)) break;
-    }
-  }
-
-  if (!wikiRaw) {
-    for (const candidate of briefNameCandidates(name)) {
-      const titles = await openSearchTitles(candidate, locale, wikiFallback);
-      let best = pickBestWikipediaTitle(candidate, titles);
-      if (coords && titles.length > 0) {
-        const near = await pickOpenSearchTitleNearCoords(
-          candidate,
-          titles,
-          coords.lat,
-          coords.lng,
-          locale,
-          wikiFallback,
-        );
-        if (near) best = near;
-      }
-      if (best && (await adoptWikiPage(best, maxDist))) break;
-    }
-  }
-
-  if (!wikiRaw && coords) {
-    const hits = await geosearchHits(coords.lat, coords.lng, locale, wikiFallback);
-    const ordered: string[] = [];
-    const picked = pickGeosearchTitle(name, hits);
-    if (picked) ordered.push(picked);
-    for (const h of hits) {
-      if (!ordered.includes(h.title)) ordered.push(h.title);
-    }
-    for (const title of ordered) {
-      if (!wikiTitleMatchesStopName(name, title) && !isGenericStopLabel(name)) continue;
-      const distCap = wikiTitleMatchesStopName(name, title) ? maxDist : 12;
-      if (await adoptWikiPage(title, distCap)) break;
-    }
-  }
-
-  if (wikipediaTitle && !photoUrl) {
-    photoUrl = await resolvePhotoForTitle(wikipediaTitle, locale, wikiFallback);
-  }
-  if (!photoUrl && coords) {
-    const nearby = await titleByCoords(coords.lat, coords.lng, locale, wikiFallback, name);
-    if (nearby) {
-      wikipediaTitle = wikipediaTitle || nearby;
-      photoUrl = await resolvePhotoForTitle(nearby, locale, wikiFallback);
-    }
-  }
-
-  if (wikiRaw) {
-    const refined = await refineWikipediaBrief(wikiRaw, name, locale, coords);
-    const finalText = refined || clampToApproxWords(wikiRaw, 100);
-    const wasRefined = !!refined;
+  if (!resolved) {
     return {
-      description: finalText,
-      photoUrl,
-      wikipediaTitle,
-      source: "wikipedia",
-      briefSource: wasRefined ? "wikipedia-refined" : "wikipedia",
+      description: "",
+      source: "none",
     };
   }
 
+  const refined = await refineWikipediaBrief(resolved.wikiRaw, name, locale, coords);
+  const finalText = refined || clampToApproxWords(resolved.wikiRaw, 100);
+  const wasRefined = !!refined;
+  const isVoyage = resolved.project === "wikivoyage";
+
   return {
-    description: "",
-    source: "none",
+    description: finalText,
+    photoUrl: resolved.photoUrl,
+    wikipediaTitle: resolved.pageTitle,
+    source: isVoyage ? "wikivoyage" : "wikipedia",
+    briefSource: wasRefined
+      ? isVoyage
+        ? "wikivoyage-refined"
+        : "wikipedia-refined"
+      : isVoyage
+        ? "wikivoyage"
+        : "wikipedia",
   };
 }
 
-/** Nur Foto(s) von Wikipedia – Text unverändert lassen. */
+/** Nur Foto(s) von Wikivoyage/Wikipedia – Text unverändert lassen. */
 export async function fetchStopBriefPhoto(input: {
   name: string;
   wikipediaTitle?: string;
@@ -693,15 +777,24 @@ export async function fetchStopBriefPhoto(input: {
 
   if (!input.wikipediaTitle) {
     for (const candidate of briefNameCandidates(name)) {
-      const exact = await fetchSummaryByTitle(candidate, locale, wikiFallback);
+      const exact =
+        (await fetchSummaryByTitle(candidate, locale, wikiFallback, "wikivoyage")) ||
+        (await fetchSummaryByTitle(candidate, locale, wikiFallback, "wikipedia"));
       if (exact?.title) {
         pageTitle = exact.title;
         break;
       }
     }
   }
-  if (!input.wikipediaTitle && pageTitle === name && typeof input.lat === "number" && typeof input.lng === "number") {
-    const nearby = await titleByCoords(input.lat, input.lng, locale, wikiFallback);
+  if (
+    !input.wikipediaTitle &&
+    pageTitle === name &&
+    typeof input.lat === "number" &&
+    typeof input.lng === "number"
+  ) {
+    const nearby =
+      (await titleByCoords(input.lat, input.lng, locale, wikiFallback, "wikivoyage")) ||
+      (await titleByCoords(input.lat, input.lng, locale, wikiFallback, "wikipedia"));
     if (nearby) pageTitle = nearby;
   }
 
@@ -713,11 +806,7 @@ export async function fetchStopBriefPhoto(input: {
     input.variantIndex,
   );
 
-  if (
-    input.mode === "alternate" &&
-    !picked.photoUrl &&
-    input.currentPhotoUrl
-  ) {
+  if (input.mode === "alternate" && !picked.photoUrl && input.currentPhotoUrl) {
     const searchTerm = pageTitle.split(/[,(]/)[0]?.trim() || name;
     const commons = await fetchCommonsImageUrls(searchTerm, 15);
     const currentKey = wikiImageDedupeKey(input.currentPhotoUrl);

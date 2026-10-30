@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Kein Wikipedia-Artikel (DE) gefunden – es wird kein freier KI-Text erzeugt. Bitte Text selbst eingeben oder anderen Stoppnamen wählen.",
+            "Kein Wikivoyage-/Wikipedia-Artikel gefunden – es wird kein freier KI-Text erzeugt. Bitte Text selbst eingeben oder anderen Stoppnamen wählen.",
           description: "",
           source: "none",
         },

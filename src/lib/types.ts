@@ -37,7 +37,13 @@ export interface RouteStop {
  discoveryInRoute?: boolean;
  discoveryAddedAt?: string;
  /** Herkunft/Qualität der Ortsinfo (Anzeige im Planer). */
- discoveryBriefSource?: "wikipedia-refined" | "wikipedia" | "ai" | "manual";
+ discoveryBriefSource?:
+   | "wikivoyage-refined"
+   | "wikivoyage"
+   | "wikipedia-refined"
+   | "wikipedia"
+   | "ai"
+   | "manual";
  /** Kurzer Qualitätshinweis nach «Info laden». */
  discoveryBriefQualityHint?: string;
 }

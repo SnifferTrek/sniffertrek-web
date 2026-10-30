@@ -32,6 +32,10 @@ export function countNamedRouteStops(stops: RouteStop[]): number {
 
 export function briefSourceLabel(stop: RouteStop): string | null {
   switch (stop.discoveryBriefSource) {
+    case "wikivoyage-refined":
+      return "Wikivoyage + Reise-Überarbeitung";
+    case "wikivoyage":
+      return "Wikivoyage";
     case "wikipedia-refined":
       return "Wikipedia + Reise-Überarbeitung";
     case "wikipedia":
