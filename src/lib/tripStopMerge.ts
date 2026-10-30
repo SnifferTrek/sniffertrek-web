@@ -137,9 +137,34 @@ function mergeNestedCaptions(
   return out;
 }
 
+/** Heuristik: unvollständige Cloud-Kopien sollen reichere lokale Stände nicht überschreiben. */
+export function tripContentScore(t: Trip): number {
+  const namedStops = (t.stops || []).filter((s) => s.name.trim()).length;
+  const routeNamed =
+    t.routes?.route?.stops?.filter((s) => s.name.trim()).length || 0;
+  const briefs = (t.stops || []).filter((s) => !!s.discoveryDescription?.trim()).length;
+  const hotels = (t.hotels || []).length;
+  const pdfPhotos = Object.values(t.pdfPhotosByEtappe || {}).reduce(
+    (n, arr) => n + (arr?.length || 0),
+    0,
+  );
+  return namedStops * 10 + routeNamed * 5 + briefs * 3 + hotels * 2 + pdfPhotos;
+}
+
 /** Zwei Trip-Versionen zusammenführen (lokal ↔ Cloud), ohne Ortsinfo/PDF-Metadaten zu verlieren. */
 export function mergeTripRecords(local: Trip, remote: Trip): Trip {
-  const remoteNewer = new Date(remote.updatedAt || 0).getTime() > new Date(local.updatedAt || 0).getTime();
+  const localTime = new Date(local.updatedAt || 0).getTime();
+  const remoteTime = new Date(remote.updatedAt || 0).getTime();
+  const localScore = tripContentScore(local);
+  const remoteScore = tripContentScore(remote);
+  // Zeitstempel allein reicht nicht: Cloud-Upserts setzen oft ein frisches updated_at
+  // auf einen inhaltlich älteren Stand (fehlende routes / schlanker Payload).
+  let remoteNewer = remoteTime > localTime;
+  if (remoteNewer && localScore > remoteScore + 5) {
+    remoteNewer = false;
+  } else if (remoteTime === localTime && localScore >= remoteScore) {
+    remoteNewer = false;
+  }
   const base: Trip = remoteNewer ? { ...remote } : { ...local };
   const other: Trip = remoteNewer ? local : remote;
 

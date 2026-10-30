@@ -162,24 +162,22 @@ export async function saveTripToCloud(
 ): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
 
-  const payload = buildTripPayload(
-    { ...trip, updatedAt: new Date().toISOString() },
-    userId,
-    _hasRoutesColumn !== false
-  );
-  payload.updated_at = new Date().toISOString();
+  // updatedAt der lokalen Reise behalten – kein künstlich neueres Cloud-Datum,
+  // sonst überschreibt ein schlanker Cloud-Stand beim nächsten Login den lokalen.
+  const stamped = {
+    ...trip,
+    updatedAt: trip.updatedAt || new Date().toISOString(),
+  };
+  const payload = buildTripPayload(stamped, userId, _hasRoutesColumn !== false);
+  payload.updated_at = stamped.updatedAt;
 
   const ok = await upsertTrip(payload);
   if (ok) { _hasRoutesColumn = true; return true; }
 
   if (_hasRoutesColumn === null) {
     _hasRoutesColumn = false;
-    const fallback = buildTripPayload(
-      { ...trip, updatedAt: new Date().toISOString() },
-      userId,
-      false
-    );
-    fallback.updated_at = new Date().toISOString();
+    const fallback = buildTripPayload(stamped, userId, false);
+    fallback.updated_at = stamped.updatedAt;
     return await upsertTrip(fallback);
   }
   return false;

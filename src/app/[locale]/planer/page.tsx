@@ -482,6 +482,9 @@ export default function PlanerPage() {
     setSavedTrips(getAllTrips());
   }, [planerRouter]);
 
+  const hasUnsavedChangesRef = useRef(false);
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
+
   useEffect(() => {
     const reloadFromStorage = () => {
       const activeId = getActiveTripId();
@@ -490,7 +493,11 @@ export default function PlanerPage() {
       if (fresh) {
         setTrip((prev) => {
           if (prev.id !== fresh.id) return fresh;
-          let merged = mergeTripRecords(fresh, prev);
+          // Offene Edits nicht durch Cloud-/Storage-Merge überschreiben.
+          const preferLocalEdits = hasUnsavedChangesRef.current;
+          let merged = preferLocalEdits
+            ? mergeTripRecords(prev, fresh)
+            : mergeTripRecords(fresh, prev);
           const cover =
             prev.pdfCoverPhotoDataUrl?.trim() ||
             merged.pdfCoverPhotoDataUrl?.trim() ||
