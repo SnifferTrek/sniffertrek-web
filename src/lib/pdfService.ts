@@ -2139,8 +2139,8 @@ function drawImageContained(
   x: number,
   y: number,
   boxW: number,
-  boxH: number
-) {
+  boxH: number,
+): { dx: number; dy: number; drawW: number; drawH: number } {
   const boxAspect = boxW / boxH;
   const imgAspect = Math.max(0.1, image.aspect);
   let drawW = boxW;
@@ -2153,6 +2153,7 @@ function drawImageContained(
   const dx = x + (boxW - drawW) / 2;
   const dy = y + (boxH - drawH) / 2;
   doc.addImage(image.dataUrl, image.format, dx, dy, drawW, drawH);
+  return { dx, dy, drawW, drawH };
 }
 
 function resolvePhotoLayout(layout: PdfPhotoLayout, count: number): PdfPhotoLayout {
@@ -2161,6 +2162,15 @@ function resolvePhotoLayout(layout: PdfPhotoLayout, count: number): PdfPhotoLayo
   if (count === 2) return "twoPortraitSideBySide";
   if (count >= 6) return "sixPortraitGrid";
   return "grid";
+}
+
+/** Geschätzte Caption-Höhe für Seitenlayout (ohne jsPDF-Messung). */
+function estimatePhotoCaptionHeight(caption: string | undefined, maxWidth: number): number {
+  const text = normalizePdfPhotoCaption(caption || "");
+  if (!text) return 0;
+  const charsPerLine = Math.max(12, Math.floor(maxWidth / 3.6));
+  const lines = Math.max(1, Math.ceil(text.length / charsPerLine));
+  return lines * 9 + 4;
 }
 
 function drawPhotoCaption(
@@ -2176,7 +2186,8 @@ function drawPhotoCaption(
   doc.setFontSize(8);
   setColor(doc, GRAY);
   const lines = doc.splitTextToSize(text, w);
-  doc.text(lines, x + w / 2, y, { align: "center" });
+  // Baseline direkt unter dem Bild (y = Bildunterkante + Abstand).
+  doc.text(lines, x + w / 2, y + 8, { align: "center" });
   return lines.length * 9 + 2;
 }
 
@@ -2231,14 +2242,22 @@ async function renderManualPhotoPages(
   };
 
   const estimateRowHeight = (row: Row): number => {
+    let imageH: number;
+    let captionH = 0;
     if (row.kind === "landscape") {
       const a = row.items[0];
-      return Math.max(130, Math.min(300, CONTENT_W / Math.max(1.05, a.aspect)));
+      imageH = Math.max(130, Math.min(300, CONTENT_W / Math.max(1.05, a.aspect)));
+      captionH = estimatePhotoCaptionHeight(captionsByUrl?.[a.url], CONTENT_W);
+    } else {
+      const cols = row.items.length;
+      const cellW = (CONTENT_W - gap * (cols - 1)) / cols;
+      const avgAspect = row.items.reduce((s, it) => s + it.aspect, 0) / Math.max(1, cols);
+      imageH = Math.max(170, Math.min(320, cellW / Math.max(0.55, avgAspect)));
+      for (const it of row.items) {
+        captionH = Math.max(captionH, estimatePhotoCaptionHeight(captionsByUrl?.[it.url], cellW));
+      }
     }
-    const cols = row.items.length;
-    const cellW = (CONTENT_W - gap * (cols - 1)) / cols;
-    const avgAspect = row.items.reduce((s, it) => s + it.aspect, 0) / Math.max(1, cols);
-    return Math.max(170, Math.min(320, cellW / Math.max(0.55, avgAspect)));
+    return imageH + captionH;
   };
 
   const drawRowsPage = (rows: Row[]) => {
@@ -2248,26 +2267,47 @@ async function renderManualPhotoPages(
     const scale = totalEstimated > 0 ? Math.min(1, availableH / totalEstimated) : 1;
     let y = M;
     rows.forEach((row, idx) => {
-      const rowH = estimated[idx] * scale;
+      const rowBudget = estimated[idx] * scale;
       if (row.kind === "landscape") {
         const item = row.items[0];
-        drawImageContained(doc, item, M, y, CONTENT_W, rowH);
-        const capH = drawPhotoCaption(doc, captionsByUrl?.[item.url], M, y + rowH + 4, CONTENT_W);
-        y += rowH + capH + gap;
+        const capReserve = estimatePhotoCaptionHeight(captionsByUrl?.[item.url], CONTENT_W) * scale;
+        const imageBoxH = Math.max(40, rowBudget - capReserve);
+        const placed = drawImageContained(doc, item, M, y, CONTENT_W, imageBoxH);
+        // Beschriftung direkt unter dem gezeichneten Bild (nicht unter der Zellenbox).
+        const capH = drawPhotoCaption(
+          doc,
+          captionsByUrl?.[item.url],
+          placed.dx,
+          placed.dy + placed.drawH + 2,
+          placed.drawW,
+        );
+        y += Math.max(imageBoxH, placed.dy + placed.drawH - y + capH) + gap;
       } else {
         const cols = row.items.length;
         const cellW = (CONTENT_W - gap * (cols - 1)) / cols;
-        let maxCap = 0;
+        let capReserve = 0;
+        for (const it of row.items) {
+          capReserve = Math.max(
+            capReserve,
+            estimatePhotoCaptionHeight(captionsByUrl?.[it.url], cellW) * scale,
+          );
+        }
+        const imageBoxH = Math.max(40, rowBudget - capReserve);
+        let maxBottom = y + imageBoxH;
         for (let c = 0; c < cols; c++) {
           const item = row.items[c];
           const cellX = M + c * (cellW + gap);
-          drawImageContained(doc, item, cellX, y, cellW, rowH);
-          maxCap = Math.max(
-            maxCap,
-            drawPhotoCaption(doc, captionsByUrl?.[item.url], cellX, y + rowH + 4, cellW),
+          const placed = drawImageContained(doc, item, cellX, y, cellW, imageBoxH);
+          const capH = drawPhotoCaption(
+            doc,
+            captionsByUrl?.[item.url],
+            placed.dx,
+            placed.dy + placed.drawH + 2,
+            placed.drawW,
           );
+          maxBottom = Math.max(maxBottom, placed.dy + placed.drawH + capH);
         }
-        y += rowH + maxCap + gap;
+        y = maxBottom + gap;
       }
     });
   };
