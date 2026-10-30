@@ -358,13 +358,6 @@ export default function PlanerPage() {
   }, [locale]);
   const [expandedStopBriefIds, setExpandedStopBriefIds] = useState<Record<string, boolean>>({});
   const [stopBriefLoadingId, setStopBriefLoadingId] = useState<string | null>(null);
-  const [autoEnrichStopBriefs, setAutoEnrichStopBriefs] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem("sniffertrek_auto_stop_brief") !== "0";
-  });
-  const autoEnrichStopBriefsRef = useRef(true);
-  autoEnrichStopBriefsRef.current = autoEnrichStopBriefs;
-  const scheduleStopBriefEnrichRef = useRef<(stopId: string) => void>(() => {});
   const [showBucketOnMap, setShowBucketOnMap] = useState(false);
   const [bucketGeocoded, setBucketGeocoded] = useState<Record<string, { lat: number; lng: number }>>({});
 
@@ -401,11 +394,6 @@ export default function PlanerPage() {
     }
     prevActiveTabRef.current = activeTab;
   }, [activeTab, landmarkQuery]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem("sniffertrek_auto_stop_brief", autoEnrichStopBriefs ? "1" : "0");
-  }, [autoEnrichStopBriefs]);
 
   useEffect(() => {
     if (activeTab === "flights") {
@@ -1014,7 +1002,6 @@ export default function PlanerPage() {
     const stop = stops[stopIdx];
     if (stop.type !== "stop") {
       updateCurrentStops((prevStops) => prevStops.map((s) => (s.id === id ? { ...s, name, lat, lng } : s)));
-      scheduleStopBriefEnrichRef.current(id);
       return;
     }
 
@@ -1031,7 +1018,6 @@ export default function PlanerPage() {
         next.splice(endIdx >= 0 ? endIdx : next.length, 0, { ...(cur || updatedStop), name, lat, lng });
         return next;
       });
-      scheduleStopBriefEnrichRef.current(id);
       return;
     }
 
@@ -1096,7 +1082,6 @@ export default function PlanerPage() {
       next.splice(insertIdx >= 0 ? insertIdx : next.length, 0, upd);
       return next;
     });
-    scheduleStopBriefEnrichRef.current(id);
   };
 
   const openIcsBookingImport = (stopId: string) => {
@@ -1317,9 +1302,7 @@ export default function PlanerPage() {
         // Eigenes Bild: Foto-Felder beim Text-Laden grundsätzlich nicht anfassen.
 
         updateStopField(stopId, briefPatch);
-        if (autoEnrichStopBriefsRef.current) {
-          setExpandedStopBriefIds((prev) => ({ ...prev, [stopId]: true }));
-        }
+        setExpandedStopBriefIds((prev) => ({ ...prev, [stopId]: true }));
       } finally {
         setStopBriefLoadingId(null);
       }
@@ -1371,16 +1354,6 @@ export default function PlanerPage() {
     },
     [currentRouteStops, locale, printablePhotoForStop, updateStopField],
   );
-
-  const scheduleStopBriefEnrich = useCallback(
-    (stopId: string) => {
-      if (!autoEnrichStopBriefsRef.current) return;
-      void enrichStopBrief(stopId, { force: true });
-    },
-    [enrichStopBrief, currentRouteStops],
-  );
-
-  scheduleStopBriefEnrichRef.current = scheduleStopBriefEnrich;
 
   const enrichAllRouteStopBriefs = useCallback(async () => {
     for (const s of currentRouteStops) {
@@ -3505,13 +3478,6 @@ export default function PlanerPage() {
                     >{tt("ortsinfoLoadAll")}</button>
                   )}
                 </div>
-                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoEnrichStopBriefs}
-                    onChange={(e) => setAutoEnrichStopBriefs(e.target.checked)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />{tt("ortsinfoAutoLoad")}</label>
                 <div className="space-y-2">
                   {trip.stops.filter((s) => s.name.trim()).length === 0 ? (
                     <p className="text-sm text-gray-500">{tt("ortsinfoNeedStops")}</p>
@@ -3761,7 +3727,6 @@ export default function PlanerPage() {
                                   void updateStopWithCoords(stop.id, place, lat, lng);
                                 } else if (lat != null && lng != null) {
                                   updateStopField(stop.id, { name: place, lat, lng });
-                                  scheduleStopBriefEnrich(stop.id);
                                 } else {
                                   updateStop(stop.id, place);
                                 }
