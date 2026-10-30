@@ -3044,9 +3044,9 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
       doc.setFont("helvetica", "bold");
       doc.setFontSize(labelSize);
       setColor(doc, [255, 255, 255]);
-      // Explicit width centering — jsPDF align:"center" drifts on multi-digit labels.
+      // Horizontal: explicit width. Vertical: middle baseline (alphabetic offset sat too high).
       const labelW = doc.getTextWidth(row.label);
-      doc.text(row.label, cx - labelW / 2, cy + labelSize * 0.35);
+      doc.text(row.label, cx - labelW / 2, cy, { baseline: "middle" });
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       setColor(doc, INK);
