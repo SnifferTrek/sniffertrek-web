@@ -96,48 +96,50 @@ export type SaveTripToFileResult = {
   fileName?: string;
 };
 
-/** Ein Einstieg «Datei speichern»: Chrome/Edge verknüpft Datei, Safari/Fallback = Download. */
+/** Ein Einstieg «Datei speichern»: Systemdialog wenn möglich, sonst Download (nur ohne API). */
 export async function saveTripToFile(
   trip: Trip,
   session: TripLocalFileSession = tripLocalFileSession
 ): Promise<SaveTripToFileResult> {
   const suggested = suggestTripFileName(trip);
 
-  if (isSafariBrowser()) {
-    downloadTripFile(trip, suggested);
-    return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
-  }
-
   const state = await session.linkSaveAs(trip);
   if (state.status === "linked") {
     return { linkState: state, outcome: "linked", fileName: state.fileName };
   }
-  if (state.status === "picker_failed") {
-    downloadTripFile(trip, suggested);
-    return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
-  }
   if (state.status === "none") {
     return { linkState: state, outcome: "cancelled" };
+  }
+  if (state.status === "picker_failed") {
+    if (!isFileSystemAccessSupported()) {
+      downloadTripFile(trip, suggested);
+      return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
+    }
+    return { linkState: state, outcome: "failed" };
   }
   return { linkState: state, outcome: "failed" };
 }
 
+type PickSaveFileResult = { handle: FileSystemFileHandle | null; cancelled: boolean };
+
 /** Safari bricht oft bei strikten custom types ab – zuerst ohne, dann mit .json. */
-async function pickSaveFileHandle(suggestedName: string): Promise<FileSystemFileHandle | null> {
-  if (!isFileSystemAccessSupported()) return null;
+async function pickSaveFileHandle(suggestedName: string): Promise<PickSaveFileResult> {
+  if (!isFileSystemAccessSupported()) return { handle: null, cancelled: false };
   const attempts: (() => Promise<FileSystemFileHandle>)[] = [
     () => window.showSaveFilePicker!({ suggestedName }),
     () => window.showSaveFilePicker!({ suggestedName, types: PICKER_TYPES_JSON }),
   ];
   for (const attempt of attempts) {
     try {
-      return await attempt();
+      return { handle: await attempt(), cancelled: false };
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return null;
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return { handle: null, cancelled: true };
+      }
       console.warn("[TripLocalFileSession] showSaveFilePicker attempt failed", err);
     }
   }
-  return null;
+  return { handle: null, cancelled: false };
 }
 
 function readLinkMetaMap(): Record<string, FileLinkMeta> {
@@ -279,12 +281,11 @@ export class TripLocalFileSession {
     this.tripId = trip.id;
     const suggested = suggestTripFileName(trip);
 
-    const handle = await pickSaveFileHandle(suggested);
+    const { handle, cancelled } = await pickSaveFileHandle(suggested);
     if (!handle) {
-      if (!isFileSystemAccessSupported() || isSafariBrowser()) {
-        return { status: "picker_failed" };
-      }
-      return this.resolveLinkState(trip.id);
+      if (cancelled) return this.resolveLinkState(trip.id);
+      if (!isFileSystemAccessSupported()) return { status: "picker_failed" };
+      return { status: "picker_failed" };
     }
 
     try {
@@ -368,7 +369,7 @@ export class TripLocalFileSession {
       let fileName = "";
       let handle: FileSystemFileHandle | null = null;
 
-      if (isFileSystemAccessSupported() && !isSafariBrowser()) {
+      if (isFileSystemAccessSupported()) {
         const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_JSON });
         handle = handles[0];
         const file = await handle.getFile();

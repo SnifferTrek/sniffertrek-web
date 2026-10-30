@@ -7,7 +7,7 @@ import type { Trip } from "@/lib/types";
 import {
   disableSafariSaveHintForever,
   getTripFileLinkMeta,
-  isLinkedFileAutoSaveReliable,
+  isFileSystemAccessSupported,
   isSafariBrowser,
   markSafariSaveHintShown,
   saveTripToFile,
@@ -122,12 +122,12 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       setSaveToast(t("localFileSavedDownload", { name: result.fileName ?? "" }));
       setBannerOpen(false);
     } else if (result.outcome === "failed") {
-      setSaveToast(t("localFileSaveFailed"));
+      setSaveToast(t("localFilePickerFailed"));
     }
   };
 
   const handleSaveToFile = async () => {
-    if (linkState.status === "needs_reconnect" && isLinkedFileAutoSaveReliable()) {
+    if (linkState.status === "needs_reconnect") {
       await handleReconnect();
       return;
     }
@@ -196,7 +196,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       : getTripFileLinkMeta(trip.id)?.fileName ?? suggestFallbackName(trip);
 
   const showIntroBanner = bannerOpen && linkState.status === "none";
-  const showRelinkActions = isLinkedFileAutoSaveReliable();
+  const showRelinkActions = isFileSystemAccessSupported();
 
   const menuItemClass =
     "flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 text-left";
