@@ -2936,7 +2936,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   doc.setFontSize(9);
   setColor(doc, BLUE);
   doc.text("GESAMTROUTE", M, y);
-  y += 18;
+  y += 22;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
@@ -2944,7 +2944,7 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
   const overviewTitle = trip.name || "Reise";
   const titleLines = doc.splitTextToSize(overviewTitle, CONTENT_W);
   doc.text(titleLines.slice(0, 2), M, y);
-  y += titleLines.slice(0, 2).length * 24 + 4;
+  y += titleLines.slice(0, 2).length * 24 + 8;
 
   // Meta line: dates · distance · duration
   const metaBits: string[] = [];
@@ -2961,14 +2961,14 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     doc.setFontSize(9);
     setColor(doc, GRAY);
     doc.text(metaBits.join("  ·  "), M, y);
-    y += 12;
+    y += 16;
   }
 
   // Accent rule
   doc.setDrawColor(BLUE[0], BLUE[1], BLUE[2]);
   doc.setLineWidth(1.2);
   doc.line(M, y, M + 48, y);
-  y += 14;
+  y += 18;
 
   const legendStops = overviewLegendStops.length > 0
     ? overviewLegendStops
@@ -2978,12 +2978,12 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     color: markerColorForStop(s, i, legendStops.length),
     name: extractCity(s.name) || s.name.trim(),
   }));
-  const legendCols = legendRows.length > 8 ? 3 : 2;
-  const legendRowH = 13;
+  const legendCols = Math.min(5, Math.max(1, legendRows.length));
+  const legendRowH = 16;
   const legendLines = Math.ceil(legendRows.length / legendCols);
-  const legendBlockH = legendRows.length > 0 ? 10 + legendLines * legendRowH : 0;
-  const footerReserve = 40;
-  const mapMaxH = Math.max(220, PAGE_H - y - legendBlockH - footerReserve - 12);
+  const legendBlockH = legendRows.length > 0 ? 18 + legendLines * legendRowH : 0;
+  const footerReserve = 44;
+  const mapMaxH = Math.max(220, PAGE_H - y - legendBlockH - footerReserve - 18);
 
   if (overviewMapData) {
     try {
@@ -2994,38 +2994,38 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
         drawH = mapMaxH;
         drawW = drawH * (mapAspect || 0.75);
       }
-      const drawX = M + (CONTENT_W - drawW) / 2;
+      const drawX = M;
       const drawY = y;
 
-      // Soft frame
+      // Soft frame — left-aligned with title/meta
       doc.setDrawColor(LIGHT_GRAY[0], LIGHT_GRAY[1], LIGHT_GRAY[2]);
       doc.setLineWidth(0.6);
       doc.setFillColor(255, 255, 255);
       doc.roundedRect(drawX - 3, drawY - 3, drawW + 6, drawH + 6, 4, 4, "FD");
       doc.addImage(overviewMapData, "PNG", drawX, drawY, drawW, drawH);
-      y = drawY + drawH + 16;
+      y = drawY + drawH + 22;
     } catch {
       doc.setFont("helvetica", "italic");
       doc.setFontSize(10);
       setColor(doc, GRAY);
       doc.text("Karte konnte nicht geladen werden.", M, y + 20);
-      y += 40;
+      y += 44;
     }
   } else {
     doc.setFont("helvetica", "italic");
     doc.setFontSize(10);
     setColor(doc, GRAY);
     doc.text("Karte konnte nicht geladen werden.", M, y + 20);
-    y += 40;
+    y += 44;
   }
 
-  // Stop legend
+  // Stop legend — up to 5 columns
   if (legendRows.length > 0) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     setColor(doc, GRAY);
     doc.text("STOPPS", M, y);
-    y += 12;
+    y += 16;
 
     const colW = CONTENT_W / legendCols;
     legendRows.forEach((row, idx) => {
