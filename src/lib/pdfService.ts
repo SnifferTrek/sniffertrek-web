@@ -152,11 +152,54 @@ function collectRouteBriefStopsForPdf(trip: Trip): RouteStop[] {
   return trip.stops.filter((s) => s.discoveryIncludeInReport === true && s.name.trim());
 }
 
+function placeKeysSoftMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return a.length > 2 && b.length > 2 && (a.includes(b) || b.includes(a));
+}
+
 function resolveEtappeIndexForPlaceStop(
   stop: RouteStop,
   etappen: Etappe[],
   etappeStopsByIndex: RouteStop[][],
 ): number {
+  const pk = normalizePlaceKey(extractCity(stop.name));
+  const nameKey = normalizePlaceKey(stop.name);
+
+  // 1) Stopp liegt physisch in der Etappen-Kette (wichtigster Fall für Ortsinfo).
+  for (let i = 0; i < etappeStopsByIndex.length; i++) {
+    if ((etappeStopsByIndex[i] || []).some((s) => s.id === stop.id)) return i;
+  }
+
+  // 2) Ankunftsort der Etappe (z. B. Stopp «Rapallo» ↔ Etappe «… - Rapallo GE»).
+  for (let i = 0; i < etappen.length; i++) {
+    const toKey = normalizePlaceKey(extractCity(etappen[i]?.to || ""));
+    if (placeKeysSoftMatch(pk, toKey) || placeKeysSoftMatch(nameKey, toKey)) return i;
+  }
+
+  // 3) Name in Stationenkette / Stoppliste.
+  for (let i = 0; i < etappeStopsByIndex.length; i++) {
+    const stops = etappeStopsByIndex[i] || [];
+    const chain = resolveEtappeStationChain(etappen[i], stops);
+    if (
+      chain.some((city) => {
+        const ck = normalizePlaceKey(city);
+        return placeKeysSoftMatch(pk, ck) || placeKeysSoftMatch(nameKey, ck);
+      })
+    ) {
+      return i;
+    }
+    if (
+      stops.some((s) => {
+        const sk = normalizePlaceKey(extractCity(s.name));
+        return placeKeysSoftMatch(pk, sk) || normalizePlaceKey(s.name) === nameKey;
+      })
+    ) {
+      return i;
+    }
+  }
+
+  // 4) discoveryEtappeIndex nur als Fallback (kann bei Route-Stopps veraltet sein).
   if (
     typeof stop.discoveryEtappeIndex === "number" &&
     stop.discoveryEtappeIndex >= 0 &&
@@ -164,30 +207,7 @@ function resolveEtappeIndexForPlaceStop(
   ) {
     return stop.discoveryEtappeIndex;
   }
-  const pk = normalizePlaceKey(extractCity(stop.name));
-  const nameKey = normalizePlaceKey(stop.name);
-  for (let i = 0; i < etappeStopsByIndex.length; i++) {
-    const stops = etappeStopsByIndex[i] || [];
-    if (stops.some((s) => s.id === stop.id)) return i;
-    const chain = resolveEtappeStationChain(etappen[i], stops);
-    if (
-      chain.some((city) => {
-        const ck = normalizePlaceKey(city);
-        return ck === pk || (pk.length > 2 && (nameKey.includes(ck) || ck.includes(pk)));
-      })
-    ) {
-      return i;
-    }
-    if (
-      stops.some((s) => {
-        if (s.isHotel) return false;
-        const sk = normalizePlaceKey(extractCity(s.name));
-        return sk === pk || normalizePlaceKey(s.name) === nameKey;
-      })
-    ) {
-      return i;
-    }
-  }
+
   return -1;
 }
 
@@ -2582,6 +2602,10 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     etappenCount: etappen.length,
     hasRouteInfo: !!routeInfo,
   });
+  // Ortsinfos nie still verwerfen, nur weil die Options-Heuristik leer war.
+  if (trip.pdfIncludeStopBriefs !== false && collectRouteBriefStopsForPdf(trip).length > 0) {
+    exportOpts.stopBriefs = true;
+  }
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   type TocPagePatch = { page: number; y: number; pageLabel: string };
   const tocPagePatches: TocPagePatch[] = [];
