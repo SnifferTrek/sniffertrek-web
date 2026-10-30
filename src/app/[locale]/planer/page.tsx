@@ -3212,11 +3212,7 @@ export default function PlanerPage() {
       )}
 
       {/* Page Header */}
-      <div className="sticky top-0 z-50 relative bg-gradient-to-r from-blue-600 to-cyan-500 pt-5 pb-0">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute left-0 right-0 top-full h-5 bg-gray-50 shadow-[0_10px_14px_-10px_rgba(15,23,42,0.5)]"
-        />
+      <div className="sticky top-0 z-50 relative bg-gradient-to-r from-blue-600 to-cyan-500 pt-5 pb-0 shadow-[0_8px_20px_-10px_rgba(15,23,42,0.45)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
@@ -3452,11 +3448,13 @@ export default function PlanerPage() {
         </div>
       </div>
 
+      <div className="relative z-40 isolate">
       <TripLocalFileBar
         trip={trip}
         onTripImported={handleTripFileImported}
         onFileWriteAfterBrowserSave={persistBrowserCopyForFile}
       />
+      </div>
 
       {/* Account Hint Banner – only show when not logged in */}
       {!user && (

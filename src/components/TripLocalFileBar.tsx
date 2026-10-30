@@ -151,7 +151,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   return (
     <>
       {bannerOpen && linkState.status === "none" && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 overflow-visible">
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-4 overflow-visible">
           <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
             <p className="text-sm text-amber-950 leading-relaxed">{t("localFileBannerShort")}</p>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -177,7 +177,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
         </div>
       )}
 
-      <div className="bg-slate-800 border-b border-slate-600/80 px-4 py-3 overflow-visible">
+      <div className="bg-slate-800 border-b border-slate-600/80 px-4 py-4 overflow-visible">
         <div className="max-w-7xl mx-auto flex flex-col gap-3 overflow-visible">
           <div className="min-w-0 text-sm text-slate-100 leading-relaxed">
             {linkState.status === "linked" && (
