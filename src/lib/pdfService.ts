@@ -148,9 +148,8 @@ function normalizePlaceKey(value: string): string {
 }
 
 function collectRouteBriefStopsForPdf(trip: Trip): RouteStop[] {
-  return trip.stops.filter(
-    (s) => s.discoveryIncludeInReport === true && s.name.trim() && !s.isHotel,
-  );
+  // Auch Übernachtungs-Stopps (isHotel): «Im Reisebericht» gilt für Ortsinfo unabhängig vom Hotel-Panel.
+  return trip.stops.filter((s) => s.discoveryIncludeInReport === true && s.name.trim());
 }
 
 function resolveEtappeIndexForPlaceStop(
@@ -158,7 +157,11 @@ function resolveEtappeIndexForPlaceStop(
   etappen: Etappe[],
   etappeStopsByIndex: RouteStop[][],
 ): number {
-  if (typeof stop.discoveryEtappeIndex === "number" && stop.discoveryEtappeIndex >= 0) {
+  if (
+    typeof stop.discoveryEtappeIndex === "number" &&
+    stop.discoveryEtappeIndex >= 0 &&
+    stop.discoveryEtappeIndex < etappen.length
+  ) {
     return stop.discoveryEtappeIndex;
   }
   const pk = normalizePlaceKey(extractCity(stop.name));
@@ -3250,8 +3253,9 @@ export async function generateTripPDF(opts: PdfOptions): Promise<Blob> {
     const mergedPlaces = mergeEtappePlaceStops(briefsForDay, discoveries);
     const briefIds = new Set(briefsForDay.map((s) => s.id));
     const placesOnRoute = mergedPlaces.filter((p) => {
-      if (p.isHotel) return false;
+      // Explizit für Ortsinfo/PDF markiert → immer anzeigen (auch wenn Übernachtung/Hotel).
       if (briefIds.has(p.id)) return true;
+      if (p.isHotel) return false;
       return filterPlacesToEtappeDay([p], et, etappeStopsForDay, i).length > 0;
     });
     if (placesOnRoute.length > 0) {
