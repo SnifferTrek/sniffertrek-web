@@ -83,8 +83,7 @@ export default function MeineReisenPage() {
     try {
       const trip = loadTripHydrated(tripId);
       if (!trip) return;
-      saveTrip(trip);
-      const result = await saveTripToFile(trip);
+      const result = await saveTripToFile(trip, tripLocalFileSession, () => saveTrip(trip));
       if (result.outcome === "failed") {
         window.alert(t("saveFileFailed"));
       }

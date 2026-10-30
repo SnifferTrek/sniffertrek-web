@@ -67,6 +67,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
 
   useEffect(() => {
     if (linkState.status !== "linked") return;
+    if (isSafariBrowser()) return;
     tripLocalFileSession.scheduleWrite(trip);
     const timer = setTimeout(() => {
       void tripLocalFileSession.flushWrite(trip).then(setLinkState);
@@ -131,10 +132,25 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       await handleReconnect();
       return;
     }
+    if (linkState.status === "linked") {
+      setFileBusy(true);
+      try {
+        onFileWriteAfterBrowserSave();
+        const state = await tripLocalFileSession.flushWrite(trip);
+        setLinkState(state);
+        if (state.status === "linked") {
+          setSaveToast(t("localFileSavedLinked", { name: state.fileName }));
+        } else if (state.status === "write_failed") {
+          setSaveToast(t("localFileWriteFailed"));
+        }
+      } finally {
+        setFileBusy(false);
+      }
+      return;
+    }
     setFileBusy(true);
     try {
-      onFileWriteAfterBrowserSave();
-      const result = await saveTripToFile(trip);
+      const result = await saveTripToFile(trip, tripLocalFileSession, onFileWriteAfterBrowserSave);
       setLinkState(result.linkState);
       showSaveFeedback(result);
     } finally {

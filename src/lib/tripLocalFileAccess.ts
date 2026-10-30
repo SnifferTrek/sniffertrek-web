@@ -96,14 +96,15 @@ export type SaveTripToFileResult = {
   fileName?: string;
 };
 
-/** Ein Einstieg «Datei speichern»: Systemdialog wenn möglich, sonst Download (nur ohne API). */
+/** Ein Einstieg «Datei speichern»: Systemdialog wenn möglich, Download nur ohne API (nicht Safari). */
 export async function saveTripToFile(
   trip: Trip,
-  session: TripLocalFileSession = tripLocalFileSession
+  session: TripLocalFileSession = tripLocalFileSession,
+  beforeWrite?: () => void
 ): Promise<SaveTripToFileResult> {
   const suggested = suggestTripFileName(trip);
 
-  const state = await session.linkSaveAs(trip);
+  const state = await session.linkSaveAs(trip, beforeWrite);
   if (state.status === "linked") {
     return { linkState: state, outcome: "linked", fileName: state.fileName };
   }
@@ -111,11 +112,11 @@ export async function saveTripToFile(
     return { linkState: state, outcome: "cancelled" };
   }
   if (state.status === "picker_failed") {
-    if (!isFileSystemAccessSupported()) {
-      downloadTripFile(trip, suggested);
-      return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
+    if (isSafariBrowser() || isFileSystemAccessSupported()) {
+      return { linkState: state, outcome: "failed" };
     }
-    return { linkState: state, outcome: "failed" };
+    downloadTripFile(trip, suggested);
+    return { linkState: { status: "none" }, outcome: "download", fileName: suggested };
   }
   return { linkState: state, outcome: "failed" };
 }
@@ -127,6 +128,11 @@ async function pickSaveFileHandle(suggestedName: string): Promise<PickSaveFileRe
   if (!isFileSystemAccessSupported()) return { handle: null, cancelled: false };
   const attempts: (() => Promise<FileSystemFileHandle>)[] = [
     () => window.showSaveFilePicker!({ suggestedName }),
+    () =>
+      window.showSaveFilePicker!({
+        suggestedName,
+        types: [{ description: "SnifferTrek Reise", accept: { "application/json": [TRIP_FILE_EXTENSION] } }],
+      }),
     () => window.showSaveFilePicker!({ suggestedName, types: PICKER_TYPES_JSON }),
   ];
   for (const attempt of attempts) {
@@ -277,7 +283,7 @@ export class TripLocalFileSession {
     return { status: "linked", fileName: meta.fileName };
   }
 
-  async linkSaveAs(trip: Trip): Promise<TripFileLinkState> {
+  async linkSaveAs(trip: Trip, beforeWrite?: () => void): Promise<TripFileLinkState> {
     this.tripId = trip.id;
     const suggested = suggestTripFileName(trip);
 
@@ -291,6 +297,7 @@ export class TripLocalFileSession {
     try {
       const ok = await ensureWritePermission(handle);
       if (!ok) return { status: "picker_failed" };
+      beforeWrite?.();
       await writeToHandle(handle, trip);
       this.handle = handle;
       this.fileName = handle.name || suggested;
