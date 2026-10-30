@@ -544,7 +544,7 @@ function drawHotelTabPanel(
       doc.text(`${formatDateDE(checkIn)} – ${formatDateDE(checkOut)}`, innerX, cy);
       cy += 12;
       doc.text(
-        `${guests} Pers., ${rooms} Zi., ${nights} Nacht${nights !== 1 ? "e" : ""}`,
+        `${guests} Pers., ${rooms} Zi., ${nights} ${nights === 1 ? "Nacht" : "Nächte"}`,
         innerX,
         cy,
       );
