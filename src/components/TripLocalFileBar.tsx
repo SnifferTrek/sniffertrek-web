@@ -13,7 +13,6 @@ import {
   markSafariSaveHintShown,
   saveTripToChosenHandle,
   startSaveFilePickerInUserGesture,
-  startShareTripFileInUserGesture,
   SAFARI_SAVE_HINT_INTERVAL_MS,
   shouldShowSafariSaveHint,
   tripLocalFileSession,
@@ -131,32 +130,15 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
     }
   };
 
-  const runSafariDownloadFallback = () => {
-    onFileWriteAfterBrowserSave();
+  /** Safari: echter Download (achtet «Für jeden Download fragen»), kein Teilen-Sheet. */
+  const runSafariDownloadSave = () => {
     const name = suggestTripFileName(trip);
+    // Download zuerst – vor setState, damit Safari «Für jeden Download fragen» greift.
     downloadTripFile(trip, name);
+    onFileWriteAfterBrowserSave();
+    setMenuOpen(false);
     setBannerOpen(false);
     setSaveToast(t("localFileSavedDownloadSafari", { name }));
-  };
-
-  const runShareSave = () => {
-    const started = startShareTripFileInUserGesture(trip, onFileWriteAfterBrowserSave);
-    setMenuOpen(false);
-    if (started.kind === "unsupported") {
-      runSafariDownloadFallback();
-      return;
-    }
-    setFileBusy(true);
-    void started.promise
-      .then(() => {
-        setSaveToast(t("localFileSavedShare", { name: started.fileName }));
-        setBannerOpen(false);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        runSafariDownloadFallback();
-      })
-      .finally(() => setFileBusy(false));
   };
 
   const handleSaveToFile = () => {
@@ -189,16 +171,16 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       return;
     }
 
-    // Safari hat keinen showSaveFilePicker (auch nicht Safari 26) – Teilen → «In Dateien sichern».
+    // Safari / ohne File-Picker: Download – bei «Für jeden Download fragen» erscheint der Speicherort-Dialog.
     if (isSafariBrowser() || !isFileSystemAccessSupported()) {
-      runShareSave();
+      runSafariDownloadSave();
       return;
     }
 
     const started = startSaveFilePickerInUserGesture(trip);
     setMenuOpen(false);
     if (started.kind === "unsupported") {
-      runShareSave();
+      runSafariDownloadSave();
       return;
     }
 

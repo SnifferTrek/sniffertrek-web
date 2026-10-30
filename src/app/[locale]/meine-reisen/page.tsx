@@ -36,7 +36,6 @@ import {
   isSafariBrowser,
   saveTripToChosenHandle,
   startSaveFilePickerInUserGesture,
-  startShareTripFileInUserGesture,
   tripLocalFileSession,
 } from "@/lib/tripLocalFileAccess";
 import { downloadTripFile } from "@/lib/tripLocalFileDocument";
@@ -91,24 +90,9 @@ export default function MeineReisenPage() {
     if (!trip) return;
 
     if (isSafariBrowser()) {
-      const share = startShareTripFileInUserGesture(trip, () => saveTrip(trip));
-      if (share.kind === "unsupported") {
-        saveTrip(trip);
-        downloadTripFile(trip);
-        refreshTrips();
-        return;
-      }
-      setFileBusyId(tripId);
-      void share.promise
-        .catch((err: unknown) => {
-          if (err instanceof DOMException && err.name === "AbortError") return;
-          saveTrip(trip);
-          downloadTripFile(trip);
-        })
-        .finally(() => {
-          setFileBusyId(null);
-          refreshTrips();
-        });
+      saveTrip(trip);
+      downloadTripFile(trip);
+      refreshTrips();
       return;
     }
 
