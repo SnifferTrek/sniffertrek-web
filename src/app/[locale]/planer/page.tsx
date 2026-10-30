@@ -53,7 +53,6 @@ import RouteStopBriefPanel from "@/components/RouteStopBriefPanel";
 import {
   stopHasBriefContent,
   stopBriefIncluded,
-  countNamedRouteStops,
   roleLabel,
   isUserUploadedStopPhoto,
 } from "@/lib/stopBrief";
@@ -1354,13 +1353,6 @@ export default function PlanerPage() {
     },
     [currentRouteStops, locale, printablePhotoForStop, updateStopField],
   );
-
-  const enrichAllRouteStopBriefs = useCallback(async () => {
-    for (const s of currentRouteStops) {
-      if (!s.name.trim()) continue;
-      await enrichStopBrief(s.id, { force: true });
-    }
-  }, [currentRouteStops, enrichStopBrief]);
 
   const clearStopBrief = useCallback(
     (stopId: string) => {
@@ -3467,17 +3459,7 @@ export default function PlanerPage() {
             {/* Route Stops - only for transport tabs */}
             {activeTab === "ortsinfo" && (
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{tt("ortsinfoTitle")}</h3>
-                  {countNamedRouteStops(trip.stops) > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => void enrichAllRouteStopBriefs()}
-                      disabled={!!stopBriefLoadingId}
-                      className="text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                    >{tt("ortsinfoLoadAll")}</button>
-                  )}
-                </div>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{tt("ortsinfoTitle")}</h3>
                 <div className="space-y-2">
                   {trip.stops.filter((s) => s.name.trim()).length === 0 ? (
                     <p className="text-sm text-gray-500">{tt("ortsinfoNeedStops")}</p>
