@@ -596,10 +596,7 @@ export default function PlanerPage() {
   }, []);
 
   const handleSave = useCallback(() => {
-    if (endStopLooksLikeTripTitleOnly(trip)) {
-      setSaveBlockedMessage(ROUTE_TITLE_AS_DESTINATION_MESSAGE);
-      return;
-    }
+    // Titel=Ziel ohne Koordinaten: nur PDF blockieren, Browser-/Cloud-Save immer erlauben
     setSaveBlockedMessage(null);
     saveTrip(trip);
     setActiveTripId(trip.id);
@@ -614,7 +611,6 @@ export default function PlanerPage() {
   }, [trip, user]);
 
   const persistBrowserCopyForFile = useCallback(() => {
-    if (endStopLooksLikeTripTitleOnly(trip)) return;
     saveTrip(trip);
     setActiveTripId(trip.id);
     setSavedTrips(getAllTrips());

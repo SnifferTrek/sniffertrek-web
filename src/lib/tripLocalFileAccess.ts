@@ -487,7 +487,8 @@ export class TripLocalFileSession {
   /** Debounced writes serialized through writeQueue. */
   scheduleWrite(trip: Trip): void {
     if (!this.handle || trip.id !== this.tripId) return;
-    this.writeQueue = this.writeQueue.then(async () => {
+    // .catch: frühere Fehler dürfen die Queue nicht dauerhaft blockieren
+    this.writeQueue = this.writeQueue.catch(() => undefined).then(async () => {
       if (!this.handle) return;
       try {
         const ok = await ensureWritePermission(this.handle);
@@ -495,7 +496,6 @@ export class TripLocalFileSession {
         await writeToHandle(this.handle, trip);
       } catch (err) {
         console.warn("[TripLocalFileSession] auto-write failed", err);
-        throw err;
       }
     });
   }
@@ -505,7 +505,7 @@ export class TripLocalFileSession {
       return this.resolveLinkState(trip.id);
     }
     try {
-      await this.writeQueue;
+      await this.writeQueue.catch(() => undefined);
       const ok = await ensureWritePermission(this.handle);
       if (!ok) {
         this.handle = null;

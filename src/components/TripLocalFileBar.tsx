@@ -40,6 +40,25 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   const lastTripIdRef = useRef(trip.id);
   const autoRestoreTried = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const fileBusyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setFileBusySafe = useCallback((busy: boolean) => {
+    if (fileBusyTimerRef.current) {
+      clearTimeout(fileBusyTimerRef.current);
+      fileBusyTimerRef.current = null;
+    }
+    setFileBusy(busy);
+    if (busy) {
+      // Permission/Picker darf den Button nicht dauerhaft sperren
+      fileBusyTimerRef.current = setTimeout(() => setFileBusy(false), 20000);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (fileBusyTimerRef.current) clearTimeout(fileBusyTimerRef.current);
+    };
+  }, []);
 
   const refreshState = useCallback(async () => {
     const state = await tripLocalFileSession.resolveLinkState(trip.id);
@@ -153,7 +172,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
 
     if (useSilentFlush) {
       setMenuOpen(false);
-      setFileBusy(true);
+      setFileBusySafe(true);
       void (async () => {
         try {
           onFileWriteAfterBrowserSave();
@@ -165,7 +184,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
             setSaveToast(t("localFileWriteFailed"));
           }
         } finally {
-          setFileBusy(false);
+          setFileBusySafe(false);
         }
       })();
       return;
@@ -184,7 +203,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       return;
     }
 
-    setFileBusy(true);
+    setFileBusySafe(true);
     void started.promise
       .then((handle) =>
         saveTripToChosenHandle(trip, handle, tripLocalFileSession, onFileWriteAfterBrowserSave)
@@ -198,11 +217,11 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
         console.warn("[TripLocalFileBar] save picker failed", err);
         setSaveToast(t("localFilePickerFailed"));
       })
-      .finally(() => setFileBusy(false));
+      .finally(() => setFileBusySafe(false));
   };
 
   const handleOpen = async () => {
-    setFileBusy(true);
+    setFileBusySafe(true);
     try {
       const imported = await tripLocalFileSession.openFileAsNewTrip();
       if (imported) {
@@ -213,12 +232,12 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
     } catch {
       window.alert(t("localFileInvalid"));
     } finally {
-      setFileBusy(false);
+      setFileBusySafe(false);
     }
   };
 
   const handleReconnect = async () => {
-    setFileBusy(true);
+    setFileBusySafe(true);
     try {
       onFileWriteAfterBrowserSave();
       const restored = await tripLocalFileSession.tryRestoreLinkedFile(trip.id);
@@ -234,7 +253,7 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
         window.alert(t("localFileReconnectFailed"));
       }
     } finally {
-      setFileBusy(false);
+      setFileBusySafe(false);
     }
   };
 
@@ -305,20 +324,30 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
               </button>
             )}
             <div className="relative shrink-0" ref={menuRef}>
-              <button
-                type="button"
-                disabled={fileBusy}
-                onClick={() => setMenuOpen((o) => !o)}
-                aria-expanded={menuOpen}
-                aria-haspopup="menu"
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-              >
-                <FileDown className="w-4 h-4 text-gray-600 shrink-0" aria-hidden />
-                {t("localFileSaveMenu")}
-                <ChevronDown
-                  className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${menuOpen ? "rotate-180" : ""}`}
-                />
-              </button>
+              <div className="inline-flex rounded-xl shadow-sm overflow-hidden border border-blue-700">
+                <button
+                  type="button"
+                  disabled={fileBusy}
+                  onClick={() => handleSaveToFile()}
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  <FileDown className="w-4 h-4 shrink-0" aria-hidden />
+                  {t("localFileSaveMenu")}
+                </button>
+                <button
+                  type="button"
+                  disabled={fileBusy}
+                  onClick={() => setMenuOpen((o) => !o)}
+                  aria-expanded={menuOpen}
+                  aria-haspopup="menu"
+                  aria-label={t("localFileSaveMenu")}
+                  className="inline-flex items-center bg-blue-600 hover:bg-blue-700 border-l border-blue-500 px-2 py-2 text-white disabled:opacity-50"
+                >
+                  <ChevronDown
+                    className={`w-4 h-4 shrink-0 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+              </div>
 
               {menuOpen && (
                 <div
