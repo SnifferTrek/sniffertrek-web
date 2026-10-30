@@ -595,6 +595,7 @@
     "tabMoveEnd": "Tab ans Ende verschieben",
     "localFileBanner": "Sichere deine Reise als Datei auf dem Computer (Windows & Mac). Nach «Speichern unter» wird sie in Chrome/Edge automatisch in dieser Datei aktualisiert. Safari/Firefox: ggf. «Datei verbinden».",
     "localFileBannerShort": "Reise als Datei auf dem Computer sichern (Windows & Mac). In Chrome/Edge danach automatisch mitgespeichert.",
+    "localFileBannerShortSafari": "In Safari: «Speichern → Backup laden» speichert eine .sniffertrek.json in den Download-Ordner. Für automatisches Überschreiben derselben Datei Chrome oder Edge verwenden.",
     "localFileBannerDismiss": "Später",
     "localFileSaveMenu": "Speichern",
     "localFileSaveAs": "Datei speichern",
@@ -612,12 +613,13 @@
     "localFileReconnectSteps": "Klicke «Datei wieder wählen», wähle dieselbe Datei ({name}) im Dialog – danach speichert SnifferTrek wieder automatisch. In Safari ist dieser Klick nötig; voll automatisch geht nur in Chrome/Edge.",
     "localFileReconnectFailed": "Verbindung fehlgeschlagen – richtige Reisedatei wählen (gleiche Reise-ID).",
     "localFileWriteFailed": "In Datei speichern fehlgeschlagen – «Datei verbinden» oder «Speichern unter».",
-    "localFilePickerFailed": "Speichern-Dialog konnte nicht geöffnet werden. In Safari erneut versuchen oder «Kopie laden» für den Download-Ordner.",
-    "localFilePickerFailedInline": "Speichern unter fehlgeschlagen – erneut versuchen oder «Kopie laden».",
+    "localFilePickerFailed": "Speichern-Dialog konnte nicht geöffnet werden. Nutze «Backup laden» im Speichern-Menü.",
+    "localFilePickerFailedInline": "Speichern unter fehlgeschlagen – «Backup laden» im Speichern-Menü.",
     "localFileUnlinkTitle": "Verknüpfung zur Datei lösen (Browser-Speicher bleibt)",
     "localFileUnlink": "Verknüpfung lösen",
     "localFileInvalid": "Datei ist keine gültige SnifferTrek-Reise.",
-    "localFileSafariHint": "Chrome/Edge (Windows & Mac): Datei bleibt verknüpft. Safari/Firefox: nach Neustart «Datei verbinden» oder «Kopie laden»."
+    "localFileSafariBackupDone": "Safari kann keine dauerhafte Datei-Verknüpfung wie Chrome/Edge. Die aktuelle Reise wurde in deinen Download-Ordner gelegt. Bei Änderungen erneut «Speichern → Backup laden» – oder Chrome/Edge für Auto-Speichern in dieselbe Datei.",
+    "localFileSafariHint": "Safari: Backup über «Speichern → Backup laden». «Datei öffnen» lädt eine .sniffertrek.json. Auto-Update derselben Datei: Chrome/Edge."
   },
   "myTripsPage": {
     "title": "Meine Reisen",

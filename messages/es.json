@@ -596,6 +596,7 @@
     "localFileBanner": "Guarda el viaje como archivo en el ordenador. Tras «Guardar como», se actualiza solo en ese archivo (Chrome/Edge). En Safari puede hacer falta «Vincular archivo» tras reiniciar.",
     "localFileBannerDismiss": "Más tarde",
     "localFileBannerShort": "Guarda el viaje como archivo en tu ordenador (Windows y Mac). Chrome/Edge actualiza ese archivo solo.",
+    "localFileBannerShortSafari": "En Safari: «Guardar → Cargar copia de seguridad» guarda un .sniffertrek.json en Descargas. Para actualizar siempre el mismo archivo, usa Chrome o Edge.",
     "localFileSaveMenu": "Guardar",
     "localFileSaveAs": "Guardar archivo",
     "localFileOpen": "Abrir archivo",
@@ -612,12 +613,13 @@
     "localFileReconnectSteps": "Pulsa «Elegir archivo otra vez» y selecciona el mismo archivo ({name}). Safari lo exige; solo Chrome/Edge es totalmente automático.",
     "localFileReconnectFailed": "Error al vincular – elige el archivo correcto (mismo id).",
     "localFileWriteFailed": "No se pudo guardar en el archivo – «Vincular» o «Guardar como».",
-    "localFilePickerFailed": "No se pudo abrir el diálogo de guardar. Reintenta en Safari o usa «Descargar copia».",
-    "localFilePickerFailedInline": "Guardar como falló – reintenta o usa «Descargar copia».",
+    "localFilePickerFailed": "No se pudo abrir el diálogo de guardar. Usa «Cargar copia de seguridad» en el menú Guardar.",
+    "localFilePickerFailedInline": "Guardar como falló – usa «Cargar copia de seguridad» en el menú Guardar.",
     "localFileUnlinkTitle": "Quitar vínculo (copia del navegador permanece)",
     "localFileUnlink": "Quitar vínculo",
     "localFileInvalid": "No es un archivo de viaje SnifferTrek válido.",
-    "localFileSafariHint": "Chrome/Edge (Windows y Mac): archivo vinculado. Safari/Firefox: tras reiniciar «Vincular archivo» o «Descargar copia» en el planificador."
+    "localFileSafariBackupDone": "Safari no mantiene un vínculo permanente como Chrome/Edge. El viaje se guardó en Descargas. Tras cambios, «Guardar → Cargar copia de seguridad» otra vez—or Chrome/Edge para auto-guardar en un solo archivo.",
+    "localFileSafariHint": "Safari: «Guardar → Cargar copia de seguridad». «Abrir archivo» carga un .sniffertrek.json. Auto-actualizar un archivo: Chrome/Edge."
   },
   "myTripsPage": {
     "title": "Mis viajes",

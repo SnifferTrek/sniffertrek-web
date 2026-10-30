@@ -53,6 +53,17 @@ export function isFileSystemAccessSupported(): boolean {
   return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
 }
 
+/** Safari (und iOS) meldet teils API-Support, der Speichern-Dialog scheitert trotzdem oft. */
+export function isSafariBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /Safari/i.test(ua) && !/Chrom|Edg|CriOS|FxiOS|OPR/i.test(ua);
+}
+
+export function isLinkedFileAutoSaveReliable(): boolean {
+  return isFileSystemAccessSupported() && !isSafariBrowser();
+}
+
 /** Safari bricht oft bei strikten custom types ab – zuerst ohne, dann mit .json. */
 async function pickSaveFileHandle(suggestedName: string): Promise<FileSystemFileHandle | null> {
   if (!isFileSystemAccessSupported()) return null;
@@ -212,7 +223,7 @@ export class TripLocalFileSession {
 
     const handle = await pickSaveFileHandle(suggested);
     if (!handle) {
-      if (!isFileSystemAccessSupported()) {
+      if (!isFileSystemAccessSupported() || isSafariBrowser()) {
         return { status: "picker_failed" };
       }
       return this.resolveLinkState(trip.id);

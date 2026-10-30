@@ -595,6 +595,7 @@
     "tabMoveEnd": "Move tab to the end",
     "localFileBanner": "Save your trip as a file on your computer. After «Save as», it updates automatically in that file (Chrome/Edge). In Safari you may need «Link file» after restart.",
     "localFileBannerShort": "Save the trip as a file on your computer (Windows & Mac). Chrome/Edge then auto-save to that file.",
+    "localFileBannerShortSafari": "In Safari: «Save → Load backup» puts a .sniffertrek.json in Downloads. For auto-updating the same file, use Chrome or Edge.",
     "localFileBannerDismiss": "Later",
     "localFileSaveMenu": "Save",
     "localFileSaveAs": "Save to file",
@@ -612,12 +613,13 @@
     "localFileReconnectSteps": "Click «Choose file again» and select the same file ({name}) – SnifferTrek will auto-save again. Safari requires this click; fully automatic only in Chrome/Edge.",
     "localFileReconnectFailed": "Link failed – choose the correct trip file (same trip id).",
     "localFileWriteFailed": "Could not write to file – use «Link file» or «Save as».",
-    "localFilePickerFailed": "Could not open the save dialog. Try again in Safari, or use «Download copy».",
-    "localFilePickerFailedInline": "Save as failed – try again or use «Download copy».",
+    "localFilePickerFailed": "Could not open the save dialog. Use «Load backup» in the Save menu.",
+    "localFilePickerFailedInline": "Save as failed – use «Load backup» in the Save menu.",
     "localFileUnlinkTitle": "Remove file link (browser copy stays)",
     "localFileUnlink": "Remove link",
     "localFileInvalid": "Not a valid SnifferTrek trip file.",
-    "localFileSafariHint": "Chrome/Edge (Windows & Mac): file stays linked. Safari/Firefox: after restart use «Link file» or «Download copy» in the planner."
+    "localFileSafariBackupDone": "Safari cannot keep a permanent file link like Chrome/Edge. Your trip was saved to Downloads. After changes, use «Save → Load backup» again—or Chrome/Edge to auto-save to one file.",
+    "localFileSafariHint": "Safari: use «Save → Load backup». «Open file» loads a saved .sniffertrek.json. Auto-update to one file: Chrome/Edge."
   },
   "myTripsPage": {
     "title": "My trips",
