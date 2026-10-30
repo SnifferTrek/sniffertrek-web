@@ -19,6 +19,7 @@ import {
   tripLocalFileSession,
   type TripFileLinkState,
 } from "@/lib/tripLocalFileAccess";
+import { downloadTripFile, suggestTripFileName } from "@/lib/tripLocalFileDocument";
 
 const BANNER_DISMISS_PREFIX = "sniffertrek_file_banner_dismiss:";
 const TOAST_AUTO_HIDE_MS = 8000;
@@ -130,6 +131,34 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
     }
   };
 
+  const runSafariDownloadFallback = () => {
+    onFileWriteAfterBrowserSave();
+    const name = suggestTripFileName(trip);
+    downloadTripFile(trip, name);
+    setBannerOpen(false);
+    setSaveToast(t("localFileSavedDownloadSafari", { name }));
+  };
+
+  const runShareSave = () => {
+    const started = startShareTripFileInUserGesture(trip, onFileWriteAfterBrowserSave);
+    setMenuOpen(false);
+    if (started.kind === "unsupported") {
+      runSafariDownloadFallback();
+      return;
+    }
+    setFileBusy(true);
+    void started.promise
+      .then(() => {
+        setSaveToast(t("localFileSavedShare", { name: started.fileName }));
+        setBannerOpen(false);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        runSafariDownloadFallback();
+      })
+      .finally(() => setFileBusy(false));
+  };
+
   const handleSaveToFile = () => {
     if (linkState.status === "needs_reconnect") {
       setMenuOpen(false);
@@ -160,10 +189,16 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       return;
     }
 
+    // Safari hat keinen showSaveFilePicker (auch nicht Safari 26) – Teilen → «In Dateien sichern».
+    if (isSafariBrowser() || !isFileSystemAccessSupported()) {
+      runShareSave();
+      return;
+    }
+
     const started = startSaveFilePickerInUserGesture(trip);
     setMenuOpen(false);
     if (started.kind === "unsupported") {
-      setSaveToast(t("localFileSafariNoPicker"));
+      runShareSave();
       return;
     }
 
@@ -180,26 +215,6 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.warn("[TripLocalFileBar] save picker failed", err);
         setSaveToast(t("localFilePickerFailed"));
-      })
-      .finally(() => setFileBusy(false));
-  };
-
-  const handleExportViaShare = () => {
-    const started = startShareTripFileInUserGesture(trip, onFileWriteAfterBrowserSave);
-    setMenuOpen(false);
-    if (started.kind === "unsupported") {
-      setSaveToast(t("localFileShareUnsupported"));
-      return;
-    }
-    setFileBusy(true);
-    void started.promise
-      .then(() => {
-        setSaveToast(t("localFileSavedShare", { name: started.fileName }));
-        setBannerOpen(false);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        setSaveToast(t("localFileShareFailed"));
       })
       .finally(() => setFileBusy(false));
   };
@@ -349,18 +364,6 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
                     >
                       <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
                       {t("localFileSaveAs")}
-                    </button>
-                  )}
-                  {isSafariBrowser() && (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      disabled={fileBusy}
-                      className={menuItemClass}
-                      onClick={() => handleExportViaShare()}
-                    >
-                      <FileDown className="w-4 h-4 shrink-0 text-gray-500" />
-                      {t("localFileExportSafari")}
                     </button>
                   )}
                   {linkState.status === "linked" && showRelinkActions && (

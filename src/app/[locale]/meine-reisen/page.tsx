@@ -31,7 +31,15 @@ import {
 } from "@/lib/tripStorage";
 import { useAuth } from "@/components/AuthProvider";
 import { deleteTripFromCloud } from "@/lib/cloudSync";
-import { getTripFileLinkMeta, saveTripToChosenHandle, startSaveFilePickerInUserGesture, tripLocalFileSession } from "@/lib/tripLocalFileAccess";
+import {
+  getTripFileLinkMeta,
+  isSafariBrowser,
+  saveTripToChosenHandle,
+  startSaveFilePickerInUserGesture,
+  startShareTripFileInUserGesture,
+  tripLocalFileSession,
+} from "@/lib/tripLocalFileAccess";
+import { downloadTripFile } from "@/lib/tripLocalFileDocument";
 
 const modeIcons: Record<TravelMode, typeof Car> = {
   auto: Car,
@@ -81,6 +89,28 @@ export default function MeineReisenPage() {
   const handleSaveToFile = (tripId: string) => {
     const trip = loadTripHydrated(tripId);
     if (!trip) return;
+
+    if (isSafariBrowser()) {
+      const share = startShareTripFileInUserGesture(trip, () => saveTrip(trip));
+      if (share.kind === "unsupported") {
+        saveTrip(trip);
+        downloadTripFile(trip);
+        refreshTrips();
+        return;
+      }
+      setFileBusyId(tripId);
+      void share.promise
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          saveTrip(trip);
+          downloadTripFile(trip);
+        })
+        .finally(() => {
+          setFileBusyId(null);
+          refreshTrips();
+        });
+      return;
+    }
 
     const started = startSaveFilePickerInUserGesture(trip);
     if (started.kind === "unsupported") {
