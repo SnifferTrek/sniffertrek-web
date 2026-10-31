@@ -162,19 +162,19 @@ export default function MeineReisenPage() {
               <FolderOpen className="w-7 h-7 text-white/80" />
               <h1 className="text-2xl sm:text-3xl font-bold text-white">{t("title")}</h1>
             </div>
-            <p className="text-blue-100 text-sm">{subtitle}</p>
+            {user ? <p className="text-blue-100 text-sm">{subtitle}</p> : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={openingFile}
-              onClick={() => void handleOpenFromFile()}
-              className="inline-flex items-center gap-2 bg-white/15 border border-white/30 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-white/25 transition-all disabled:opacity-50"
-            >
-              <FileUp className="w-4 h-4" />
-              {openingFile ? t("openingFile") : t("openFromFile")}
-            </button>
-            {user ? (
+          {user ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={openingFile}
+                onClick={() => void handleOpenFromFile()}
+                className="inline-flex items-center gap-2 bg-white/15 border border-white/30 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-white/25 transition-all disabled:opacity-50"
+              >
+                <FileUp className="w-4 h-4" />
+                {openingFile ? t("openingFile") : t("openFromFile")}
+              </button>
               <button
                 type="button"
                 onClick={handleNewTrip}
@@ -183,38 +183,10 @@ export default function MeineReisenPage() {
                 <Plus className="w-4 h-4" />
                 {trips.length === 0 ? t("firstTrip") : t("newTrip")}
               </button>
-            ) : (
-              <Link
-                href="/login"
-                className="inline-flex items-center gap-2 bg-white text-blue-700 px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all shadow-lg"
-              >
-                <LogIn className="w-4 h-4" />
-                {t("guestLoginCta")}
-              </Link>
-            )}
-          </div>
+            </div>
+          ) : null}
         </div>
       </div>
-
-      {!user && (
-        <div className="border-b border-amber-200 bg-amber-50">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-amber-950">{t("guestBannerTitle")}</p>
-              <p className="text-sm text-amber-900/85 mt-1 max-w-2xl">{t("guestBannerBody")}</p>
-            </div>
-            <button
-              type="button"
-              disabled={openingFile}
-              onClick={() => void handleOpenFromFile()}
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-            >
-              <FileUp className="w-4 h-4" />
-              {t("openFromFile")}
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {!user ? (
@@ -223,23 +195,28 @@ export default function MeineReisenPage() {
               <FileUp className="w-10 h-10 text-blue-400" />
             </div>
             <h2 className="text-xl font-semibold text-gray-900 mb-3">{t("guestEmptyTitle")}</h2>
+            <p className="text-amber-800/90 text-sm font-medium max-w-md mx-auto mb-2">
+              {t("guestNotSignedIn")}
+            </p>
             <p className="text-gray-500 max-w-md mx-auto mb-8">{t("guestEmptyBody")}</p>
-            <button
-              type="button"
-              disabled={openingFile}
-              onClick={() => void handleOpenFromFile()}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all disabled:opacity-50"
-            >
-              <FileUp className="w-5 h-5" />
-              {openingFile ? t("openingFile") : t("openFromFile")}
-            </button>
-            <p className="mt-6 text-sm text-gray-400">
-              <Link href="/login" className="text-blue-600 hover:underline">
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                disabled={openingFile}
+                onClick={() => void handleOpenFromFile()}
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all disabled:opacity-50"
+              >
+                <FileUp className="w-5 h-5" />
+                {openingFile ? t("openingFile") : t("openFromFile")}
+              </button>
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2 border border-gray-200 bg-white text-gray-800 px-6 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all"
+              >
+                <LogIn className="w-5 h-5" />
                 {t("guestLoginCta")}
               </Link>
-              {" · "}
-              {t("guestListHint")}
-            </p>
+            </div>
           </div>
         ) : trips.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 shadow-sm border border-gray-100 text-center">
