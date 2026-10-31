@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Link, useRouter } from "@/i18n/navigation";
+import { Link } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import {
   Map,
@@ -51,7 +51,6 @@ const modeLabels: Record<TravelMode, string> = {
 
 export default function MeineReisenPage() {
   const t = useTranslations("myTripsPage");
-  const router = useRouter();
   const { user, loading } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [fileBusyId, setFileBusyId] = useState<string | null>(null);
@@ -97,8 +96,10 @@ export default function MeineReisenPage() {
       saveTrip(imported);
       setActiveTripId(imported.id);
       refreshTrips();
-      router.push("/planer");
-    } catch {
+      // Hard navigation – zuverlässiger als client router nach File-Picker
+      window.location.assign("/planer");
+    } catch (err) {
+      console.error("[MeineReisen] open file failed", err);
       window.alert(t("openFileFailed"));
     } finally {
       setOpeningFile(false);

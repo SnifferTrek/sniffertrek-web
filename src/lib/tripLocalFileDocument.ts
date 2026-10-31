@@ -200,27 +200,35 @@ async function importMediaFromZip(zip: JSZip, tripId: string): Promise<void> {
   }
 }
 
+async function blobLooksLikeZip(blob: Blob): Promise<boolean> {
+  try {
+    const u = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+    // ZIP local file header "PK\x03\x04" or empty zip "PK\x05\x06"
+    return u[0] === 0x50 && u[1] === 0x4b;
+  } catch {
+    return false;
+  }
+}
+
 export async function parseTripFileBlob(blob: Blob): Promise<Trip> {
-  const nameHint = (blob as File).name || "";
-  const isZip =
-    blob.type.includes("zip") ||
-    nameHint.endsWith(TRIP_FILE_EXTENSION) ||
-    nameHint.endsWith(".zip") ||
-    (await blob.slice(0, 2).arrayBuffer().then((buf) => {
-      const u = new Uint8Array(buf);
-      return u[0] === 0x50 && u[1] === 0x4b; // PK
-    }));
+  // Nur Magic-Bytes entscheiden – Extension .sniffertrek kann ZIP oder altes JSON sein
+  const isZip = await blobLooksLikeZip(blob);
 
   if (isZip) {
-    const zip = await JSZip.loadAsync(blob);
-    const tripEntry = zip.file("trip.json");
-    if (!tripEntry) throw new Error("Invalid SnifferTrek trip file: missing trip.json");
-    const text = await tripEntry.async("string");
-    const trip = parseTripFileContents(text);
-    await importMediaFromZip(zip, trip.id);
-    const migrated = await migrateInlineDataUrlsToAssets(trip);
-    await warmThumbCache(collectStringPhotoFields(migrated).filter(isMediaRef));
-    return migrated;
+    try {
+      const zip = await JSZip.loadAsync(blob);
+      const tripEntry = zip.file("trip.json");
+      if (!tripEntry) throw new Error("Invalid SnifferTrek trip file: missing trip.json");
+      const text = await tripEntry.async("string");
+      const trip = parseTripFileContents(text);
+      await importMediaFromZip(zip, trip.id);
+      const migrated = await migrateInlineDataUrlsToAssets(trip);
+      await warmThumbCache(collectStringPhotoFields(migrated).filter(isMediaRef));
+      return migrated;
+    } catch (err) {
+      console.warn("[parseTripFileBlob] ZIP failed, trying JSON", err);
+      // Fallback falls Magic Bytes falsch positiv
+    }
   }
 
   const text = await blob.text();

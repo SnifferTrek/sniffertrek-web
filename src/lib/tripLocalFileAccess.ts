@@ -49,13 +49,46 @@ const PICKER_TYPES_TRIP = [
     description: "SnifferTrek Reise",
     accept: {
       "application/zip": [TRIP_FILE_EXTENSION, ".zip"],
-      "application/json": [TRIP_FILE_EXTENSION_LEGACY, ".json"],
+      "application/json": [TRIP_FILE_EXTENSION_LEGACY, ".json", TRIP_FILE_EXTENSION],
+      "application/octet-stream": [TRIP_FILE_EXTENSION, TRIP_FILE_EXTENSION_LEGACY, ".json", ".zip"],
     },
   },
 ];
 
 export function isFileSystemAccessSupported(): boolean {
   return typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+}
+
+function canOpenFilePicker(): boolean {
+  return typeof window !== "undefined" && typeof window.showOpenFilePicker === "function";
+}
+
+async function pickTripFileViaInput(): Promise<{ blob: Blob; fileName: string }> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = [
+      TRIP_FILE_EXTENSION,
+      TRIP_FILE_EXTENSION_LEGACY,
+      ".json",
+      ".zip",
+      "application/json",
+      "application/zip",
+      "application/octet-stream",
+    ].join(",");
+    input.style.display = "none";
+    input.onchange = () => {
+      const file = input.files?.[0];
+      input.remove();
+      if (!file) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      resolve({ blob: file, fileName: file.name });
+    };
+    document.body.appendChild(input);
+    input.click();
+  });
 }
 
 /** Safari (und iOS) meldet teils API-Support, der Speichern-Dialog scheitert trotzdem oft. */
@@ -440,39 +473,57 @@ export class TripLocalFileSession {
       let fileName = "";
       let handle: FileSystemFileHandle | null = null;
 
-      if (isFileSystemAccessSupported()) {
-        const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_TRIP });
-        handle = handles[0];
-        const file = await handle.getFile();
-        fileBlob = file;
-        fileName = handle.name || file.name;
-      } else {
-        fileBlob = await new Promise<Blob>((resolve, reject) => {
-          const input = document.createElement("input");
-          input.type = "file";
-          input.accept = `${TRIP_FILE_MIME},${TRIP_FILE_EXTENSION},${TRIP_FILE_EXTENSION_LEGACY},application/json,.zip`;
-          input.onchange = () => {
-            const file = input.files?.[0];
-            if (!file) {
-              reject(new DOMException("Aborted", "AbortError"));
-              return;
+      if (canOpenFilePicker()) {
+        try {
+          let handles: FileSystemFileHandle[] | undefined;
+          // Zuerst ohne Filter (alle Dateien), dann mit Typen – sonst oft «öffnet nicht»
+          const attempts = [
+            () => window.showOpenFilePicker!({ multiple: false }),
+            () => window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_TRIP }),
+          ];
+          for (const attempt of attempts) {
+            try {
+              handles = await attempt();
+              break;
+            } catch (err) {
+              if (err instanceof DOMException && err.name === "AbortError") return null;
             }
-            fileName = file.name;
-            resolve(file);
-          };
-          input.click();
-        });
+          }
+          if (!handles?.[0]) {
+            const picked = await pickTripFileViaInput();
+            fileBlob = picked.blob;
+            fileName = picked.fileName;
+          } else {
+            handle = handles[0];
+            const file = await handle.getFile();
+            fileBlob = file;
+            fileName = handle.name || file.name;
+          }
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") return null;
+          const picked = await pickTripFileViaInput();
+          fileBlob = picked.blob;
+          fileName = picked.fileName;
+        }
+      } else {
+        const picked = await pickTripFileViaInput();
+        fileBlob = picked.blob;
+        fileName = picked.fileName;
       }
 
       const trip = await parseTripFileBlob(fileBlob);
       if (handle) {
-        const ok = await ensureWritePermission(handle);
-        if (ok) {
-          this.handle = handle;
-          this.tripId = trip.id;
-          this.fileName = fileName;
-          setTripFileLinkMeta(trip.id, { fileName, linkedAt: new Date().toISOString() });
-          await idbPutHandle(trip.id, handle, fileName);
+        try {
+          const ok = await ensureWritePermission(handle);
+          if (ok) {
+            this.handle = handle;
+            this.tripId = trip.id;
+            this.fileName = fileName;
+            setTripFileLinkMeta(trip.id, { fileName, linkedAt: new Date().toISOString() });
+            await idbPutHandle(trip.id, handle, fileName);
+          }
+        } catch (linkErr) {
+          console.warn("[TripLocalFileSession] link after open failed", linkErr);
         }
       }
       return trip;
