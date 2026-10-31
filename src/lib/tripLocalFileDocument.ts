@@ -210,52 +210,102 @@ async function blobLooksLikeZip(blob: Blob): Promise<boolean> {
   }
 }
 
+async function finalizeImportedTrip(trip: Trip): Promise<Trip> {
+  // Migration darf Öffnen nie blockieren (Quota/IDB-Fehler bei vielen Fotos)
+  try {
+    const migrated = await migrateInlineDataUrlsToAssets(trip);
+    try {
+      await warmThumbCache(collectStringPhotoFields(migrated).filter(isMediaRef));
+    } catch {
+      /* ignore */
+    }
+    return migrated;
+  } catch (err) {
+    console.warn("[tripLocalFile] media migrate skipped", err);
+    return trip;
+  }
+}
+
 export async function parseTripFileBlob(blob: Blob): Promise<Trip> {
-  // Nur Magic-Bytes entscheiden – Extension .sniffertrek kann ZIP oder altes JSON sein
+  if (!blob || blob.size === 0) {
+    throw new Error("Leere Datei");
+  }
+
   const isZip = await blobLooksLikeZip(blob);
 
   if (isZip) {
-    try {
-      const zip = await JSZip.loadAsync(blob);
-      const tripEntry = zip.file("trip.json");
-      if (!tripEntry) throw new Error("Invalid SnifferTrek trip file: missing trip.json");
-      const text = await tripEntry.async("string");
-      const trip = parseTripFileContents(text);
-      await importMediaFromZip(zip, trip.id);
-      const migrated = await migrateInlineDataUrlsToAssets(trip);
-      await warmThumbCache(collectStringPhotoFields(migrated).filter(isMediaRef));
-      return migrated;
-    } catch (err) {
-      console.warn("[parseTripFileBlob] ZIP failed, trying JSON", err);
-      // Fallback falls Magic Bytes falsch positiv
+    const zip = await JSZip.loadAsync(blob);
+    // trip.json oben oder irgendwo im Archiv
+    let tripEntry = zip.file("trip.json");
+    if (!tripEntry) {
+      const alt = Object.keys(zip.files).find((p) => /(^|\/)trip\.json$/i.test(p) && !zip.files[p].dir);
+      if (alt) tripEntry = zip.file(alt);
     }
+    if (!tripEntry) {
+      throw new Error("ZIP ohne trip.json – ist das eine SnifferTrek-Datei?");
+    }
+    const text = await tripEntry.async("string");
+    const trip = parseTripFileContents(text);
+    try {
+      await importMediaFromZip(zip, trip.id);
+    } catch (err) {
+      console.warn("[parseTripFileBlob] media import skipped", err);
+    }
+    return finalizeImportedTrip(trip);
   }
 
-  const text = await blob.text();
+  // JSON (auch .sniffertrek / .sniffertrek.json ohne ZIP)
+  const text = (await blob.text()).replace(/^\uFEFF/, "").trim();
+  if (!text.startsWith("{") && !text.startsWith("[")) {
+    throw new Error("Kein SnifferTrek-Format (weder ZIP noch JSON)");
+  }
   return parseTripFileContentsAsync(text);
 }
 
 export function parseTripFileContents(text: string): Trip {
-  const parsed = JSON.parse(text) as TripFileEnvelope | Trip;
-  if (parsed && typeof parsed === "object" && "format" in parsed && parsed.format === TRIP_FILE_FORMAT) {
-    if (parsed.version !== 1 && parsed.version !== 2) {
-      throw new Error(`Unsupported trip file version: ${(parsed as TripFileEnvelope).version}`);
+  const cleaned = text.replace(/^\uFEFF/, "").trim();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new Error("JSON ungültig");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Ungültige Reisedatei");
+  }
+
+  const obj = parsed as TripFileEnvelope | Trip & { trip?: Trip };
+  if ("format" in obj && (obj as TripFileEnvelope).format === TRIP_FILE_FORMAT) {
+    const env = obj as TripFileEnvelope;
+    const ver = Number(env.version);
+    if (ver && ver !== 1 && ver !== 2) {
+      throw new Error(`Unsupported trip file version: ${env.version}`);
     }
-    if (!parsed.trip?.id) throw new Error("Invalid trip file: missing trip");
-    return parsed.trip;
+    if (!env.trip?.id) throw new Error("Invalid trip file: missing trip");
+    return {
+      ...env.trip,
+      stops: Array.isArray(env.trip.stops) ? env.trip.stops : [],
+    };
   }
-  if (parsed && typeof parsed === "object" && "id" in parsed && "stops" in parsed) {
-    return parsed as Trip;
+
+  // Envelope ohne format, aber mit trip
+  if ("trip" in obj && (obj as { trip?: Trip }).trip?.id) {
+    const inner = (obj as { trip: Trip }).trip;
+    return { ...inner, stops: Array.isArray(inner.stops) ? inner.stops : [] };
   }
-  throw new Error("Invalid SnifferTrek trip file");
+
+  if ("id" in obj && (obj as Trip).id) {
+    const trip = obj as Trip;
+    return { ...trip, stops: Array.isArray(trip.stops) ? trip.stops : [] };
+  }
+
+  throw new Error("Keine gültige SnifferTrek-Reise in der Datei");
 }
 
 /** Legacy JSON-Text: migriert Data-URLs nach IDB. */
 export async function parseTripFileContentsAsync(text: string): Promise<Trip> {
   const trip = parseTripFileContents(text);
-  const migrated = await migrateInlineDataUrlsToAssets(trip);
-  await warmThumbCache(collectStringPhotoFields(migrated).filter(isMediaRef));
-  return migrated;
+  return finalizeImportedTrip(trip);
 }
 
 export function downloadTripFile(trip: Trip, fileName?: string): void {

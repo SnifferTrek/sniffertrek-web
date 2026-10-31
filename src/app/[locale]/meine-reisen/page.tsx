@@ -100,7 +100,8 @@ export default function MeineReisenPage() {
       window.location.assign("/planer");
     } catch (err) {
       console.error("[MeineReisen] open file failed", err);
-      window.alert(t("openFileFailed"));
+      const detail = err instanceof Error && err.message ? `\n\n(${err.message})` : "";
+      window.alert(`${t("openFileFailed")}${detail}`);
     } finally {
       setOpeningFile(false);
       setFileBusyId(null);
