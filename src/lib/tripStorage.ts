@@ -240,9 +240,20 @@ function parseLocalDate(dateStr: string): Date {
   return new Date(y, m - 1, d);
 }
 
+function parseFlexibleDate(dateStr: string): Date | null {
+  if (!dateStr?.trim()) return null;
+  // ISO / updatedAt: 2026-03-01T12:00:00.000Z
+  if (dateStr.includes("T") || dateStr.length > 10) {
+    const d = new Date(dateStr);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = parseLocalDate(dateStr.slice(0, 10));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function formatDate(dateStr: string): string {
-  if (!dateStr) return "";
-  const d = parseLocalDate(dateStr);
+  const d = parseFlexibleDate(dateStr);
+  if (!d) return "";
   return d.toLocaleDateString("de-CH", {
     day: "2-digit",
     month: "2-digit",
@@ -251,8 +262,8 @@ export function formatDate(dateStr: string): string {
 }
 
 export function formatDateShort(dateStr: string): string {
-  if (!dateStr) return "";
-  const d = parseLocalDate(dateStr);
+  const d = parseFlexibleDate(dateStr);
+  if (!d) return "";
   return d.toLocaleDateString("de-CH", {
     day: "numeric",
     month: "short",

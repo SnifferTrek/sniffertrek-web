@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "@/i18n/navigation";
+import { Link, useRouter } from "@/i18n/navigation";
 import { useTranslations } from "next-intl";
 import {
   Map,
@@ -17,6 +17,7 @@ import {
   LogIn,
   FileDown,
   HardDrive,
+  FileUp,
 } from "lucide-react";
 import { Trip, TravelMode } from "@/lib/types";
 import {
@@ -48,13 +49,13 @@ const modeLabels: Record<TravelMode, string> = {
   auto: "Auto",
 };
 
-const GUEST_TRIP_LIMIT = 1;
-
 export default function MeineReisenPage() {
   const t = useTranslations("myTripsPage");
+  const router = useRouter();
   const { user, loading } = useAuth();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [fileBusyId, setFileBusyId] = useState<string | null>(null);
+  const [openingFile, setOpeningFile] = useState(false);
 
   const refreshTrips = useCallback(() => {
     setTrips(getAllTrips());
@@ -62,7 +63,9 @@ export default function MeineReisenPage() {
 
   useEffect(() => {
     if (loading) return;
-    refreshTrips();
+    // Liste nur wenn angemeldet (Cloud/Browser-Metadaten)
+    if (user) refreshTrips();
+    else setTrips([]);
   }, [loading, user, refreshTrips]);
 
   const handleDelete = (id: string) => {
@@ -74,15 +77,33 @@ export default function MeineReisenPage() {
   };
 
   const handleNewTrip = () => {
-    if (!user && trips.length >= GUEST_TRIP_LIMIT) return;
+    if (!user) return;
     const newTrip = createNewTrip();
     saveTrip(newTrip);
     setActiveTripId(newTrip.id);
     window.location.href = "/planer";
   };
 
-  const handleOpenTrip = (id: string) => {
-    setActiveTripId(id);
+  /** Datei wählen → volle Reise laden → Planer. Optional erwartete Trip-ID. */
+  const handleOpenFromFile = async (expectedTripId?: string) => {
+    setOpeningFile(true);
+    try {
+      const imported = await tripLocalFileSession.openFileAsNewTrip();
+      if (!imported) return;
+      if (expectedTripId && imported.id !== expectedTripId) {
+        const ok = window.confirm(t("fileTripIdMismatch"));
+        if (!ok) return;
+      }
+      saveTrip(imported);
+      setActiveTripId(imported.id);
+      refreshTrips();
+      router.push("/planer");
+    } catch {
+      window.alert(t("openFileFailed"));
+    } finally {
+      setOpeningFile(false);
+      setFileBusyId(null);
+    }
   };
 
   const handleSaveToFile = (tripId: string) => {
@@ -116,14 +137,13 @@ export default function MeineReisenPage() {
       .finally(() => setFileBusyId(null));
   };
 
-  const subtitle =
-    trips.length === 0
+  const subtitle = !user
+    ? t("subtitleGuest")
+    : trips.length === 0
       ? t("subtitleEmpty")
       : trips.length === 1
         ? t("subtitleCountOne")
         : t("subtitleCountMany", { count: trips.length });
-
-  const canAddTrip = user || trips.length < GUEST_TRIP_LIMIT;
 
   if (loading) {
     return (
@@ -143,28 +163,36 @@ export default function MeineReisenPage() {
               <h1 className="text-2xl sm:text-3xl font-bold text-white">{t("title")}</h1>
             </div>
             <p className="text-blue-100 text-sm">{subtitle}</p>
-            {!user && trips.length > 0 && (
-              <p className="mt-1 text-blue-200/90 text-xs">{t("localBrowserNote")}</p>
-            )}
           </div>
-          {canAddTrip ? (
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={handleNewTrip}
-              className="inline-flex items-center gap-2 bg-white text-blue-700 px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all shadow-lg"
+              disabled={openingFile}
+              onClick={() => void handleOpenFromFile()}
+              className="inline-flex items-center gap-2 bg-white/15 border border-white/30 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-white/25 transition-all disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" />
-              {trips.length === 0 ? t("firstTrip") : t("newTrip")}
+              <FileUp className="w-4 h-4" />
+              {openingFile ? t("openingFile") : t("openFromFile")}
             </button>
-          ) : (
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-2 bg-white text-blue-700 px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all shadow-lg"
-            >
-              <LogIn className="w-4 h-4" />
-              {t("guestLoginCta")}
-            </Link>
-          )}
+            {user ? (
+              <button
+                type="button"
+                onClick={handleNewTrip}
+                className="inline-flex items-center gap-2 bg-white text-blue-700 px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all shadow-lg"
+              >
+                <Plus className="w-4 h-4" />
+                {trips.length === 0 ? t("firstTrip") : t("newTrip")}
+              </button>
+            ) : (
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2 bg-white text-blue-700 px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-blue-50 transition-all shadow-lg"
+              >
+                <LogIn className="w-4 h-4" />
+                {t("guestLoginCta")}
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
@@ -175,64 +203,112 @@ export default function MeineReisenPage() {
               <p className="text-sm font-semibold text-amber-950">{t("guestBannerTitle")}</p>
               <p className="text-sm text-amber-900/85 mt-1 max-w-2xl">{t("guestBannerBody")}</p>
             </div>
-            <Link
-              href="/login"
-              className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100"
+            <button
+              type="button"
+              disabled={openingFile}
+              onClick={() => void handleOpenFromFile()}
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
             >
-              <LogIn className="w-4 h-4" />
-              {t("guestLoginCta")}
-            </Link>
+              <FileUp className="w-4 h-4" />
+              {t("openFromFile")}
+            </button>
           </div>
         </div>
       )}
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        {trips.length === 0 ? (
+        {!user ? (
+          <div className="bg-white rounded-2xl p-12 shadow-sm border border-gray-100 text-center">
+            <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
+              <FileUp className="w-10 h-10 text-blue-400" />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-3">{t("guestEmptyTitle")}</h2>
+            <p className="text-gray-500 max-w-md mx-auto mb-8">{t("guestEmptyBody")}</p>
+            <button
+              type="button"
+              disabled={openingFile}
+              onClick={() => void handleOpenFromFile()}
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all disabled:opacity-50"
+            >
+              <FileUp className="w-5 h-5" />
+              {openingFile ? t("openingFile") : t("openFromFile")}
+            </button>
+            <p className="mt-6 text-sm text-gray-400">
+              <Link href="/login" className="text-blue-600 hover:underline">
+                {t("guestLoginCta")}
+              </Link>
+              {" · "}
+              {t("guestListHint")}
+            </p>
+          </div>
+        ) : trips.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 shadow-sm border border-gray-100 text-center">
             <div className="w-20 h-20 bg-blue-50 rounded-3xl flex items-center justify-center mx-auto mb-6">
               <Map className="w-10 h-10 text-blue-400" />
             </div>
             <h2 className="text-xl font-semibold text-gray-900 mb-3">{t("emptyTitle")}</h2>
             <p className="text-gray-500 max-w-md mx-auto mb-8">{t("emptyBody")}</p>
-            <Link
-              href="/reise-planen"
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all"
-            >
-              <Plus className="w-5 h-5" />
-              {t("firstTrip")}
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                disabled={openingFile}
+                onClick={() => void handleOpenFromFile()}
+                className="inline-flex items-center gap-2 border border-blue-200 bg-blue-50 text-blue-800 px-6 py-3 rounded-xl text-sm font-semibold hover:bg-blue-100 disabled:opacity-50"
+              >
+                <FileUp className="w-5 h-5" />
+                {t("openFromFile")}
+              </button>
+              <button
+                type="button"
+                onClick={handleNewTrip}
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all"
+              >
+                <Plus className="w-5 h-5" />
+                {t("firstTrip")}
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {trips.map((trip) => {
-              const ModeIcon = modeIcons[trip.travelMode];
+              const ModeIcon = modeIcons[trip.travelMode] || Car;
               const stopsCount = trip.stops.filter((s) => s.type === "stop").length;
               const filledStops = trip.stops.filter((s) => s.name.trim() !== "");
               const fileMeta = getTripFileLinkMeta(trip.id);
               const saving = fileBusyId === trip.id;
+              const edited = formatDate(trip.updatedAt);
 
               return (
                 <article
                   key={trip.id}
                   className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-all"
                 >
-                  <Link
-                    href="/planer"
-                    onClick={() => handleOpenTrip(trip.id)}
-                    className="block hover:-translate-y-0.5 transition-transform"
+                  <button
+                    type="button"
+                    disabled={openingFile}
+                    title={t("openFromFileHint")}
+                    onClick={() => {
+                      setFileBusyId(trip.id);
+                      void handleOpenFromFile(trip.id);
+                    }}
+                    className="w-full text-left block hover:-translate-y-0.5 transition-transform disabled:opacity-60"
                   >
                     <div className="bg-gradient-to-r from-blue-500 to-cyan-400 p-5 relative overflow-hidden">
                       <div className="absolute top-2 right-2 opacity-10">
                         <ModeIcon className="w-20 h-20 text-white" />
                       </div>
                       <div className="relative">
+                        <p className="text-[10px] uppercase tracking-wide text-white/70 mb-1 flex items-center gap-1">
+                          <FileUp className="w-3 h-3" />
+                          {t("tapHeaderOpenFile")}
+                        </p>
                         <h3 className="font-bold text-white text-lg leading-tight">
                           {getTripDisplayName(trip)}
                         </h3>
                         <div className="flex flex-wrap items-center gap-2 mt-2">
                           <span className="inline-flex items-center gap-1 text-xs text-white/80 bg-white/15 px-2 py-0.5 rounded-full">
                             <ModeIcon className="w-3 h-3" />
-                            {modeLabels[trip.travelMode]}
+                            {modeLabels[trip.travelMode] || trip.travelMode}
                           </span>
                           {trip.bucketList.length > 0 && (
                             <span className="inline-flex items-center gap-1 text-xs text-white/80 bg-white/15 px-2 py-0.5 rounded-full">
@@ -282,11 +358,13 @@ export default function MeineReisenPage() {
                         </div>
                       )}
 
-                      <p className="mt-4 text-xs text-gray-400">
-                        {t("lastEdited", { date: formatDate(trip.updatedAt) })}
-                      </p>
+                      {edited ? (
+                        <p className="mt-4 text-xs text-gray-400">
+                          {t("lastEdited", { date: edited })}
+                        </p>
+                      ) : null}
                     </div>
-                  </Link>
+                  </button>
 
                   <div className="px-5 pb-5 space-y-2 border-t border-gray-50 pt-3">
                     {fileMeta && (
@@ -301,21 +379,27 @@ export default function MeineReisenPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
+                        disabled={saving || openingFile}
+                        title={t("openFromFileHint")}
+                        onClick={() => {
+                          setFileBusyId(trip.id);
+                          void handleOpenFromFile(trip.id);
+                        }}
+                        className="inline-flex flex-1 min-w-[10rem] items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+                      >
+                        <FileUp className="w-3.5 h-3.5" />
+                        {t("openFromFile")}
+                      </button>
+                      <button
+                        type="button"
                         disabled={saving}
                         title={t("saveToFileHint")}
                         onClick={() => handleSaveToFile(trip.id)}
-                        className="inline-flex flex-1 min-w-[10rem] items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
                         <FileDown className="w-3.5 h-3.5" />
                         {t("saveToFile")}
                       </button>
-                      <Link
-                        href="/planer"
-                        onClick={() => handleOpenTrip(trip.id)}
-                        className="inline-flex items-center justify-center gap-1 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        {t("openInPlanner")}
-                      </Link>
                       <button
                         type="button"
                         onClick={() => handleDelete(trip.id)}
@@ -325,9 +409,6 @@ export default function MeineReisenPage() {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                    {!user && trips.length >= GUEST_TRIP_LIMIT && (
-                      <p className="text-xs text-amber-800">{t("guestAtLimit")}</p>
-                    )}
                   </div>
                 </article>
               );
