@@ -2122,6 +2122,15 @@ function blobToDataURL(blob: Blob): Promise<string> {
 async function loadImageAsDataURL(url: string): Promise<string | null> {
   if (!url) return null;
   if (url.startsWith("data:image/")) return url;
+  if (url.startsWith("st:")) {
+    try {
+      const { resolveFullDataUrl } = await import("./tripPhotoStore");
+      const full = await resolveFullDataUrl(url);
+      return full || null;
+    } catch {
+      return null;
+    }
+  }
   try {
     const isRemote = /^https?:\/\//i.test(url);
     const fetchTarget =

@@ -9,27 +9,39 @@ function coverIdbKey(tripId: string): string {
  return `${tripId}::pdf_cover`;
 }
 
-/** Titelbild: dedizierter Key + PDF-Sidecar (+ IndexedDB-Backup). */
-export function readTripCoverPhoto(tripId: string): string | undefined {
- if (!tripId || typeof window === "undefined") return undefined;
+function clearLocalStorageKey(key: string): void {
+ if (typeof window === "undefined") return;
  try {
- const raw = localStorage.getItem(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`);
- if (raw?.trim()) return raw.trim();
+ localStorage.removeItem(key);
  } catch {
  /* ignore */
  }
+}
+
+/** Titelbild: Memory + IndexedDB (kein localStorage – Quota). */
+export function readTripCoverPhoto(tripId: string): string | undefined {
+ if (!tripId || typeof window === "undefined") return undefined;
  const side = readPdfMediaSidecar(tripId);
- return side?.pdfCoverPhotoDataUrl?.trim() || undefined;
+ const fromSide = side?.pdfCoverPhotoDataUrl?.trim();
+ if (fromSide) return fromSide;
+ // Legacy-Migration: einmal aus localStorage lesen und nach IDB schieben
+ try {
+ const raw = localStorage.getItem(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`);
+ if (raw?.trim()) {
+ clearLocalStorageKey(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`);
+ writeTripCoverPhoto(tripId, raw.trim());
+ return raw.trim();
+ }
+ } catch {
+ /* ignore */
+ }
+ return undefined;
 }
 
 export function writeTripCoverPhoto(tripId: string, dataUrl: string): void {
  const url = dataUrl.trim();
  if (!tripId || !url) return;
- try {
- localStorage.setItem(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`, url);
- } catch (err) {
- console.warn("[tripMediaSidecar] Titelbild localStorage voll", err);
- }
+ clearLocalStorageKey(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`);
  const existing = readPdfMediaSidecar(tripId) || {};
  writePdfMediaSidecar(tripId, { ...existing, pdfCoverPhotoDataUrl: url });
  enqueueIdbPut(coverIdbKey(tripId), { pdfCoverPhotoDataUrl: url, savedAt: Date.now() });
@@ -37,22 +49,14 @@ export function writeTripCoverPhoto(tripId: string, dataUrl: string): void {
 
 export function removeTripCoverPhoto(tripId: string): void {
  if (!tripId || typeof window === "undefined") return;
- try {
- localStorage.removeItem(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`);
- } catch {
- /* ignore */
- }
+ clearLocalStorageKey(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`);
  const existing = readPdfMediaSidecar(tripId);
  if (existing) {
  const next = { ...existing };
  delete next.pdfCoverPhotoDataUrl;
  if (sidecarHasPdfMedia(next)) writePdfMediaSidecar(tripId, next);
  else {
- try {
- localStorage.removeItem(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
- } catch {
- /* ignore */
- }
+ clearLocalStorageKey(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
  void idbDeletePdfMedia(tripId);
  }
  }
@@ -100,9 +104,9 @@ function applyStopMedia(stops: RouteStop[], media: TripStopMediaSidecar): RouteS
 const IDB_NAME = "sniffertrek_media";
 const IDB_STORE = "pdf";
 const IDB_VERSION = 1;
-const LS_PDF_MEDIA_MAX_CHARS = 1_800_000;
 
 const pdfMediaMemory = new Map<string, TripPdfMediaSidecar>();
+const stopMediaMemory = new Map<string, TripStopMediaSidecar>();
 const idbWriteChain = new Map<string, Promise<void>>();
 
 function photoMapCount(map?: Record<string, string[]>): number {
@@ -242,13 +246,17 @@ function readPdfMediaSidecar(tripId: string): TripPdfMediaSidecar | null {
  if (typeof window === "undefined") return null;
  const mem = pdfMediaMemory.get(tripId);
  if (sidecarHasPdfMedia(mem)) return mem || null;
+ // Legacy: einmal aus localStorage migrieren → IndexedDB, LS löschen
  try {
  const raw = localStorage.getItem(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
  const parsed = raw ? (JSON.parse(raw) as TripPdfMediaSidecar) : null;
- if (sidecarHasPdfMedia(parsed)) {
- rememberPdfMedia(tripId, parsed!);
+ if (parsed && sidecarHasPdfMedia(parsed)) {
+ rememberPdfMedia(tripId, parsed);
+ enqueueIdbPut(tripId, { ...parsed, savedAt: Date.now() });
+ clearLocalStorageKey(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
  return parsed;
  }
+ if (raw) clearLocalStorageKey(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
  return parsed;
  } catch {
  return mem || null;
@@ -268,42 +276,18 @@ function writePdfMediaSidecar(tripId: string, data: TripPdfMediaSidecar): boolea
  if (typeof window === "undefined") return false;
  const stamped: TripPdfMediaSidecar = { ...data, savedAt: Date.now() };
  rememberPdfMedia(tripId, stamped);
+ // Nie in localStorage – nur Memory + IndexedDB (Datei ist Wahrheitsquelle)
+ clearLocalStorageKey(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
  const hasContent = sidecarHasPdfMedia(stamped);
  if (!hasContent) {
- try {
- localStorage.removeItem(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
- } catch {
- /* ignore */
- }
  void idbDeletePdfMedia(tripId);
  return true;
  }
  enqueueIdbPut(tripId, stamped);
- const payload = JSON.stringify(stamped);
- if (payload.length > LS_PDF_MEDIA_MAX_CHARS) {
- try {
- localStorage.removeItem(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
- } catch {
- /* ignore */
- }
- console.warn("[tripMediaSidecar] PDF-Fotos zu gross für localStorage, nur IndexedDB");
  return true;
- }
- try {
- localStorage.setItem(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`, payload);
- return true;
- } catch (err) {
- try {
- localStorage.removeItem(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
- } catch {
- /* ignore */
- }
- console.warn("[tripMediaSidecar] localStorage voll, Fotos bleiben in IndexedDB", err);
- return true;
- }
 }
 
-/** Lädt Etappen-Fotos aus IndexedDB, falls localStorage leer oder älter war. */
+/** Lädt Etappen-Fotos aus IndexedDB in den Memory-Cache (fuer Reload). */
 export async function loadDurablePdfMedia(tripId: string): Promise<TripPdfMediaSidecar | null> {
  if (!tripId) return null;
  const local = readPdfMediaSidecar(tripId);
@@ -318,8 +302,11 @@ export async function loadDurablePdfMedia(tripId: string): Promise<TripPdfMediaS
  picked || local || cover
  ? { ...(picked || local || {}), ...(cover ? { pdfCoverPhotoDataUrl: cover } : {}) }
  : null;
+ clearLocalStorageKey(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
+ clearLocalStorageKey(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`);
  if (merged && sidecarHasPdfMedia(merged)) {
  rememberPdfMedia(tripId, merged);
+ enqueueIdbPut(tripId, { ...merged, savedAt: Date.now() });
  return merged;
  }
  return merged;
@@ -350,11 +337,18 @@ export function removeStopPhotoFromSidecar(tripId: string, stopId: string): void
 
 function readStopMediaSidecar(tripId: string): TripStopMediaSidecar {
  if (typeof window === "undefined") return {};
+ const mem = stopMediaMemory.get(tripId);
+ if (mem && Object.keys(mem).length) return mem;
  try {
  const raw = localStorage.getItem(`${TRIP_STOP_MEDIA_PREFIX}${tripId}`);
- return raw ? (JSON.parse(raw) as TripStopMediaSidecar) : {};
+ if (!raw) return mem || {};
+ const parsed = JSON.parse(raw) as TripStopMediaSidecar;
+ stopMediaMemory.set(tripId, parsed);
+ backupStopMediaToIdb(tripId, parsed);
+ clearLocalStorageKey(`${TRIP_STOP_MEDIA_PREFIX}${tripId}`);
+ return parsed;
  } catch {
- return {};
+ return mem || {};
  }
 }
 
@@ -375,7 +369,7 @@ function backupStopMediaToIdb(tripId: string, media: TripStopMediaSidecar): void
  enqueueIdbPut(stopMediaIdbKey(tripId), record as unknown as TripPdfMediaSidecar);
 }
 
-/** Ortsfotos aus localStorage + IndexedDB zusammenfuehren (fuer Reload nach Quota-Verlust). */
+/** Ortsfotos aus Memory + IndexedDB (fuer Reload). */
 export async function loadDurableStopMedia(tripId: string): Promise<TripStopMediaSidecar> {
  if (!tripId) return {};
  const local = readStopMediaSidecar(tripId);
@@ -384,32 +378,18 @@ export async function loadDurableStopMedia(tripId: string): Promise<TripStopMedi
  )) as unknown as StopMediaIdbRecord | null;
  const fromIdb = record?.stopMedia || {};
  const merged: TripStopMediaSidecar = { ...fromIdb, ...local };
- if (Object.keys(fromIdb).length) {
- // IDB-Stand zurueck in den localStorage-Sidecar schreiben, damit der
- // synchrone Lade-Pfad (hydrateTripMedia) die Fotos wieder findet.
- writeStopMediaSidecar(tripId, merged);
- }
+ stopMediaMemory.set(tripId, merged);
+ clearLocalStorageKey(`${TRIP_STOP_MEDIA_PREFIX}${tripId}`);
+ if (Object.keys(merged).length) backupStopMediaToIdb(tripId, merged);
  return merged;
 }
 
 function writeStopMediaSidecar(tripId: string, media: TripStopMediaSidecar): boolean {
  if (typeof window === "undefined") return false;
+ stopMediaMemory.set(tripId, media);
  backupStopMediaToIdb(tripId, media);
- if (!Object.keys(media).length) {
- try {
- localStorage.removeItem(`${TRIP_STOP_MEDIA_PREFIX}${tripId}`);
- } catch {
- /* ignore */
- }
+ clearLocalStorageKey(`${TRIP_STOP_MEDIA_PREFIX}${tripId}`);
  return true;
- }
- try {
- localStorage.setItem(`${TRIP_STOP_MEDIA_PREFIX}${tripId}`, JSON.stringify(media));
- return true;
- } catch (err) {
- console.warn("[tripMediaSidecar] Stopp-Fotos localStorage voll – Backup liegt in IndexedDB", err);
- return false;
- }
 }
 
 function hasInlinePdfMedia(trip: Trip): boolean {
@@ -422,7 +402,51 @@ function hasInlinePdfMedia(trip: Trip): boolean {
  return photos || library || extra || cover;
 }
 
-/** Schreibt Fotos in separate Keys; Haupt-Trip bleibt schlank (Route, Hotels, Text). */
+function stripStopDataUrls(stops: RouteStop[]): RouteStop[] {
+ return stops.map((stop) => {
+  const next = { ...stop };
+  if (next.discoveryPhotoDataUrl?.startsWith("data:")) delete next.discoveryPhotoDataUrl;
+  if (next.discoveryPhotoUrl?.startsWith("data:")) next.discoveryPhotoUrl = undefined;
+  return next;
+ });
+}
+
+/**
+ * Cloud-Payload: Metadaten + Layout/Captions, keine Data-URL-Fotos.
+ * Schreibt keine Sidecars – nur eine schlanke Kopie für den Upsert
+ * (leere Foto-Maps überschreiben alte fette Cloud-Zeilen).
+ */
+export function leanTripForCloud(trip: Trip): Trip {
+ const { lean: leanStops } = collectStopMedia(trip.stops);
+
+ let leanRoutes = trip.routes;
+ if (trip.routes) {
+  leanRoutes = { ...trip.routes };
+  for (const key of Object.keys(leanRoutes) as (keyof typeof leanRoutes)[]) {
+   if (key === "routingOptions" || key === "bookedFlights") continue;
+   const route = leanRoutes[key];
+   if (!route || !("stops" in route) || !route.stops) continue;
+   const { lean } = collectStopMedia(route.stops);
+   leanRoutes[key] = { ...route, stops: stripStopDataUrls(lean) };
+  }
+ }
+
+ return {
+  ...trip,
+  stops: stripStopDataUrls(leanStops),
+  routes: leanRoutes,
+  pdfPhotosByEtappe: {},
+  pdfPhotoLibraryByEtappe: {},
+  pdfCoverPhotoDataUrl: "",
+  pdfPhotoCaptionsByEtappe: trip.pdfPhotoCaptionsByEtappe,
+  pdfPhotoPlacementByEtappe: trip.pdfPhotoPlacementByEtappe,
+  pdfPhotoLayoutByEtappe: trip.pdfPhotoLayoutByEtappe,
+  pdfPhotoPagesByEtappe: trip.pdfPhotoPagesByEtappe,
+  pdfExtraTextByEtappe: stripExtraTextPhotos(trip.pdfExtraTextByEtappe),
+ };
+}
+
+/** Schreibt Fotos in IndexedDB/Memory; Haupt-Trip bleibt schlank (Route, Hotels, Text). */
 export function leanTripForStorage(trip: Trip): { trip: Trip; mediaOk: boolean } {
  const existingPdf = readPdfMediaSidecar(trip.id);
  const inlinePdf = hasInlinePdfMedia(trip);
@@ -469,18 +493,39 @@ export function leanTripForStorage(trip: Trip): { trip: Trip; mediaOk: boolean }
  const mergedStopMedia = { ...existingStop, ...stopMedia };
  const stopOk = writeStopMediaSidecar(trip.id, mergedStopMedia);
 
+ // st:/http-Refs bleiben im Trip (klein); nur Data-URLs liegen im Sidecar/IDB
+ const leanPhotoMaps = splitLeanPhotoMaps(trip.pdfPhotosByEtappe, trip.pdfPhotoLibraryByEtappe);
+ const coverRef = trip.pdfCoverPhotoDataUrl?.trim() || "";
+ const coverIsLight = !!coverRef && !coverRef.startsWith("data:");
+
  const leanTrip: Trip = {
  ...trip,
  stops: leanStops,
  routes: leanRoutes,
- pdfPhotosByEtappe: {},
- pdfPhotoLibraryByEtappe: {},
+ pdfPhotosByEtappe: leanPhotoMaps.photos,
+ pdfPhotoLibraryByEtappe: leanPhotoMaps.library,
  pdfPhotoCaptionsByEtappe: trip.pdfPhotoCaptionsByEtappe,
  pdfExtraTextByEtappe: stripExtraTextPhotos(trip.pdfExtraTextByEtappe),
- pdfCoverPhotoDataUrl: "",
+ pdfCoverPhotoDataUrl: coverIsLight ? coverRef : "",
  };
 
  return { trip: leanTrip, mediaOk: pdfOk && stopOk };
+}
+
+/** Leichte Foto-Refs (st:, http) für localStorage; Data-URLs bleiben im schweren Sidecar. */
+function splitLeanPhotoMaps(
+ photos?: Record<string, string[]>,
+ library?: Record<string, string[]>
+): { photos: Record<string, string[]>; library: Record<string, string[]> } {
+ const pickLight = (map?: Record<string, string[]>) => {
+  const out: Record<string, string[]> = {};
+  for (const [k, arr] of Object.entries(map || {})) {
+   const light = (arr || []).filter((u) => u && !u.startsWith("data:"));
+   if (light.length) out[k] = light;
+  }
+  return out;
+ };
+ return { photos: pickLight(photos), library: pickLight(library) };
 }
 
 function stripExtraTextPhotos(
@@ -540,14 +585,14 @@ export function hydrateTripMedia(trip: Trip): Trip {
 export function clearTripMediaSidecars(tripId: string): void {
  if (typeof window === "undefined" || !tripId) return;
  pdfMediaMemory.delete(tripId);
+ stopMediaMemory.delete(tripId);
  removeTripCoverPhoto(tripId);
- try {
- localStorage.removeItem(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
- localStorage.removeItem(`${TRIP_STOP_MEDIA_PREFIX}${tripId}`);
- } catch {
- /* ignore */
- }
+ clearLocalStorageKey(`${TRIP_PDF_MEDIA_PREFIX}${tripId}`);
+ clearLocalStorageKey(`${TRIP_STOP_MEDIA_PREFIX}${tripId}`);
+ clearLocalStorageKey(`${TRIP_COVER_PHOTO_PREFIX}${tripId}`);
  void idbDeletePdfMedia(tripId);
+ void idbDeletePdfMedia(stopMediaIdbKey(tripId));
+ void idbDeletePdfMedia(coverIdbKey(tripId));
 }
 
 export function pruneInactiveTripMediaSidecars(keepTripIds: Set<string>): void {

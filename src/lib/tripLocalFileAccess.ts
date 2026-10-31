@@ -1,9 +1,10 @@
 import {
-  buildTripFileContents,
+  buildTripFileBlobAsync,
   downloadTripFile,
-  parseTripFileContents,
+  parseTripFileBlob,
   suggestTripFileName,
   TRIP_FILE_EXTENSION,
+  TRIP_FILE_EXTENSION_LEGACY,
   TRIP_FILE_MIME,
 } from "./tripLocalFileDocument";
 import type { Trip } from "./types";
@@ -43,10 +44,13 @@ declare global {
   }
 }
 
-const PICKER_TYPES_JSON = [
+const PICKER_TYPES_TRIP = [
   {
-    description: "JSON",
-    accept: { "application/json": [".json", TRIP_FILE_EXTENSION] },
+    description: "SnifferTrek Reise",
+    accept: {
+      "application/zip": [TRIP_FILE_EXTENSION, ".zip"],
+      "application/json": [TRIP_FILE_EXTENSION_LEGACY, ".json"],
+    },
   },
 ];
 
@@ -111,12 +115,12 @@ export function startSaveFilePickerInUserGesture(trip: Trip):
   const suggestedName = suggestTripFileName(trip);
   const promise = window.showSaveFilePicker({
     suggestedName,
-    types: [{ description: "SnifferTrek Reise", accept: { "application/json": [TRIP_FILE_EXTENSION, ".json"] } }],
+    types: PICKER_TYPES_TRIP,
   });
   return { kind: "started", promise };
 }
 
-/** Safari-Fallback: Teilen-Sheet → «In Dateien sichern» / Speicherort wählen. Im Klick synchron starten. */
+/** Safari-Fallback: Teilen-Sheet – asynchron ZIP bauen, dann share. */
 export function startShareTripFileInUserGesture(
   trip: Trip,
   beforeWrite?: () => void
@@ -126,14 +130,17 @@ export function startShareTripFileInUserGesture(
   }
   beforeWrite?.();
   const fileName = suggestTripFileName(trip);
-  const file = new File([buildTripFileContents(trip)], fileName, { type: TRIP_FILE_MIME });
-  if (typeof navigator.canShare === "function" && !navigator.canShare({ files: [file] })) {
-    return { kind: "unsupported" };
-  }
-  const promise = navigator.share({
-    files: [file],
-    title: trip.name && trip.name !== "Neue Reise" ? trip.name : "SnifferTrek-Reise",
-  });
+  const promise = (async () => {
+    const blob = await buildTripFileBlobAsync(trip);
+    const file = new File([blob], fileName, { type: TRIP_FILE_MIME });
+    if (typeof navigator.canShare === "function" && !navigator.canShare({ files: [file] })) {
+      throw new Error("share_unsupported");
+    }
+    await navigator.share({
+      files: [file],
+      title: trip.name && trip.name !== "Neue Reise" ? trip.name : "SnifferTrek-Reise",
+    });
+  })();
   return { kind: "started", promise, fileName };
 }
 
@@ -181,12 +188,7 @@ async function pickSaveFileHandle(suggestedName: string): Promise<PickSaveFileRe
   if (!isFileSystemAccessSupported()) return { handle: null, cancelled: false };
   const attempts: (() => Promise<FileSystemFileHandle>)[] = [
     () => window.showSaveFilePicker!({ suggestedName }),
-    () =>
-      window.showSaveFilePicker!({
-        suggestedName,
-        types: [{ description: "SnifferTrek Reise", accept: { "application/json": [TRIP_FILE_EXTENSION] } }],
-      }),
-    () => window.showSaveFilePicker!({ suggestedName, types: PICKER_TYPES_JSON }),
+    () => window.showSaveFilePicker!({ suggestedName, types: PICKER_TYPES_TRIP }),
   ];
   for (const attempt of attempts) {
     try {
@@ -295,10 +297,10 @@ async function ensureWritePermission(handle: FileSystemFileHandle): Promise<bool
 }
 
 async function writeToHandle(handle: FileSystemFileHandle, trip: Trip): Promise<void> {
-  const contents = buildTripFileContents(trip);
+  const blob = await buildTripFileBlobAsync(trip);
   const h = handle as WritableFileHandle;
   const writable = await h.createWritable();
-  await writable.write(contents);
+  await writable.write(blob);
   await writable.close();
 }
 
@@ -382,7 +384,7 @@ export class TripLocalFileSession {
       let handle: FileSystemFileHandle | undefined;
       const attempts = [
         () => window.showOpenFilePicker!({ multiple: false }),
-        () => window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_JSON }),
+        () => window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_TRIP }),
       ];
       for (const attempt of attempts) {
         try {
@@ -396,8 +398,7 @@ export class TripLocalFileSession {
       if (!handle) return null;
 
       const file = await handle.getFile();
-      const text = await file.text();
-      const trip = parseTripFileContents(text);
+      const trip = await parseTripFileBlob(file);
       if (trip.id !== tripId) {
         throw new Error("trip_id_mismatch");
       }
@@ -435,21 +436,21 @@ export class TripLocalFileSession {
 
   async openFileAsNewTrip(): Promise<Trip | null> {
     try {
-      let text: string;
+      let fileBlob: Blob;
       let fileName = "";
       let handle: FileSystemFileHandle | null = null;
 
       if (isFileSystemAccessSupported()) {
-        const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_JSON });
+        const handles = await window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_TRIP });
         handle = handles[0];
         const file = await handle.getFile();
-        text = await file.text();
+        fileBlob = file;
         fileName = handle.name || file.name;
       } else {
-        text = await new Promise<string>((resolve, reject) => {
+        fileBlob = await new Promise<Blob>((resolve, reject) => {
           const input = document.createElement("input");
           input.type = "file";
-          input.accept = `${TRIP_FILE_MIME},${TRIP_FILE_EXTENSION},application/json`;
+          input.accept = `${TRIP_FILE_MIME},${TRIP_FILE_EXTENSION},${TRIP_FILE_EXTENSION_LEGACY},application/json,.zip`;
           input.onchange = () => {
             const file = input.files?.[0];
             if (!file) {
@@ -457,16 +458,13 @@ export class TripLocalFileSession {
               return;
             }
             fileName = file.name;
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ""));
-            reader.onerror = () => reject(reader.error);
-            reader.readAsText(file);
+            resolve(file);
           };
           input.click();
         });
       }
 
-      const trip = parseTripFileContents(text);
+      const trip = await parseTripFileBlob(fileBlob);
       if (handle) {
         const ok = await ensureWritePermission(handle);
         if (ok) {

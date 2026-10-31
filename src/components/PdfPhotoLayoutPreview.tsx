@@ -6,6 +6,7 @@ import {
  buildSmartPhotoPages,
  smartPageCellBoxes,
 } from "@/lib/pdfSmartPages";
+import MediaImg from "@/components/MediaImg";
 
 export const PDF_PHOTO_LAYOUT_LABELS: Record<PdfPhotoLayout, string> = {
  auto: "Auto Layout",
@@ -76,7 +77,7 @@ export function PdfPhotoLayoutPreview({
  title={canDrag ? "Foto hierhin ziehen" : undefined}
  >
  {url ? (
- <img
+ <MediaImg
  src={url}
  alt={`Position ${slotIdx + 1}`}
  className={`h-full w-full object-contain ${draggingSlot === slotIdx ? "opacity-40" : ""}`}

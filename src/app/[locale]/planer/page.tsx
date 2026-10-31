@@ -50,6 +50,7 @@ import {
 import { Link, useRouter } from "@/i18n/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import RouteStopBriefPanel from "@/components/RouteStopBriefPanel";
+import MediaImg from "@/components/MediaImg";
 import {
   stopHasBriefContent,
   stopBriefIncluded,
@@ -569,6 +570,29 @@ export default function PlanerPage() {
       cancelled = true;
     };
   }, [trip.id]);
+
+  // Legacy Data-URLs → st:-Assets (Thumbs in IDB); Trip bleibt schlank
+  useEffect(() => {
+    if (!trip.id) return;
+    const hasData =
+      Object.values(trip.pdfPhotosByEtappe || {}).flat().some((u) => u.startsWith("data:")) ||
+      Object.values(trip.pdfPhotoLibraryByEtappe || {}).flat().some((u) => u.startsWith("data:")) ||
+      !!trip.pdfCoverPhotoDataUrl?.startsWith("data:");
+    if (!hasData) return;
+    let cancelled = false;
+    void import("@/lib/tripLocalFileDocument").then(({ migrateInlineDataUrlsToAssets }) =>
+      migrateInlineDataUrlsToAssets(trip).then((migrated) => {
+        if (cancelled) return;
+        setTrip((prev) => (prev.id !== migrated.id ? prev : migrated));
+        saveTrip(migrated);
+      })
+    );
+    return () => {
+      cancelled = true;
+    };
+    // Nur bei Trip-Wechsel / wenn noch Data-URLs da sind
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trip.id, trip.pdfCoverPhotoDataUrl, trip.pdfPhotosByEtappe, trip.pdfPhotoLibraryByEtappe]);
 
   /** Stopps, deren Foto der Nutzer bewusst gelöscht hat („Ortsinfo entfernen"). */
   const photoClearAllowRef = useRef<Set<string>>(new Set());
@@ -1704,14 +1728,23 @@ export default function PlanerPage() {
       setCoverAspectRatio(null);
       return;
     }
-    const img = new Image();
-    img.onload = () => {
-      if (img.width > 0 && img.height > 0) {
-        setCoverAspectRatio(img.width / img.height);
-      }
+    let cancelled = false;
+    void import("@/lib/tripPhotoStore").then(({ ensureThumbUrl }) =>
+      ensureThumbUrl(trip.pdfCoverPhotoDataUrl!).then((src) => {
+        if (cancelled || !src) return;
+        const img = new Image();
+        img.onload = () => {
+          if (img.width > 0 && img.height > 0) {
+            setCoverAspectRatio(img.width / img.height);
+          }
+        };
+        img.onerror = () => setCoverAspectRatio(null);
+        img.src = src;
+      })
+    );
+    return () => {
+      cancelled = true;
     };
-    img.onerror = () => setCoverAspectRatio(null);
-    img.src = trip.pdfCoverPhotoDataUrl;
   }, [trip.pdfCoverPhotoDataUrl]);
 
   const logAffiliateClick = useCallback(
@@ -2534,16 +2567,25 @@ export default function PlanerPage() {
     const missing = allUrls.filter((url) => !photoAspectByUrl[url]);
     if (missing.length === 0) return;
     let cancelled = false;
-    missing.forEach((url) => {
-      const img = new Image();
-      img.onload = () => {
-        if (cancelled || !img.naturalWidth || !img.naturalHeight) return;
-        const aspect = img.naturalWidth / img.naturalHeight;
-        setPhotoAspectByUrl((prev) => (prev[url] ? prev : { ...prev, [url]: aspect }));
-      };
-      img.onerror = () => {};
-      img.src = url;
-    });
+    void (async () => {
+      const { ensureThumbUrl } = await import("@/lib/tripPhotoStore");
+      for (const url of missing) {
+        const src = await ensureThumbUrl(url);
+        if (cancelled || !src) continue;
+        await new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            if (!cancelled && img.naturalWidth && img.naturalHeight) {
+              const aspect = img.naturalWidth / img.naturalHeight;
+              setPhotoAspectByUrl((prev) => (prev[url] ? prev : { ...prev, [url]: aspect }));
+            }
+            resolve();
+          };
+          img.onerror = () => resolve();
+          img.src = src;
+        });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -2659,26 +2701,28 @@ export default function PlanerPage() {
   const addPickedPdfPhotosToEtappe = useCallback(
     async (etappeIndex: number, files: FileList | null) => {
       if (!files || files.length === 0) return;
-      const picked = Array.from(files).slice(0, 20);
-      const encoded = (
+      const tripId = trip.id;
+      const picked = Array.from(files).slice(0, 40);
+      const { ingestPhotoFile } = await import("@/lib/tripPhotoStore");
+      const refs = (
         await Promise.all(
           picked.map(async (file) => {
             if (!file.type.startsWith("image/")) return undefined;
-            return await fileToPrintableDataUrl(file);
+            return await ingestPhotoFile(tripId, file);
           })
         )
       ).filter((u): u is string => !!u);
-      if (encoded.length === 0) return;
+      if (refs.length === 0) return;
       updateTrip((prev) => {
         const key = String(etappeIndex);
         const existing = prev.pdfPhotosByEtappe?.[key] || [];
         const library = prev.pdfPhotoLibraryByEtappe?.[key] || [];
-        const mergedLibrary = Array.from(new Set([...library, ...encoded]));
+        const mergedLibrary = Array.from(new Set([...library, ...refs]));
         return {
           ...prev,
           pdfPhotosByEtappe: {
             ...(prev.pdfPhotosByEtappe || {}),
-            [key]: Array.from(new Set([...existing, ...encoded])),
+            [key]: Array.from(new Set([...existing, ...refs])),
           },
           pdfPhotoLibraryByEtappe: {
             ...(prev.pdfPhotoLibraryByEtappe || {}),
@@ -2687,7 +2731,7 @@ export default function PlanerPage() {
         };
       });
     },
-    [updateTrip]
+    [trip.id, updateTrip]
   );
 
   const setPdfCoverStyle = useCallback(
@@ -2702,14 +2746,15 @@ export default function PlanerPage() {
       if (!files || files.length === 0) return;
       const first = Array.from(files)[0];
       if (!first?.type?.startsWith("image/")) return;
-      const encoded = await fileToPrintableDataUrl(first);
-      if (!encoded) return;
+      const { ingestPhotoFile } = await import("@/lib/tripPhotoStore");
+      const ref = await ingestPhotoFile(trip.id, first);
+      if (!ref) return;
       updateTrip((prev) => {
-        writeTripCoverPhoto(prev.id, encoded);
-        return { ...prev, pdfCoverPhotoDataUrl: encoded };
+        writeTripCoverPhoto(prev.id, ref);
+        return { ...prev, pdfCoverPhotoDataUrl: ref };
       });
     },
-    [updateTrip]
+    [trip.id, updateTrip]
   );
 
   const clearPdfCoverPhoto = useCallback(() => {
@@ -4908,7 +4953,7 @@ export default function PlanerPage() {
                             className="relative w-[132px] aspect-[1/1.414] rounded-lg overflow-hidden border border-gray-200 bg-gray-50 hover:ring-2 hover:ring-indigo-300 transition-all cursor-zoom-in"
                             title={tt("coverEnlarge")}
                           >
-                            <img src={trip.pdfCoverPhotoDataUrl} alt="Titelbild Vorschau" className="w-full h-full object-cover" />
+                            <MediaImg src={trip.pdfCoverPhotoDataUrl} alt="Titelbild Vorschau" className="w-full h-full object-cover" />
                           </button>
                           <button
                             type="button"
@@ -4967,7 +5012,7 @@ export default function PlanerPage() {
                           {previewModeFor("background") === "background" ? (
                             <>
                               {trip.pdfCoverPhotoDataUrl ? (
-                                <img src={trip.pdfCoverPhotoDataUrl} alt="Vorschau Hintergrund" className="absolute inset-0 w-full h-full object-fill" />
+                                <MediaImg src={trip.pdfCoverPhotoDataUrl} alt="Vorschau Hintergrund" className="absolute inset-0 w-full h-full object-fill" />
                               ) : (
                                 <div className="absolute inset-0 bg-gradient-to-br from-slate-700/70 to-emerald-700/50" />
                               )}
@@ -4978,7 +5023,7 @@ export default function PlanerPage() {
                               <div className="absolute inset-0 bg-white" />
                               {trip.pdfCoverPhotoDataUrl ? (
                                 <div className="absolute inset-x-0 bottom-0 h-[68%] bg-white">
-                                  <img src={trip.pdfCoverPhotoDataUrl} alt="Vorschau unter Titel" className="w-full h-full object-contain" />
+                                  <MediaImg src={trip.pdfCoverPhotoDataUrl} alt="Vorschau unter Titel" className="w-full h-full object-contain" />
                                 </div>
                               ) : (
                                 <div className="absolute inset-x-0 bottom-0 h-[68%] bg-slate-300" />
@@ -5061,7 +5106,7 @@ export default function PlanerPage() {
                           </div>
                           {trip.pdfCoverPhotoDataUrl ? (
                             <div className="absolute inset-x-0 bottom-0 h-[68%] bg-white">
-                              <img src={trip.pdfCoverPhotoDataUrl} alt="Vorschau unter Titel" className="w-full h-full object-contain" />
+                              <MediaImg src={trip.pdfCoverPhotoDataUrl} alt="Vorschau unter Titel" className="w-full h-full object-contain" />
                             </div>
                           ) : (
                             <div className="absolute inset-x-0 bottom-0 h-[68%] bg-slate-300" />
@@ -5201,8 +5246,9 @@ export default function PlanerPage() {
                         <X className="w-4 h-4" />
                       </button>
                       <div className="relative z-10 rounded-xl overflow-hidden bg-gray-900 shadow-2xl">
-                        <img
+                        <MediaImg
                           src={trip.pdfCoverPhotoDataUrl}
+                          variant="full"
                           alt="Titelbild Großansicht"
                           className="w-full h-[72vh] object-contain bg-black"
                         />
@@ -5245,7 +5291,7 @@ export default function PlanerPage() {
                               {previewModeFor("background") === "background" ? (
                                 <>
                                   {trip.pdfCoverPhotoDataUrl ? (
-                                    <img src={trip.pdfCoverPhotoDataUrl} alt="Variante Hintergrund" className="absolute inset-0 w-full h-full object-fill" />
+                                    <MediaImg src={trip.pdfCoverPhotoDataUrl} alt="Variante Hintergrund" className="absolute inset-0 w-full h-full object-fill" />
                                   ) : (
                                     <div className="absolute inset-0 bg-gradient-to-br from-slate-700/70 to-emerald-700/50" />
                                   )}
@@ -5256,7 +5302,7 @@ export default function PlanerPage() {
                                   <div className="absolute inset-0 bg-white" />
                                   {trip.pdfCoverPhotoDataUrl ? (
                                     <div className="absolute inset-x-0 bottom-0 h-[68%] bg-white">
-                                      <img src={trip.pdfCoverPhotoDataUrl} alt="Variante unter Titel" className="w-full h-full object-contain" />
+                                      <MediaImg src={trip.pdfCoverPhotoDataUrl} alt="Variante unter Titel" className="w-full h-full object-contain" />
                                     </div>
                                   ) : (
                                     <div className="absolute inset-x-0 bottom-0 h-[68%] bg-slate-300" />
@@ -5302,7 +5348,7 @@ export default function PlanerPage() {
                               )}
                               {trip.pdfCoverPhotoDataUrl ? (
                                 <div className="absolute inset-x-0 bottom-0 h-[68%] bg-white">
-                                  <img src={trip.pdfCoverPhotoDataUrl} alt="Variante unter Titel" className="w-full h-full object-contain" />
+                                  <MediaImg src={trip.pdfCoverPhotoDataUrl} alt="Variante unter Titel" className="w-full h-full object-contain" />
                                 </div>
                               ) : (
                                 <div className="absolute inset-x-0 bottom-0 h-[68%] bg-slate-300" />
@@ -5433,7 +5479,7 @@ export default function PlanerPage() {
                                         selected ? "border-indigo-500 ring-2 ring-indigo-200" : "border-gray-200 hover:border-indigo-300"
                                       }`}
                                     >
-                                      <img src={url} alt={`Foto ${idx + 1}`} className="w-full h-20 object-cover" />
+                                      <MediaImg src={url} alt={`Foto ${idx + 1}`} className="w-full h-20 object-cover" />
                                       {selected && (
                                         <span className="absolute top-1 right-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-600 text-white">
                                           <Check className="w-3 h-3" />
@@ -6558,7 +6604,7 @@ export default function PlanerPage() {
                                               title={tt("insertNext")}
                                             >
                                               <div className="w-full h-20 p-1">
-                                                <img src={url} alt={`Mediathek ${idx + 1}`} className="w-full h-full object-contain" />
+                                                <MediaImg src={url} alt={`Mediathek ${idx + 1}`} className="w-full h-full object-contain" />
                                               </div>
                                               {selectedPdfPhotos.includes(url) && (
                                                 <div className="absolute top-1 right-1 bg-indigo-600 text-white rounded-full p-1">

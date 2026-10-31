@@ -2,7 +2,10 @@ import { supabase, isSupabaseConfigured } from "./supabase";
 import { Trip } from "./types";
 import { getAllTrips, notifyTripsMerged, saveTrip } from "./tripStorage";
 import { mergeTripRecords } from "./tripStopMerge";
-import { hydrateTripMedia } from "./tripMediaSidecar";
+import { leanTripForCloud } from "./tripMediaSidecar";
+
+/** Max. JSON-Zeichen für Cloud-Upsert (Metadaten ohne Foto-Blobs). */
+export const CLOUD_TRIP_PAYLOAD_MAX_CHARS = 400_000;
 
 function buildTripPayload(trip: Trip, userId: string, includeRoutes: boolean) {
   const base: Record<string, unknown> = {
@@ -19,8 +22,9 @@ function buildTripPayload(trip: Trip, userId: string, includeRoutes: boolean) {
     hotels: trip.hotels,
     bucket_list: trip.bucketList,
     notes: trip.notes,
-    pdf_photos_by_etappe: trip.pdfPhotosByEtappe || null,
-    pdf_photo_library_by_etappe: trip.pdfPhotoLibraryByEtappe || null,
+    // Foto-Blobs bewusst leer – Wahrheit ist die lokale Datei / IndexedDB
+    pdf_photos_by_etappe: {},
+    pdf_photo_library_by_etappe: {},
     pdf_photo_captions_by_etappe: trip.pdfPhotoCaptionsByEtappe || null,
     pdf_photo_placement_by_etappe: trip.pdfPhotoPlacementByEtappe || null,
     pdf_photo_layout_by_etappe: trip.pdfPhotoLayoutByEtappe || null,
@@ -48,12 +52,25 @@ function buildTripPayload(trip: Trip, userId: string, includeRoutes: boolean) {
   return base;
 }
 
+function payloadWithinBudget(payload: Record<string, unknown>): boolean {
+  try {
+    return JSON.stringify(payload).length <= CLOUD_TRIP_PAYLOAD_MAX_CHARS;
+  } catch {
+    return false;
+  }
+}
+
 let _hasRoutesColumn: boolean | null = null;
 
 async function upsertTrip(payload: Record<string, unknown>): Promise<boolean> {
-  const { error } = await supabase
-    .from("trips")
-    .upsert(payload, { onConflict: "id" });
+  if (!payloadWithinBudget(payload)) {
+    console.warn(
+      "[cloudSync] Payload zu gross – Upsert abgebrochen (Fotos gehören in die lokale Datei, nicht in die Cloud)"
+    );
+    return false;
+  }
+
+  const { error } = await supabase.from("trips").upsert(payload, { onConflict: "id" });
 
   if (!error) return true;
 
@@ -84,22 +101,34 @@ async function upsertTrip(payload: Record<string, unknown>): Promise<boolean> {
   return false;
 }
 
+function cloudPayloadFromTrip(trip: Trip, userId: string, includeRoutes: boolean) {
+  const lean = leanTripForCloud(trip);
+  const stamped = {
+    ...lean,
+    updatedAt: trip.updatedAt || lean.updatedAt || new Date().toISOString(),
+  };
+  const payload = buildTripPayload(stamped, userId, includeRoutes);
+  payload.updated_at = stamped.updatedAt;
+  return payload;
+}
+
 export async function syncTripsToCloud(userId: string): Promise<void> {
   if (!isSupabaseConfigured()) return;
 
-  // Wichtig: Fotos aus dem Sidecar wieder anhaengen. Die lokal gespeicherten
-  // Reisen sind schlank (ohne Bilddaten) – wuerden sie so hochgeladen, wuerde
-  // die Cloud-Kopie bei jedem App-Start bildlos ueberschrieben.
-  const localTrips = getAllTrips().map((t) => hydrateTripMedia(t));
+  // Schlank speichern – keine Foto-Hydration in die Cloud
+  const localTrips = getAllTrips();
   if (localTrips.length === 0) return;
 
   for (const trip of localTrips) {
     if (_hasRoutesColumn !== false) {
-      const ok = await upsertTrip(buildTripPayload(trip, userId, true));
-      if (ok) { _hasRoutesColumn = true; continue; }
+      const ok = await upsertTrip(cloudPayloadFromTrip(trip, userId, true));
+      if (ok) {
+        _hasRoutesColumn = true;
+        continue;
+      }
       _hasRoutesColumn = false;
     }
-    await upsertTrip(buildTripPayload(trip, userId, false));
+    await upsertTrip(cloudPayloadFromTrip(trip, userId, false));
   }
 }
 
@@ -130,8 +159,9 @@ export async function loadTripsFromCloud(userId: string): Promise<Trip[]> {
       hotels: row.hotels || [],
       bucketList: row.bucket_list || [],
       notes: row.notes || "",
-      pdfPhotosByEtappe: row.pdf_photos_by_etappe || undefined,
-      pdfPhotoLibraryByEtappe: row.pdf_photo_library_by_etappe || undefined,
+      // Cloud-Fotos ignorieren / leeren – Medien kommen aus Datei/IndexedDB
+      pdfPhotosByEtappe: {},
+      pdfPhotoLibraryByEtappe: {},
       pdfPhotoCaptionsByEtappe: row.pdf_photo_captions_by_etappe || undefined,
       pdfPhotoPlacementByEtappe: row.pdf_photo_placement_by_etappe || undefined,
       pdfPhotoLayoutByEtappe: row.pdf_photo_layout_by_etappe || undefined,
@@ -156,29 +186,31 @@ export async function loadTripsFromCloud(userId: string): Promise<Trip[]> {
   });
 }
 
-export async function saveTripToCloud(
-  trip: Trip,
-  userId: string
-): Promise<boolean> {
+export async function saveTripToCloud(trip: Trip, userId: string): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
 
-  // updatedAt der lokalen Reise behalten – kein künstlich neueres Cloud-Datum,
-  // sonst überschreibt ein schlanker Cloud-Stand beim nächsten Login den lokalen.
-  const stamped = {
-    ...trip,
-    updatedAt: trip.updatedAt || new Date().toISOString(),
-  };
-  const payload = buildTripPayload(stamped, userId, _hasRoutesColumn !== false);
-  payload.updated_at = stamped.updatedAt;
+  // updatedAt der lokalen Reise behalten – kein künstlich neueres Cloud-Datum
+  const payload = cloudPayloadFromTrip(
+    { ...trip, updatedAt: trip.updatedAt || new Date().toISOString() },
+    userId,
+    _hasRoutesColumn !== false
+  );
 
   const ok = await upsertTrip(payload);
-  if (ok) { _hasRoutesColumn = true; return true; }
+  if (ok) {
+    _hasRoutesColumn = true;
+    return true;
+  }
 
   if (_hasRoutesColumn === null) {
     _hasRoutesColumn = false;
-    const fallback = buildTripPayload(stamped, userId, false);
-    fallback.updated_at = stamped.updatedAt;
-    return await upsertTrip(fallback);
+    return await upsertTrip(
+      cloudPayloadFromTrip(
+        { ...trip, updatedAt: trip.updatedAt || new Date().toISOString() },
+        userId,
+        false
+      )
+    );
   }
   return false;
 }
