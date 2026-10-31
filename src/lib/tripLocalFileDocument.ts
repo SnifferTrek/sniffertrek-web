@@ -16,8 +16,10 @@ import {
 export const TRIP_FILE_FORMAT = "sniffertrek-trip" as const;
 /** v1 = JSON mit inline Data-URLs; v2 = ZIP mit trip.json + media/ */
 export const TRIP_FILE_VERSION = 2;
-export const TRIP_FILE_EXTENSION = ".sniffertrek";
+/** ZIP-Container; .zip-Suffix, damit macOS/Chrome die Datei nicht ausgrauen. */
+export const TRIP_FILE_EXTENSION = ".sniffertrek.zip";
 export const TRIP_FILE_EXTENSION_LEGACY = ".sniffertrek.json";
+export const TRIP_FILE_EXTENSION_PLAIN = ".sniffertrek";
 export const TRIP_FILE_MIME = "application/zip";
 export const TRIP_FILE_MIME_JSON = "application/json";
 

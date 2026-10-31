@@ -5,6 +5,7 @@ import {
   suggestTripFileName,
   TRIP_FILE_EXTENSION,
   TRIP_FILE_EXTENSION_LEGACY,
+  TRIP_FILE_EXTENSION_PLAIN,
   TRIP_FILE_MIME,
 } from "./tripLocalFileDocument";
 import type { Trip } from "./types";
@@ -48,9 +49,8 @@ const PICKER_TYPES_TRIP = [
   {
     description: "SnifferTrek Reise",
     accept: {
-      "application/zip": [TRIP_FILE_EXTENSION, ".zip"],
-      "application/json": [TRIP_FILE_EXTENSION_LEGACY, ".json", TRIP_FILE_EXTENSION],
-      "application/octet-stream": [TRIP_FILE_EXTENSION, TRIP_FILE_EXTENSION_LEGACY, ".json", ".zip"],
+      "application/zip": [TRIP_FILE_EXTENSION, TRIP_FILE_EXTENSION_PLAIN, ".zip"],
+      "application/json": [TRIP_FILE_EXTENSION_LEGACY, ".json"],
     },
   },
 ];
@@ -67,15 +67,7 @@ async function pickTripFileViaInput(): Promise<{ blob: Blob; fileName: string }>
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = [
-      TRIP_FILE_EXTENSION,
-      TRIP_FILE_EXTENSION_LEGACY,
-      ".json",
-      ".zip",
-      "application/json",
-      "application/zip",
-      "application/octet-stream",
-    ].join(",");
+    // Kein accept-Filter: macOS graut .sniffertrek sonst aus (unbekannte Extension)
     input.style.display = "none";
     input.onchange = () => {
       const file = input.files?.[0];
@@ -415,18 +407,12 @@ export class TripLocalFileSession {
     if (!isFileSystemAccessSupported()) return null;
     try {
       let handle: FileSystemFileHandle | undefined;
-      const attempts = [
-        () => window.showOpenFilePicker!({ multiple: false }),
-        () => window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_TRIP }),
-      ];
-      for (const attempt of attempts) {
-        try {
-          const handles = await attempt();
-          handle = handles[0];
-          break;
-        } catch (err) {
-          if (err instanceof DOMException && err.name === "AbortError") return null;
-        }
+      try {
+        const handles = await window.showOpenFilePicker!({ multiple: false });
+        handle = handles[0];
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return null;
+        return null;
       }
       if (!handle) return null;
 
@@ -475,30 +461,12 @@ export class TripLocalFileSession {
 
       if (canOpenFilePicker()) {
         try {
-          let handles: FileSystemFileHandle[] | undefined;
-          // Zuerst ohne Filter (alle Dateien), dann mit Typen – sonst oft «öffnet nicht»
-          const attempts = [
-            () => window.showOpenFilePicker!({ multiple: false }),
-            () => window.showOpenFilePicker!({ multiple: false, types: PICKER_TYPES_TRIP }),
-          ];
-          for (const attempt of attempts) {
-            try {
-              handles = await attempt();
-              break;
-            } catch (err) {
-              if (err instanceof DOMException && err.name === "AbortError") return null;
-            }
-          }
-          if (!handles?.[0]) {
-            const picked = await pickTripFileViaInput();
-            fileBlob = picked.blob;
-            fileName = picked.fileName;
-          } else {
-            handle = handles[0];
-            const file = await handle.getFile();
-            fileBlob = file;
-            fileName = handle.name || file.name;
-          }
+          // Ohne types: .sniffertrek ist auf macOS sonst oft ausgegraut
+          const handles = await window.showOpenFilePicker!({ multiple: false });
+          handle = handles[0];
+          const file = await handle.getFile();
+          fileBlob = file;
+          fileName = handle.name || file.name;
         } catch (err) {
           if (err instanceof DOMException && err.name === "AbortError") return null;
           const picked = await pickTripFileViaInput();
