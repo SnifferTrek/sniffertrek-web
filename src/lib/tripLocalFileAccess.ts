@@ -311,10 +311,23 @@ type WritableFileHandle = FileSystemFileHandle & {
   createWritable(): Promise<FileSystemWritableFileStream>;
 };
 
+async function queryWritePermission(handle: FileSystemFileHandle): Promise<PermissionState | "unknown"> {
+  const h = handle as WritableFileHandle;
+  if (!h.queryPermission) return "unknown";
+  try {
+    return await h.queryPermission({ mode: "readwrite" });
+  } catch {
+    return "unknown";
+  }
+}
+
+/** Nur in User-Gesture (Speichern-Klick) aufrufen – sonst Chrome-Dialoge beim Öffnen. */
 async function ensureWritePermission(handle: FileSystemFileHandle): Promise<boolean> {
   const h = handle as WritableFileHandle;
   const opts = { mode: "readwrite" as const };
-  if (h.queryPermission && (await h.queryPermission(opts)) === "granted") return true;
+  const q = await queryWritePermission(handle);
+  if (q === "granted") return true;
+  if (q === "unknown" && !h.requestPermission) return true;
   if (h.requestPermission) {
     return (await h.requestPermission(opts)) === "granted";
   }
@@ -363,8 +376,9 @@ export class TripLocalFileSession {
     }
 
     this.handle = stored.handle;
-    const ok = await ensureWritePermission(stored.handle);
-    if (!ok) {
+    // Nur query – kein requestPermission (sonst Dialog beim Laden/Öffnen)
+    const perm = await queryWritePermission(stored.handle);
+    if (perm === "denied") {
       this.handle = null;
       return { status: "needs_reconnect", fileName: meta.fileName };
     }
@@ -447,14 +461,14 @@ export class TripLocalFileSession {
     }
   }
 
-  /** Nach Tab-Neustart: oft reicht Berechtigung ohne Datei-Dialog (Chrome/Edge). */
+  /** Nach Tab-Neustart: Handle wiederherstellen, Schreibrecht erst bei Speichern anfordern. */
   async tryRestoreLinkedFile(tripId: string): Promise<TripFileLinkState | null> {
     const meta = getTripFileLinkMeta(tripId);
     if (!meta) return null;
     const stored = await idbGetHandle(tripId);
     if (!stored?.handle) return null;
-    const ok = await ensureWritePermission(stored.handle);
-    if (!ok) return null;
+    const perm = await queryWritePermission(stored.handle);
+    if (perm === "denied") return null;
     this.tripId = tripId;
     this.handle = stored.handle;
     this.fileName = meta.fileName;
@@ -489,17 +503,14 @@ export class TripLocalFileSession {
 
       const trip = await parseTripFileBlob(fileBlob);
       if (handle) {
-        // Handle sofort setzen, damit «Speichern» dieselbe Datei überschreibt
+        // Handle merken für späteres Speichern – kein requestPermission / createWritable
+        // (sonst Chrome: «Änderungen speichern?» schon beim Öffnen).
         this.handle = handle;
         this.tripId = trip.id;
         this.fileName = fileName;
         setTripFileLinkMeta(trip.id, { fileName, linkedAt: new Date().toISOString() });
         try {
           await idbPutHandle(trip.id, handle, fileName);
-          const ok = await ensureWritePermission(handle);
-          if (!ok) {
-            console.warn("[TripLocalFileSession] write permission not granted after open");
-          }
         } catch (linkErr) {
           console.warn("[TripLocalFileSession] link after open failed", linkErr);
         }

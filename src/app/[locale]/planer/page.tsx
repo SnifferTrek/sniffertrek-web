@@ -3500,6 +3500,7 @@ export default function PlanerPage() {
       <TripLocalFileBar
         trip={trip}
         getLatestTrip={() => tripLatestRef.current}
+        hasUnsavedChanges={hasUnsavedChanges}
         onTripImported={handleTripFileImported}
         onFileWriteAfterBrowserSave={persistBrowserCopyForFile}
       />

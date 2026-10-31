@@ -27,6 +27,8 @@ type Props = {
   trip: Trip;
   /** Optional: immer frischeste Trip-Kopie (vermeidet Stale-Closure beim Speichern). */
   getLatestTrip?: () => Trip;
+  /** Nur bei echten Edits auto-schreiben – nicht direkt nach Datei öffnen. */
+  hasUnsavedChanges?: boolean;
   onTripImported: (trip: Trip) => void;
   onFileWriteAfterBrowserSave: () => void;
 };
@@ -34,6 +36,7 @@ type Props = {
 export default function TripLocalFileBar({
   trip,
   getLatestTrip,
+  hasUnsavedChanges = false,
   onTripImported,
   onFileWriteAfterBrowserSave,
 }: Props) {
@@ -100,13 +103,15 @@ export default function TripLocalFileBar({
   useEffect(() => {
     if (linkState.status !== "linked") return;
     if (isSafariBrowser()) return;
-    const snapshot = trip;
+    // Nicht beim bloßen Öffnen schreiben – Chrome zeigt sonst «Änderungen speichern?»
+    if (!hasUnsavedChanges) return;
+    const snapshot = latestTrip();
     tripLocalFileSession.scheduleWrite(snapshot);
     const timer = setTimeout(() => {
       void tripLocalFileSession.flushWrite(latestTrip()).then(setLinkState);
     }, 1600);
     return () => clearTimeout(timer);
-  }, [trip, linkState.status]);
+  }, [trip, linkState.status, hasUnsavedChanges]);
 
   useEffect(() => {
     if (!menuOpen) return;
