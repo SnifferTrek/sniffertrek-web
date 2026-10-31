@@ -25,7 +25,6 @@ import {
   Trash2,
   Check,
   BookmarkPlus,
-  LogIn,
   Smartphone,
   Shield,
   Globe,
@@ -580,11 +579,37 @@ export default function PlanerPage() {
       !!trip.pdfCoverPhotoDataUrl?.startsWith("data:");
     if (!hasData) return;
     let cancelled = false;
+    const tripId = trip.id;
     void import("@/lib/tripLocalFileDocument").then(({ migrateInlineDataUrlsToAssets }) =>
       migrateInlineDataUrlsToAssets(trip).then((migrated) => {
         if (cancelled) return;
-        setTrip((prev) => (prev.id !== migrated.id ? prev : migrated));
-        saveTrip(migrated);
+        // Wichtig: nur Medien-Refs übernehmen – nie den ganzen Trip ersetzen.
+        // Sonst überschreibt eine langsame Migration frische Stopps (z. B. Bari).
+        setTrip((prev) => {
+          if (prev.id !== tripId || prev.id !== migrated.id) return prev;
+          const photoById = new Map((migrated.stops || []).map((s) => [s.id, s]));
+          const next: Trip = {
+            ...prev,
+            pdfPhotosByEtappe: migrated.pdfPhotosByEtappe,
+            pdfPhotoLibraryByEtappe: migrated.pdfPhotoLibraryByEtappe,
+            pdfCoverPhotoDataUrl: migrated.pdfCoverPhotoDataUrl,
+            pdfExtraTextByEtappe: migrated.pdfExtraTextByEtappe ?? prev.pdfExtraTextByEtappe,
+            stops: (prev.stops || []).map((s) => {
+              const m = photoById.get(s.id);
+              if (!m) return s;
+              return {
+                ...s,
+                discoveryPhotoDataUrl: m.discoveryPhotoDataUrl ?? s.discoveryPhotoDataUrl,
+                discoveryPhotoUrl: m.discoveryPhotoUrl ?? s.discoveryPhotoUrl,
+              };
+            }),
+          };
+          queueMicrotask(() => {
+            saveTrip(next);
+            setSavedTrips(getAllTrips());
+          });
+          return next;
+        });
       })
     );
     return () => {
@@ -596,12 +621,17 @@ export default function PlanerPage() {
 
   /** Stopps, deren Foto der Nutzer bewusst gelöscht hat („Ortsinfo entfernen"). */
   const photoClearAllowRef = useRef<Set<string>>(new Set());
+  /** Immer aktueller Trip – Speichern/Datei darf keinen React-Stale-Stand schreiben. */
+  const tripLatestRef = useRef(trip);
+  tripLatestRef.current = trip;
 
   const updateTrip = useCallback((updates: Partial<Trip> | ((prev: Trip) => Trip)) => {
     setTrip((prev) => {
       const base = typeof updates === "function" ? updates(prev) : { ...prev, ...updates };
       // Harte Garantie: Kein Update darf ein vorhandenes Stopp-Foto entfernen.
-      return prev.id === base.id ? preserveStopPhotos(prev, base, photoClearAllowRef.current) : base;
+      const next = prev.id === base.id ? preserveStopPhotos(prev, base, photoClearAllowRef.current) : base;
+      tripLatestRef.current = next;
+      return next;
     });
     setHasUnsavedChanges(true);
   }, []);
@@ -609,36 +639,41 @@ export default function PlanerPage() {
   const updateTripSilent = useCallback((updates: Partial<Trip> | ((prev: Trip) => Trip)) => {
     setTrip((prev) => {
       const base = typeof updates === "function" ? updates(prev) : { ...prev, ...updates };
-      return prev.id === base.id ? preserveStopPhotos(prev, base, photoClearAllowRef.current) : base;
+      const next = prev.id === base.id ? preserveStopPhotos(prev, base, photoClearAllowRef.current) : base;
+      tripLatestRef.current = next;
+      return next;
     });
   }, []);
 
   const persistTripSnapshot = useCallback((snapshot: Trip) => {
     const synced = syncTripRouteStops(snapshot);
+    tripLatestRef.current = synced;
     saveTrip(synced);
     setSavedTrips(getAllTrips());
   }, []);
 
   const handleSave = useCallback(() => {
     // Titel=Ziel ohne Koordinaten: nur PDF blockieren, Browser-/Cloud-Save immer erlauben
+    const snapshot = tripLatestRef.current;
     setSaveBlockedMessage(null);
-    saveTrip(trip);
-    setActiveTripId(trip.id);
+    saveTrip(snapshot);
+    setActiveTripId(snapshot.id);
     setSavedTrips(getAllTrips());
     setHasUnsavedChanges(false);
     setSaveStatus("saved");
     setTimeout(() => setSaveStatus("idle"), 2000);
     if (user) {
-      saveTripToCloud(trip, user.id);
+      saveTripToCloud(snapshot, user.id);
     }
-    void tripLocalFileSession.flushWrite(trip);
-  }, [trip, user]);
+    void tripLocalFileSession.flushWrite(snapshot);
+  }, [user]);
 
   const persistBrowserCopyForFile = useCallback(() => {
-    saveTrip(trip);
-    setActiveTripId(trip.id);
+    const snapshot = tripLatestRef.current;
+    saveTrip(snapshot);
+    setActiveTripId(snapshot.id);
     setSavedTrips(getAllTrips());
-  }, [trip]);
+  }, []);
 
   const handleTripFileImported = useCallback((imported: Trip) => {
     saveTrip(imported);
@@ -3464,29 +3499,11 @@ export default function PlanerPage() {
       <div className="relative z-40 isolate">
       <TripLocalFileBar
         trip={trip}
+        getLatestTrip={() => tripLatestRef.current}
         onTripImported={handleTripFileImported}
         onFileWriteAfterBrowserSave={persistBrowserCopyForFile}
       />
       </div>
-
-      {/* Account Hint Banner – only show when not logged in */}
-      {!user && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <BookmarkPlus className="w-5 h-5 text-amber-500" />
-              <p className="text-sm text-amber-800">
-                <strong>{tt("tip")}:</strong> {tt("accountHint")}
-              </p>
-            </div>
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-700 hover:text-amber-900 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
-            >
-              <LogIn className="w-3.5 h-3.5" />{tt("signIn")}</Link>
-          </div>
-        </div>
-      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {saveBlockedMessage && (

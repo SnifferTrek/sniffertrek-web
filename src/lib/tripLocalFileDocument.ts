@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import type { Trip } from "./types";
-import { hydrateTripMedia, loadDurablePdfMedia, loadDurableStopMedia } from "./tripMediaSidecar";
+import { hydrateTripMedia } from "./tripMediaSidecar";
 import { syncTripRouteStops } from "./tripStopMerge";
 import {
   ingestDataUrl,
@@ -111,15 +111,21 @@ export async function migrateInlineDataUrlsToAssets(trip: Trip): Promise<Trip> {
   return next;
 }
 
-/** Stellt sicher, dass IndexedDB-Medien + Sidecars geladen und Data-URLs migriert sind. */
+/**
+ * Trip für Datei: UI-Stand ist Source of Truth (Stops/Route).
+ * Kein hydrate aus Sidecar – das überschreibt sonst frische Edits mit altem Cache.
+ */
 export async function prepareTripForFile(trip: Trip): Promise<Trip> {
-  if (trip.id) {
-    await Promise.all([loadDurablePdfMedia(trip.id), loadDurableStopMedia(trip.id)]);
+  const stamped = syncTripRouteStops({
+    ...trip,
+    updatedAt: new Date().toISOString(),
+  });
+  try {
+    return await migrateInlineDataUrlsToAssets(stamped);
+  } catch (err) {
+    console.warn("[prepareTripForFile] migrate skipped", err);
+    return stamped;
   }
-  let hydrated = hydrateTripMedia(syncTripRouteStops({ ...trip, updatedAt: new Date().toISOString() }));
-  hydrated = await migrateInlineDataUrlsToAssets(hydrated);
-  await warmThumbCache(collectStringPhotoFields(hydrated).filter(isMediaRef));
-  return hydrated;
 }
 
 /** @deprecated sync JSON – nur noch Fallback; bevorzugt buildTripFileBlobAsync */

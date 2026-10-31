@@ -25,11 +25,18 @@ const TOAST_AUTO_HIDE_MS = 8000;
 
 type Props = {
   trip: Trip;
+  /** Optional: immer frischeste Trip-Kopie (vermeidet Stale-Closure beim Speichern). */
+  getLatestTrip?: () => Trip;
   onTripImported: (trip: Trip) => void;
   onFileWriteAfterBrowserSave: () => void;
 };
 
-export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfterBrowserSave }: Props) {
+export default function TripLocalFileBar({
+  trip,
+  getLatestTrip,
+  onTripImported,
+  onFileWriteAfterBrowserSave,
+}: Props) {
   const t = useTranslations("planer");
   const [linkState, setLinkState] = useState<TripFileLinkState>({ status: "none" });
   const [bannerOpen, setBannerOpen] = useState(false);
@@ -38,6 +45,9 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [safariHintOpen, setSafariHintOpen] = useState(false);
   const lastTripIdRef = useRef(trip.id);
+  const tripRef = useRef(trip);
+  tripRef.current = trip;
+  const latestTrip = () => getLatestTrip?.() ?? tripRef.current;
   const autoRestoreTried = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const fileBusyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -90,9 +100,10 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
   useEffect(() => {
     if (linkState.status !== "linked") return;
     if (isSafariBrowser()) return;
-    tripLocalFileSession.scheduleWrite(trip);
+    const snapshot = trip;
+    tripLocalFileSession.scheduleWrite(snapshot);
     const timer = setTimeout(() => {
-      void tripLocalFileSession.flushWrite(trip).then(setLinkState);
+      void tripLocalFileSession.flushWrite(latestTrip()).then(setLinkState);
     }, 1600);
     return () => clearTimeout(timer);
   }, [trip, linkState.status]);
@@ -151,13 +162,46 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
 
   /** Safari: echter Download (achtet «Für jeden Download fragen»), kein Teilen-Sheet. */
   const runSafariDownloadSave = () => {
-    const name = suggestTripFileName(trip);
+    const current = latestTrip();
+    const name = suggestTripFileName(current);
     // Download zuerst – vor setState, damit Safari «Für jeden Download fragen» greift.
-    downloadTripFile(trip, name);
+    downloadTripFile(current, name);
     onFileWriteAfterBrowserSave();
     setMenuOpen(false);
     setBannerOpen(false);
     setSaveToast(t("localFileSavedDownloadSafari", { name }));
+  };
+
+  const runSaveFilePicker = () => {
+    const current = latestTrip();
+    // Safari / ohne File-Picker: Download – bei «Für jeden Download fragen» erscheint der Speicherort-Dialog.
+    if (isSafariBrowser() || !isFileSystemAccessSupported()) {
+      runSafariDownloadSave();
+      return;
+    }
+
+    const started = startSaveFilePickerInUserGesture(current);
+    setMenuOpen(false);
+    if (started.kind === "unsupported") {
+      runSafariDownloadSave();
+      return;
+    }
+
+    setFileBusySafe(true);
+    void started.promise
+      .then((handle) =>
+        saveTripToChosenHandle(current, handle, tripLocalFileSession, onFileWriteAfterBrowserSave)
+      )
+      .then((result) => {
+        setLinkState(result.linkState);
+        showSaveFeedback(result);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        console.warn("[TripLocalFileBar] save picker failed", err);
+        setSaveToast(t("localFilePickerFailed"));
+      })
+      .finally(() => setFileBusySafe(false));
   };
 
   const handleSaveToFile = () => {
@@ -174,50 +218,31 @@ export default function TripLocalFileBar({ trip, onTripImported, onFileWriteAfte
       setMenuOpen(false);
       setFileBusySafe(true);
       void (async () => {
+        let handedOffToPicker = false;
         try {
           onFileWriteAfterBrowserSave();
-          const state = await tripLocalFileSession.flushWrite(trip);
+          const state = await tripLocalFileSession.flushWrite(latestTrip());
           setLinkState(state);
           if (state.status === "linked") {
             setSaveToast(t("localFileSavedLinked", { name: state.fileName }));
-          } else if (state.status === "write_failed") {
-            setSaveToast(t("localFileWriteFailed"));
+            return;
           }
-        } finally {
+          if (state.status === "write_failed") {
+            setSaveToast(t("localFileWriteFailed"));
+            return;
+          }
+          // Kein aktiver Schreibzugriff → Nutzer muss Datei wählen
+          handedOffToPicker = true;
           setFileBusySafe(false);
+          runSaveFilePicker();
+        } finally {
+          if (!handedOffToPicker) setFileBusySafe(false);
         }
       })();
       return;
     }
 
-    // Safari / ohne File-Picker: Download – bei «Für jeden Download fragen» erscheint der Speicherort-Dialog.
-    if (isSafariBrowser() || !isFileSystemAccessSupported()) {
-      runSafariDownloadSave();
-      return;
-    }
-
-    const started = startSaveFilePickerInUserGesture(trip);
-    setMenuOpen(false);
-    if (started.kind === "unsupported") {
-      runSafariDownloadSave();
-      return;
-    }
-
-    setFileBusySafe(true);
-    void started.promise
-      .then((handle) =>
-        saveTripToChosenHandle(trip, handle, tripLocalFileSession, onFileWriteAfterBrowserSave)
-      )
-      .then((result) => {
-        setLinkState(result.linkState);
-        showSaveFeedback(result);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.warn("[TripLocalFileBar] save picker failed", err);
-        setSaveToast(t("localFilePickerFailed"));
-      })
-      .finally(() => setFileBusySafe(false));
+    runSaveFilePicker();
   };
 
   const handleOpen = async () => {
