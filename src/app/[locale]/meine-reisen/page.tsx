@@ -204,14 +204,14 @@ export default function MeineReisenPage() {
                 type="button"
                 disabled={openingFile}
                 onClick={() => void handleOpenFromFile()}
-                className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all disabled:opacity-50"
+                className="inline-flex items-center gap-2 border border-gray-200 bg-white text-gray-800 px-6 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all disabled:opacity-50"
               >
                 <FileUp className="w-5 h-5" />
                 {openingFile ? t("openingFile") : t("openFromFile")}
               </button>
               <Link
                 href="/login"
-                className="inline-flex items-center gap-2 border border-gray-200 bg-white text-gray-800 px-6 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-all"
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 text-white px-6 py-3 rounded-xl text-sm font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all"
               >
                 <LogIn className="w-5 h-5" />
                 {t("guestLoginCta")}
