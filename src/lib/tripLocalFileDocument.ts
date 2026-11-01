@@ -323,7 +323,14 @@ export function downloadTripFile(trip: Trip, fileName?: string): void {
 export async function downloadTripFileAsync(trip: Trip, fileName?: string): Promise<void> {
   if (typeof window === "undefined") return;
   const name = fileName || suggestTripFileName(trip);
-  const blob = await buildTripFileBlobAsync(trip);
+  // Snapshot sofort – Stopps dürfen während des (langen) ZIP-Baus nicht «verloren» gehen
+  let frozen: Trip;
+  try {
+    frozen = JSON.parse(JSON.stringify(trip)) as Trip;
+  } catch {
+    frozen = trip;
+  }
+  const blob = await buildTripFileBlobAsync(frozen);
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

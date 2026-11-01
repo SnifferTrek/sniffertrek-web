@@ -162,7 +162,7 @@ import { partnerLabelFromUrl, partnerLinkCta } from "@/lib/partnerLabelFromUrl";
 import { PartnerAffiliateMark } from "@/components/PartnerLinkBadge";
 import { parseHotelBookingIcs } from "@/lib/parseHotelBookingIcs";
 import TripLocalFileBar from "@/components/TripLocalFileBar";
-import { tripLocalFileSession } from "@/lib/tripLocalFileAccess";
+import { freezeTripForFile, tripLocalFileSession } from "@/lib/tripLocalFileAccess";
 import {
   computeHotelStaysTimeline,
   getBookedHotelDatesOnly,
@@ -654,7 +654,8 @@ export default function PlanerPage() {
 
   const handleSave = useCallback(() => {
     // Titel=Ziel ohne Koordinaten: nur PDF blockieren, Browser-/Cloud-Save immer erlauben
-    const snapshot = tripLatestRef.current;
+    const snapshot = freezeTripForFile(tripLatestRef.current);
+    tripLatestRef.current = snapshot;
     setSaveBlockedMessage(null);
     saveTrip(snapshot);
     setActiveTripId(snapshot.id);
@@ -676,6 +677,7 @@ export default function PlanerPage() {
   }, []);
 
   const handleTripFileImported = useCallback((imported: Trip) => {
+    tripLatestRef.current = imported;
     saveTrip(imported);
     setTrip(imported);
     setActiveTripId(imported.id);

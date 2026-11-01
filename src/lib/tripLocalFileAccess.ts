@@ -367,18 +367,36 @@ async function ensureWritePermission(handle: FileSystemFileHandle): Promise<bool
   return true;
 }
 
-async function writeToHandle(
-  handle: FileSystemFileHandle,
-  trip: Trip,
-  isCurrent?: () => boolean
-): Promise<boolean> {
+/** Stoppliste zum Speichern-Zeitpunkt einfrieren (keine späteren Mutation/Stale-Refs). */
+export function freezeTripForFile(trip: Trip): Trip {
+  try {
+    return JSON.parse(JSON.stringify(trip)) as Trip;
+  } catch {
+    return {
+      ...trip,
+      stops: (trip.stops || []).map((s) => ({ ...s })),
+      routes: trip.routes
+        ? {
+            ...trip.routes,
+            route: trip.routes.route
+              ? {
+                  ...trip.routes.route,
+                  stops: (trip.routes.route.stops || []).map((s) => ({ ...s })),
+                  viaPoints: [...(trip.routes.route.viaPoints || [])],
+                }
+              : trip.routes.route,
+          }
+        : trip.routes,
+    };
+  }
+}
+
+async function writeToHandle(handle: FileSystemFileHandle, trip: Trip): Promise<void> {
   const blob = await buildTripFileBlobAsync(trip);
-  if (isCurrent && !isCurrent()) return false;
   const h = handle as WritableFileHandle;
   const writable = await h.createWritable();
   await writable.write(blob);
   await writable.close();
-  return true;
 }
 
 export class TripLocalFileSession {
@@ -386,8 +404,8 @@ export class TripLocalFileSession {
   private fileName = "";
   private tripId = "";
   private writeQueue: Promise<void> = Promise.resolve();
-  /** Verhindert, dass eine ältere (langsam gebaute) ZIP-Schreibe eine neuere überschreibt. */
-  private writeEpoch = 0;
+  /** Immer der neueste Trip, der noch auf die Platte geschrieben werden soll. */
+  private pendingWriteTrip: Trip | null = null;
 
   get linkedFileName(): string {
     return this.fileName;
@@ -395,6 +413,23 @@ export class TripLocalFileSession {
 
   get hasActiveHandle(): boolean {
     return !!this.handle;
+  }
+
+  /** Schreibt in einer Queue immer den zuletzt gesetzten Trip (kein veraltetes ZIP mehr). */
+  private enqueueDiskWrite(): Promise<void> {
+    this.writeQueue = this.writeQueue.catch(() => undefined).then(async () => {
+      while (this.pendingWriteTrip && this.handle) {
+        const trip = this.pendingWriteTrip;
+        this.pendingWriteTrip = null;
+        const ok = await ensureWritePermission(this.handle);
+        if (!ok) {
+          this.handle = null;
+          throw new Error("permission_denied");
+        }
+        await writeToHandle(this.handle, trip);
+      }
+    });
+    return this.writeQueue;
   }
 
   async resolveLinkState(tripId: string): Promise<TripFileLinkState> {
@@ -436,18 +471,20 @@ export class TripLocalFileSession {
     handle: FileSystemFileHandle,
     beforeWrite?: () => void
   ): Promise<TripFileLinkState> {
-    this.tripId = trip.id;
-    const suggested = suggestTripFileName(trip);
+    const frozen = freezeTripForFile(trip);
+    this.tripId = frozen.id;
+    const suggested = suggestTripFileName(frozen);
 
     try {
       const ok = await ensureWritePermission(handle);
       if (!ok) return { status: "picker_failed" };
       beforeWrite?.();
-      await writeToHandle(handle, trip);
+      await writeToHandle(handle, frozen);
       this.handle = handle;
       this.fileName = handle.name || suggested;
-      setTripFileLinkMeta(trip.id, { fileName: this.fileName, linkedAt: new Date().toISOString() });
-      await idbPutHandle(trip.id, handle, this.fileName);
+      this.pendingWriteTrip = null;
+      setTripFileLinkMeta(frozen.id, { fileName: this.fileName, linkedAt: new Date().toISOString() });
+      await idbPutHandle(frozen.id, handle, this.fileName);
       return { status: "linked", fileName: this.fileName };
     } catch (err) {
       console.warn("[TripLocalFileSession] save to handle failed", err);
@@ -558,51 +595,39 @@ export class TripLocalFileSession {
     }
   }
 
-  /** Debounced writes serialized through writeQueue. */
+  /** Debounced / auto: merkt den Trip; die Queue schreibt immer den letzten Stand. */
   scheduleWrite(trip: Trip): void {
     if (!this.handle || trip.id !== this.tripId) return;
-    const epoch = ++this.writeEpoch;
-    // .catch: frühere Fehler dürfen die Queue nicht dauerhaft blockieren
-    this.writeQueue = this.writeQueue.catch(() => undefined).then(async () => {
-      if (!this.handle || epoch !== this.writeEpoch) return;
-      try {
-        const ok = await ensureWritePermission(this.handle);
-        if (!ok) throw new Error("permission_denied");
-        await writeToHandle(this.handle, trip, () => epoch === this.writeEpoch);
-      } catch (err) {
-        console.warn("[TripLocalFileSession] auto-write failed", err);
-      }
+    this.pendingWriteTrip = freezeTripForFile(trip);
+    void this.enqueueDiskWrite().catch((err) => {
+      console.warn("[TripLocalFileSession] auto-write failed", err);
     });
   }
 
   async flushWrite(trip: Trip): Promise<TripFileLinkState> {
     // Handle ggf. aus IDB wiederherstellen – aber danach unbedingt schreiben
-    // (früher: resolveLinkState → «linked» ohne Write → Datei blieb alt).
     if (!this.handle || trip.id !== this.tripId) {
       const restored = await this.resolveLinkState(trip.id);
       if (restored.status !== "linked" || !this.handle) {
         return restored;
       }
     }
-    const epoch = ++this.writeEpoch;
+    this.pendingWriteTrip = freezeTripForFile(trip);
     try {
-      await this.writeQueue.catch(() => undefined);
-      if (epoch !== this.writeEpoch) {
-        // Neuere Speicherung hat übernommen – als Erfolg werten (aktueller Stand folgt).
-        return { status: "linked", fileName: this.fileName };
-      }
-      const ok = await ensureWritePermission(this.handle);
-      if (!ok) {
-        this.handle = null;
+      await this.enqueueDiskWrite();
+      if (!this.handle) {
         return { status: "needs_reconnect", fileName: this.fileName };
       }
-      const wrote = await writeToHandle(this.handle, trip, () => epoch === this.writeEpoch);
-      if (!wrote) {
-        return { status: "linked", fileName: this.fileName };
+      // Während des Schreibens kam ein neuerer Stand → nochmals flushen
+      if (this.pendingWriteTrip) {
+        await this.enqueueDiskWrite();
       }
       return { status: "linked", fileName: this.fileName };
     } catch (err) {
       console.warn("[TripLocalFileSession] flush failed", err);
+      if (String(err).includes("permission_denied")) {
+        return { status: "needs_reconnect", fileName: this.fileName };
+      }
       return { status: "write_failed", fileName: this.fileName, message: String(err) };
     }
   }
@@ -611,6 +636,7 @@ export class TripLocalFileSession {
     if (this.tripId === tripId) {
       this.handle = null;
       this.fileName = "";
+      this.pendingWriteTrip = null;
     }
     clearTripFileLinkMeta(tripId);
     await idbDeleteHandle(tripId);

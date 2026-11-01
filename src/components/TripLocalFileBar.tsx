@@ -12,6 +12,7 @@ import {
   isLinkedFileAutoSaveReliable,
   isSafariBrowser,
   markSafariSaveHintShown,
+  freezeTripForFile,
   markTripFileJustOpened,
   markTripSavedToFile,
   saveTripToChosenHandle,
@@ -21,7 +22,7 @@ import {
   tripLocalFileSession,
   type TripFileLinkState,
 } from "@/lib/tripLocalFileAccess";
-import { downloadTripFile, suggestTripFileName } from "@/lib/tripLocalFileDocument";
+import { downloadTripFileAsync, suggestTripFileName } from "@/lib/tripLocalFileDocument";
 
 const BANNER_DISMISS_PREFIX = "sniffertrek_file_banner_dismiss:";
 const TOAST_AUTO_HIDE_MS = 10000;
@@ -180,30 +181,39 @@ export default function TripLocalFileBar({
     }
   };
 
-  /** Safari: echter Download (achtet «Für jeden Download fragen»), kein Teilen-Sheet. */
+  /** Safari: Download – Trip sofort einfrieren; Toast erst nach fertigem ZIP. */
   const runSafariDownloadSave = () => {
-    const current = latestTrip();
-    const name = suggestTripFileName(current);
-    // Download zuerst – vor setState, damit Safari «Für jeden Download fragen» greift.
-    downloadTripFile(current, name);
-    markTripSavedToFile(current.id, name);
-    markTripFileJustOpened(current.id);
-    setNeedsFileOpen(false);
+    const frozen = freezeTripForFile(latestTrip());
+    const name = suggestTripFileName(frozen);
+    // Promise in derselben User-Gesture starten (Safari-Download-Attribution)
+    const downloadPromise = downloadTripFileAsync(frozen, name);
     onFileWriteAfterBrowserSave();
     setMenuOpen(false);
-    setBannerOpen(false);
-    setSaveToast(t("localFileSavedDownloadNextOpen", { name }));
+    setFileBusySafe(true);
+    void downloadPromise
+      .then(() => {
+        markTripSavedToFile(frozen.id, name);
+        markTripFileJustOpened(frozen.id);
+        setNeedsFileOpen(false);
+        setBannerOpen(false);
+        setSaveToast(t("localFileSavedDownloadNextOpen", { name }));
+      })
+      .catch((err) => {
+        console.warn("[TripLocalFileBar] safari download failed", err);
+        setSaveToast(t("localFileSaveFailed"));
+      })
+      .finally(() => setFileBusySafe(false));
   };
 
   const runSaveFilePicker = () => {
-    const current = latestTrip();
+    const frozen = freezeTripForFile(latestTrip());
     // Safari / ohne File-Picker: Download – bei «Für jeden Download fragen» erscheint der Speicherort-Dialog.
     if (isSafariBrowser() || !isFileSystemAccessSupported()) {
       runSafariDownloadSave();
       return;
     }
 
-    const started = startSaveFilePickerInUserGesture(current);
+    const started = startSaveFilePickerInUserGesture(frozen);
     setMenuOpen(false);
     if (started.kind === "unsupported") {
       runSafariDownloadSave();
@@ -213,7 +223,7 @@ export default function TripLocalFileBar({
     setFileBusySafe(true);
     void started.promise
       .then((handle) =>
-        saveTripToChosenHandle(current, handle, tripLocalFileSession, onFileWriteAfterBrowserSave)
+        saveTripToChosenHandle(frozen, handle, tripLocalFileSession, onFileWriteAfterBrowserSave)
       )
       .then((result) => {
         setLinkState(result.linkState);
@@ -243,12 +253,13 @@ export default function TripLocalFileBar({
       void (async () => {
         let handedOffToPicker = false;
         try {
+          const frozen = freezeTripForFile(latestTrip());
           onFileWriteAfterBrowserSave();
-          const state = await tripLocalFileSession.flushWrite(latestTrip());
+          const state = await tripLocalFileSession.flushWrite(frozen);
           setLinkState(state);
           if (state.status === "linked") {
-            markTripSavedToFile(latestTrip().id, state.fileName);
-            markTripFileJustOpened(latestTrip().id);
+            markTripSavedToFile(frozen.id, state.fileName);
+            markTripFileJustOpened(frozen.id);
             setNeedsFileOpen(false);
             setSaveToast(t("localFileSavedLinked", { name: state.fileName }));
             return;
