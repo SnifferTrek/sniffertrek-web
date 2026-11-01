@@ -625,7 +625,7 @@
     "localFileRelink": "Other file",
     "localFileReconnectTitle": "After a browser restart, choose the same trip file again",
     "localFileReconnectSteps": "Click «Choose file again» and select the same file ({name}) – SnifferTrek will auto-save again.",
-    "localFileReconnectFailed": "Link failed – choose the correct trip file (same trip id).",
+    "localFileReconnectFailed": "Link failed – choose a valid .sniffertrek.zip file. Or use Save (new file).",
     "localFileWriteFailed": "Could not write to file – try «Save to file» again.",
     "localFilePickerFailedInline": "Save failed – try «Save to file» again.",
     "localFileUnlinkTitle": "Remove file link (browser copy stays)",

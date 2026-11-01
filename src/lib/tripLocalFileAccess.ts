@@ -556,9 +556,16 @@ export class TripLocalFileSession {
     }
   }
 
-  async reconnectOpen(tripId: string): Promise<TripFileLinkState | null> {
+  /**
+   * Datei erneut wählen und als Speicherziel für tripId verknüpfen.
+   * ID-Mismatch blockiert nicht mehr: die Datei wird Ziel für die aktuelle Reise
+   * (Aufrufer schreibt danach den UI-Stand per flushWrite).
+   */
+  async reconnectOpen(
+    tripId: string
+  ): Promise<{ state: TripFileLinkState } | { cancelled: true } | null> {
     const restored = await this.tryRestoreLinkedFile(tripId);
-    if (restored) return restored;
+    if (restored) return { state: restored };
 
     if (!isFileSystemAccessSupported()) return null;
     try {
@@ -567,15 +574,20 @@ export class TripLocalFileSession {
         const handles = await window.showOpenFilePicker!({ multiple: false });
         handle = handles[0];
       } catch (err) {
-        if (err instanceof DOMException && err.name === "AbortError") return null;
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return { cancelled: true };
+        }
         return null;
       }
       if (!handle) return null;
 
       const file = await handle.getFile();
-      const trip = await parseTripFileBlob(file);
-      if (trip.id !== tripId) {
-        throw new Error("trip_id_mismatch");
+      // Parse nur zur Validierung (SnifferTrek-Datei) – ID darf abweichen.
+      try {
+        await parseTripFileBlob(file);
+      } catch (parseErr) {
+        console.warn("[TripLocalFileSession] reconnect: not a trip file", parseErr);
+        return null;
       }
       const ok = await ensureWritePermission(handle);
       if (!ok) throw new Error("permission_denied");
@@ -586,11 +598,11 @@ export class TripLocalFileSession {
       this.fileName = fileName;
       setTripFileLinkMeta(tripId, { fileName, linkedAt: new Date().toISOString() });
       await idbPutHandle(tripId, handle, fileName);
-      // Kein writeToHandle(trip) hier: trip ist der alte Dateiinhalt.
-      // Aufrufer (Reconnect) schreibt danach den aktuellen UI-Stand per flushWrite.
-      return { status: "linked", fileName };
+      return { state: { status: "linked", fileName } };
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return null;
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return { cancelled: true };
+      }
       console.warn("[TripLocalFileSession] reconnect failed", err);
       return null;
     }

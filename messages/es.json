@@ -625,7 +625,7 @@
     "localFileRelink": "Otro archivo",
     "localFileReconnectTitle": "Tras reiniciar el navegador, elige otra vez el mismo archivo",
     "localFileReconnectSteps": "Pulsa «Elegir archivo otra vez» y selecciona el mismo archivo ({name}) – SnifferTrek volverá a guardar solo.",
-    "localFileReconnectFailed": "Error al vincular – elige el archivo correcto (mismo id).",
+    "localFileReconnectFailed": "Error al vincular – elige un archivo .sniffertrek.zip válido. O usa Guardar (archivo nuevo).",
     "localFileWriteFailed": "No se pudo guardar en el archivo – prueba «Guardar archivo» otra vez.",
     "localFilePickerFailedInline": "Error al guardar – prueba «Guardar archivo» otra vez.",
     "localFileUnlinkTitle": "Quitar vínculo (copia del navegador permanece)",

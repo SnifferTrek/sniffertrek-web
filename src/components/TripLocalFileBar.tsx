@@ -241,9 +241,35 @@ export default function TripLocalFileBar({
   };
 
   const handleSaveToFile = () => {
+    // needs_reconnect: Speichern = Speichern unter (aktuelle Reise schreiben),
+    // nicht «Datei öffnen» mit ID-Check – sonst erscheint «Verbindung fehlgeschlagen».
     if (linkState.status === "needs_reconnect") {
       setMenuOpen(false);
-      void handleReconnect();
+      setFileBusySafe(true);
+      void (async () => {
+        try {
+          const restored = await tripLocalFileSession.tryRestoreLinkedFile(trip.id);
+          if (restored) {
+            const frozen = await prepareFrozenTripForSave();
+            const state = await tripLocalFileSession.flushWrite(frozen);
+            setLinkState(state);
+            if (state.status === "linked") {
+              markSaved(state.fileName);
+              setSaveToast(
+                t("localFileSavedLinked", {
+                  name: `${state.fileName} · ${frozen.stops?.length || 0} Stopps`,
+                })
+              );
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn("[TripLocalFileBar] restore before save failed", err);
+        } finally {
+          setFileBusySafe(false);
+        }
+        runSaveFilePicker();
+      })();
       return;
     }
 
@@ -312,18 +338,34 @@ export default function TripLocalFileBar({
       const frozen = await prepareFrozenTripForSave();
       const restored = await tripLocalFileSession.tryRestoreLinkedFile(trip.id);
       if (restored) {
-        await tripLocalFileSession.flushWrite(frozen);
-        setLinkState(restored);
+        const written = await tripLocalFileSession.flushWrite(frozen);
+        setLinkState(written.status === "linked" ? written : restored);
+        if (written.status === "linked") {
+          markSaved(written.fileName);
+          setSaveToast(
+            t("localFileSavedLinked", {
+              name: `${written.fileName} · ${frozen.stops?.length || 0} Stopps`,
+            })
+          );
+        }
         return;
       }
-      const state = await tripLocalFileSession.reconnectOpen(trip.id);
-      if (state) {
-        // Nach Neuverknüpfung aktuellen UI-Stand (nicht den alten Dateiinhalt) schreiben
-        await tripLocalFileSession.flushWrite(frozen);
-        setLinkState(state);
-      } else {
-        window.alert(t("localFileReconnectFailed"));
+      const result = await tripLocalFileSession.reconnectOpen(trip.id);
+      if (!result || "cancelled" in result) return;
+      if (result.state.status === "linked") {
+        const written = await tripLocalFileSession.flushWrite(frozen);
+        setLinkState(written.status === "linked" ? written : result.state);
+        if (written.status === "linked") {
+          markSaved(written.fileName);
+          setSaveToast(
+            t("localFileSavedLinked", {
+              name: `${written.fileName} · ${frozen.stops?.length || 0} Stopps`,
+            })
+          );
+        }
+        return;
       }
+      window.alert(t("localFileReconnectFailed"));
     } finally {
       setFileBusySafe(false);
     }

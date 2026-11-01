@@ -620,7 +620,7 @@
     "localFileRelink": "Andere Datei",
     "localFileReconnectTitle": "Nach Browser-Neustart dieselbe Reisedatei erneut wählen",
     "localFileReconnectSteps": "Klicke «Datei wieder wählen» und wähle dieselbe Datei ({name}) – danach speichert SnifferTrek wieder automatisch.",
-    "localFileReconnectFailed": "Verbindung fehlgeschlagen – richtige Reisedatei wählen (gleiche Reise-ID).",
+    "localFileReconnectFailed": "Verbindung fehlgeschlagen – bitte eine gültige .sniffertrek.zip-Datei wählen. Oder «Speichern» nutzen (neue Datei).",
     "localFileWriteFailed": "In Datei speichern fehlgeschlagen – «Datei speichern» erneut wählen.",
     "localFilePickerFailed": "Speichern-Dialog fehlgeschlagen – bitte erneut versuchen oder Chrome/Edge nutzen.",
     "localFileSavedShare": "Im Teilen-Fenster «In Dateien sichern» wählen ({name}) – dort den Speicherort festlegen.",
