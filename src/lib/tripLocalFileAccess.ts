@@ -139,10 +139,9 @@ export function startSaveFilePickerInUserGesture(trip: Trip):
     return { kind: "unsupported" };
   }
   const suggestedName = suggestTripFileName(trip);
-  const promise = window.showSaveFilePicker({
-    suggestedName,
-    types: PICKER_TYPES_TRIP,
-  });
+  // Ohne types: auf macOS/Chrome zuverlässiger in der User-Gesture.
+  // suggestedName endet auf .sniffertrek.zip – Retry mit types würde die Gesture verlieren.
+  const promise = window.showSaveFilePicker({ suggestedName });
   return { kind: "started", promise };
 }
 

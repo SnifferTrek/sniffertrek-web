@@ -183,8 +183,8 @@ export default function TripLocalFileBar({
     return freezeTripForFile(latestTrip());
   };
 
-  /** Safari: zuerst Browser-Kopie, dann ZIP aus demselben Stand; Toast erst nach Download. */
-  const runSafariDownloadSave = () => {
+  /** Download ohne File-Picker (nach verlorener User-Gesture / Safari). */
+  const runDownloadSave = () => {
     setMenuOpen(false);
     setFileBusySafe(true);
     void (async () => {
@@ -199,7 +199,7 @@ export default function TripLocalFileBar({
           })
         );
       } catch (err) {
-        console.warn("[TripLocalFileBar] safari download failed", err);
+        console.warn("[TripLocalFileBar] download save failed", err);
         setSaveToast(t("localFileSaveFailed"));
       } finally {
         setFileBusySafe(false);
@@ -207,18 +207,21 @@ export default function TripLocalFileBar({
     })();
   };
 
+  /**
+   * Speichern unter: showSaveFilePicker MUSS synchron im Klick starten.
+   * Nach jedem await ist die User-Gesture weg → Picker schlägt fehl.
+   */
   const runSaveFilePicker = () => {
-    // Picker muss in derselben User-Gesture starten – Trip danach fertig flushen/schreiben.
     const gestureTrip = freezeTripForFile(latestTrip());
     if (isSafariBrowser() || !isFileSystemAccessSupported()) {
-      runSafariDownloadSave();
+      runDownloadSave();
       return;
     }
 
     const started = startSaveFilePickerInUserGesture(gestureTrip);
     setMenuOpen(false);
     if (started.kind === "unsupported") {
-      runSafariDownloadSave();
+      runDownloadSave();
       return;
     }
 
@@ -233,7 +236,21 @@ export default function TripLocalFileBar({
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.warn("[TripLocalFileBar] save picker failed", err);
-        setSaveToast(t("localFilePickerFailed"));
+        // Gesture weg / Picker kaputt → Download-Fallback statt Alert
+        try {
+          const frozen = await prepareFrozenTripForSave();
+          const name = suggestTripFileName(frozen);
+          await downloadTripFileAsync(frozen, name);
+          markSaved(name);
+          setSaveToast(
+            t("localFileSavedDownloadNextOpen", {
+              name: `${name} · ${frozen.stops?.length || 0} Stopps`,
+            })
+          );
+        } catch (dlErr) {
+          console.warn("[TripLocalFileBar] download fallback failed", dlErr);
+          setSaveToast(t("localFilePickerFailed"));
+        }
       } finally {
         setFileBusySafe(false);
       }
@@ -241,37 +258,9 @@ export default function TripLocalFileBar({
   };
 
   const handleSaveToFile = () => {
-    // needs_reconnect: Speichern = Speichern unter (aktuelle Reise schreiben),
-    // nicht «Datei öffnen» mit ID-Check – sonst erscheint «Verbindung fehlgeschlagen».
-    if (linkState.status === "needs_reconnect") {
-      setMenuOpen(false);
-      setFileBusySafe(true);
-      void (async () => {
-        try {
-          const restored = await tripLocalFileSession.tryRestoreLinkedFile(trip.id);
-          if (restored) {
-            const frozen = await prepareFrozenTripForSave();
-            const state = await tripLocalFileSession.flushWrite(frozen);
-            setLinkState(state);
-            if (state.status === "linked") {
-              markSaved(state.fileName);
-              setSaveToast(
-                t("localFileSavedLinked", {
-                  name: `${state.fileName} · ${frozen.stops?.length || 0} Stopps`,
-                })
-              );
-              return;
-            }
-          }
-        } catch (err) {
-          console.warn("[TripLocalFileBar] restore before save failed", err);
-        } finally {
-          setFileBusySafe(false);
-        }
-        runSaveFilePicker();
-      })();
-      return;
-    }
+    // Wichtig: Kein await vor runSaveFilePicker – sonst stirbt die User-Gesture.
+    // needs_reconnect / none → Speichern unter (Picker sofort).
+    // linked → stilles Überschreiben; bei Fehler Download (kein Picker nach await).
 
     const useSilentFlush =
       linkState.status === "linked" && !isSafariBrowser() && isLinkedFileAutoSaveReliable();
@@ -280,7 +269,6 @@ export default function TripLocalFileBar({
       setMenuOpen(false);
       setFileBusySafe(true);
       void (async () => {
-        let handedOffToPicker = false;
         try {
           const frozen = await prepareFrozenTripForSave();
           const state = await tripLocalFileSession.flushWrite(frozen);
@@ -298,16 +286,26 @@ export default function TripLocalFileBar({
             setSaveToast(t("localFileWriteFailed"));
             return;
           }
-          handedOffToPicker = true;
-          setFileBusySafe(false);
-          runSaveFilePicker();
+          // needs_reconnect o.ä. nach await → kein Picker mehr möglich
+          const name = suggestTripFileName(frozen);
+          await downloadTripFileAsync(frozen, name);
+          markSaved(name);
+          setSaveToast(
+            t("localFileSavedDownloadNextOpen", {
+              name: `${name} · ${frozen.stops?.length || 0} Stopps`,
+            })
+          );
+        } catch (err) {
+          console.warn("[TripLocalFileBar] linked save failed", err);
+          setSaveToast(t("localFileSaveFailed"));
         } finally {
-          if (!handedOffToPicker) setFileBusySafe(false);
+          setFileBusySafe(false);
         }
       })();
       return;
     }
 
+    // none | needs_reconnect | Safari | kein FS-Access: Picker/Download sofort im Klick
     runSaveFilePicker();
   };
 
