@@ -586,7 +586,8 @@ export class TripLocalFileSession {
       this.fileName = fileName;
       setTripFileLinkMeta(tripId, { fileName, linkedAt: new Date().toISOString() });
       await idbPutHandle(tripId, handle, fileName);
-      await writeToHandle(handle, trip);
+      // Kein writeToHandle(trip) hier: trip ist der alte Dateiinhalt.
+      // Aufrufer (Reconnect) schreibt danach den aktuellen UI-Stand per flushWrite.
       return { status: "linked", fileName };
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return null;

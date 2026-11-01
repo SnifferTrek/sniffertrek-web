@@ -340,6 +340,8 @@ export default function PlanerPage() {
   const [draggingPhotoSlotByEtappe, setDraggingPhotoSlotByEtappe] = useState<Record<number, number | null>>({});
   const [photoAspectByUrl, setPhotoAspectByUrl] = useState<Record<string, number>>({});
   const [quickStopDrafts, setQuickStopDrafts] = useState<Array<{ id: string; name: string; lat?: number; lng?: number }>>([]);
+  const quickStopDraftsRef = useRef(quickStopDrafts);
+  quickStopDraftsRef.current = quickStopDrafts;
   const [draggingRouteStopId, setDraggingRouteStopId] = useState<string | null>(null);
   const [dropInsertIndex, setDropInsertIndex] = useState<number | null>(null);
   const [saveBlockedMessage, setSaveBlockedMessage] = useState<string | null>(null);
@@ -671,7 +673,11 @@ export default function PlanerPage() {
     }
   }, [user]);
 
-  const persistBrowserCopyForFile = useCallback(() => {
+  /** Wird nach commitQuickStopDraft gesetzt – Speichern flush’t offene Orts-Entwürfe. */
+  const flushPlacesBeforeFileSaveRef = useRef<() => Promise<void>>(async () => undefined);
+
+  const persistBrowserCopyForFile = useCallback(async () => {
+    await flushPlacesBeforeFileSaveRef.current();
     const snapshot = freezeTripForFile(tripLatestRef.current);
     tripLatestRef.current = snapshot;
     saveTrip(snapshot);
@@ -889,11 +895,27 @@ export default function PlanerPage() {
   };
 
   const commitQuickStopDraft = async (draftId: string, payload?: { name: string; lat?: number; lng?: number }) => {
-    const draft = payload || quickStopDrafts.find((d) => d.id === draftId);
-    if (!draft?.name.trim()) return;
+    const draft = payload || quickStopDraftsRef.current.find((d) => d.id === draftId);
+    if (!draft?.name.trim()) return false;
     const inserted = await addStopSmart(draft.name.trim(), draft.lat, draft.lng);
     if (inserted) {
       setQuickStopDrafts((prev) => prev.filter((d) => d.id !== draftId));
+    }
+    return inserted;
+  };
+
+  flushPlacesBeforeFileSaveRef.current = async () => {
+    const pendingDrafts = quickStopDraftsRef.current.filter((d) => d.name.trim());
+    for (const draft of pendingDrafts) {
+      try {
+        await commitQuickStopDraft(draft.id, {
+          name: draft.name.trim(),
+          lat: draft.lat,
+          lng: draft.lng,
+        });
+      } catch (err) {
+        console.warn("[flushPlacesBeforeFileSave] draft commit failed", err);
+      }
     }
   };
 
@@ -982,49 +1004,64 @@ export default function PlanerPage() {
       return false;
     }
     const newStop: RouteStop = { id: `stop-${Date.now()}`, name, type: "stop", lat, lng, ...extraFields };
-    const stops = currentRouteStops;
-    const existingStops = stops.filter((s) => s.name.trim());
-    if (existingStops.length < 2 || lat == null || lng == null) {
-      updateCurrentStops((prevStops) => {
-        if (prevStops.some((s) => normalizePlaceKey(s.name) === wantedKey)) return prevStops;
-        const next = [...prevStops];
-        const endIdx = next.findIndex((s) => s.type === "end");
-        next.splice(endIdx >= 0 ? endIdx : next.length, 0, newStop);
-        return next;
-      });
-      return true;
-    }
-    // Geocoding darf dauern – danach in den AKTUELLEN Stand einfügen,
-    // nicht in die (inzwischen evtl. veraltete) Liste von vor dem Await.
-    const coords = await Promise.all(
-      stops.map(async (s) => {
-        const c = await geocodeStop(s);
-        return c ? { ...s, lat: c.lat, lng: c.lng } : s;
-      })
-    );
-    const coordById: Record<string, RouteStop> = {};
-    for (const c of coords) coordById[c.id] = c;
+
+    // Sofort in den Trip – sonst schreibt «Speichern» die ZIP, während Geocoding noch läuft,
+    // und der neue Ort fehlt in der Datei (auch wenn er kurz danach in der UI erscheint).
+    let inserted = false;
     updateCurrentStops((prevStops) => {
       if (prevStops.some((s) => normalizePlaceKey(s.name) === wantedKey)) return prevStops;
-      const filled: RouteStop[] = prevStops.map((s) => {
-        const c = coordById[s.id];
-        return c && c.lat != null && s.lat == null ? { ...s, lat: c.lat, lng: c.lng } : s;
-      });
-      let bestIdx = filled.findIndex((s) => s.type === "end");
-      let minDetour = Infinity;
-      for (let i = 0; i < filled.length - 1; i++) {
-        const a = filled[i], b = filled[i + 1];
-        if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) continue;
-        const ab = haversine(a.lat, a.lng, b.lat, b.lng);
-        const ac = haversine(a.lat, a.lng, lat!, lng!);
-        const cb = haversine(lat!, lng!, b.lat, b.lng);
-        const detour = ac + cb - ab;
-        if (detour < minDetour) { minDetour = detour; bestIdx = i + 1; }
-      }
-      const next = [...filled];
-      next.splice(bestIdx >= 0 ? bestIdx : next.length, 0, newStop);
+      inserted = true;
+      const next = [...prevStops];
+      const endIdx = next.findIndex((s) => s.type === "end");
+      next.splice(endIdx >= 0 ? endIdx : next.length, 0, newStop);
       return next;
     });
+    if (!inserted) return false;
+
+    // Optimale Position nachziehen (async) – speicherrelevant ist der Ort schon drin.
+    if (lat == null || lng == null) return true;
+    const stopId = newStop.id;
+    try {
+      const snapshot = tripLatestRef.current.stops || [];
+      const coords = await Promise.all(
+        snapshot.map(async (s) => {
+          if (s.lat != null && s.lng != null) return s;
+          const c = await geocodeStop(s);
+          return c ? { ...s, lat: c.lat, lng: c.lng } : s;
+        })
+      );
+      const coordById: Record<string, RouteStop> = {};
+      for (const c of coords) coordById[c.id] = c;
+      updateCurrentStops((prevStops) => {
+        if (!prevStops.some((s) => s.id === stopId)) return prevStops;
+        const filled: RouteStop[] = prevStops.map((s) => {
+          const c = coordById[s.id];
+          return c && c.lat != null && s.lat == null ? { ...s, lat: c.lat, lng: c.lng } : s;
+        });
+        const without = filled.filter((s) => s.id !== stopId);
+        const moving = filled.find((s) => s.id === stopId);
+        if (!moving || moving.lat == null || moving.lng == null) return filled;
+        let bestIdx = without.findIndex((s) => s.type === "end");
+        let minDetour = Infinity;
+        for (let i = 0; i < without.length - 1; i++) {
+          const a = without[i], b = without[i + 1];
+          if (a.lat == null || a.lng == null || b.lat == null || b.lng == null) continue;
+          const ab = haversine(a.lat, a.lng, b.lat, b.lng);
+          const ac = haversine(a.lat, a.lng, moving.lat, moving.lng);
+          const cb = haversine(moving.lat, moving.lng, b.lat, b.lng);
+          const detour = ac + cb - ab;
+          if (detour < minDetour) {
+            minDetour = detour;
+            bestIdx = i + 1;
+          }
+        }
+        const next = [...without];
+        next.splice(bestIdx >= 0 ? bestIdx : next.length, 0, moving);
+        return next;
+      });
+    } catch (err) {
+      console.warn("[addStopSmart] reorder after geocode skipped", err);
+    }
     return true;
   };
 

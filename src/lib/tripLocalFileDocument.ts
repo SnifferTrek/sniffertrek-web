@@ -155,7 +155,8 @@ export async function prepareTripForFile(trip: Trip): Promise<Trip> {
     updatedAt: new Date().toISOString(),
   });
   try {
-    return await migrateInlineDataUrlsToAssets(stamped);
+    // migrate aktualisiert nur trip.stops – Route-Kopie wieder angleichen
+    return syncTripRouteStops(await migrateInlineDataUrlsToAssets(stamped));
   } catch (err) {
     console.warn("[prepareTripForFile] migrate skipped", err);
     return stamped;
