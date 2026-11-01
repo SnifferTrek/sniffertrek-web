@@ -587,7 +587,9 @@ export default function PlanerPage() {
         // Sonst überschreibt eine langsame Migration frische Stopps (z. B. Bari).
         setTrip((prev) => {
           if (prev.id !== tripId || prev.id !== migrated.id) return prev;
-          const photoById = new Map((migrated.stops || []).map((s) => [s.id, s]));
+          // Plain object – lucide `Map` shadowt globalThis.Map
+          const photoById: Record<string, (typeof migrated.stops)[number]> = {};
+          for (const s of migrated.stops || []) photoById[s.id] = s;
           const next: Trip = {
             ...prev,
             pdfPhotosByEtappe: migrated.pdfPhotosByEtappe,
@@ -595,7 +597,7 @@ export default function PlanerPage() {
             pdfCoverPhotoDataUrl: migrated.pdfCoverPhotoDataUrl,
             pdfExtraTextByEtappe: migrated.pdfExtraTextByEtappe ?? prev.pdfExtraTextByEtappe,
             stops: (prev.stops || []).map((s) => {
-              const m = photoById.get(s.id);
+              const m = photoById[s.id];
               if (!m) return s;
               return {
                 ...s,
