@@ -253,10 +253,43 @@ function setTripFileLinkMeta(tripId: string, meta: FileLinkMeta): void {
   writeLinkMetaMap(map);
 }
 
+/** Nach Speichern (auch Safari-Download): Dateiname merken → nächster Besuch = Datei öffnen. */
+export function markTripSavedToFile(tripId: string, fileName: string): void {
+  if (!tripId || !fileName) return;
+  setTripFileLinkMeta(tripId, { fileName, linkedAt: new Date().toISOString() });
+}
+
 export function clearTripFileLinkMeta(tripId: string): void {
   const map = readLinkMetaMap();
   delete map[tripId];
   writeLinkMetaMap(map);
+}
+
+const JUST_OPENED_FILE_KEY = "sniffertrek_just_opened_file";
+
+/** Nach erfolgreichem «Datei öffnen» – nächster Planer-Mount überspringt den Datei-Hinweis. */
+export function markTripFileJustOpened(tripId: string): void {
+  if (typeof window === "undefined" || !tripId) return;
+  try {
+    sessionStorage.setItem(JUST_OPENED_FILE_KEY, tripId);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Einmalig konsumieren (Seitenladen mit bekannter Datei sonst → Hinweis). */
+export function consumeTripFileJustOpened(tripId: string): boolean {
+  if (typeof window === "undefined" || !tripId) return false;
+  try {
+    const v = sessionStorage.getItem(JUST_OPENED_FILE_KEY);
+    if (v === tripId) {
+      sessionStorage.removeItem(JUST_OPENED_FILE_KEY);
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 function openIdb(): Promise<IDBDatabase> {
@@ -502,6 +535,7 @@ export class TripLocalFileSession {
       }
 
       const trip = await parseTripFileBlob(fileBlob);
+      markTripFileJustOpened(trip.id);
       if (handle) {
         // Handle merken für späteres Speichern – kein requestPermission / createWritable
         // (sonst Chrome: «Änderungen speichern?» schon beim Öffnen).
@@ -514,6 +548,8 @@ export class TripLocalFileSession {
         } catch (linkErr) {
           console.warn("[TripLocalFileSession] link after open failed", linkErr);
         }
+      } else if (fileName) {
+        setTripFileLinkMeta(trip.id, { fileName, linkedAt: new Date().toISOString() });
       }
       return trip;
     } catch (err) {

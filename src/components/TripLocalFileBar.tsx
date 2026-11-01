@@ -5,12 +5,15 @@ import { useTranslations } from "next-intl";
 import { FileDown, FolderOpen, Link2, Unlink, X, Check, ChevronDown } from "lucide-react";
 import type { Trip } from "@/lib/types";
 import {
+  consumeTripFileJustOpened,
   disableSafariSaveHintForever,
   getTripFileLinkMeta,
   isFileSystemAccessSupported,
   isLinkedFileAutoSaveReliable,
   isSafariBrowser,
   markSafariSaveHintShown,
+  markTripFileJustOpened,
+  markTripSavedToFile,
   saveTripToChosenHandle,
   startSaveFilePickerInUserGesture,
   SAFARI_SAVE_HINT_INTERVAL_MS,
@@ -21,7 +24,7 @@ import {
 import { downloadTripFile, suggestTripFileName } from "@/lib/tripLocalFileDocument";
 
 const BANNER_DISMISS_PREFIX = "sniffertrek_file_banner_dismiss:";
-const TOAST_AUTO_HIDE_MS = 8000;
+const TOAST_AUTO_HIDE_MS = 10000;
 
 type Props = {
   trip: Trip;
@@ -47,6 +50,8 @@ export default function TripLocalFileBar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [safariHintOpen, setSafariHintOpen] = useState(false);
+  /** Bekannte Datei + Seitenladen ohne «Datei öffnen» → Hinweis statt stiller Cache. */
+  const [needsFileOpen, setNeedsFileOpen] = useState(false);
   const lastTripIdRef = useRef(trip.id);
   const tripRef = useRef(trip);
   tripRef.current = trip;
@@ -89,6 +94,9 @@ export default function TripLocalFileBar({
       lastTripIdRef.current = trip.id;
       autoRestoreTried.current = false;
     }
+    const meta = getTripFileLinkMeta(trip.id);
+    const justOpened = consumeTripFileJustOpened(trip.id);
+    setNeedsFileOpen(!!meta && !justOpened);
     void refreshState();
   }, [trip.id, refreshState]);
 
@@ -155,10 +163,17 @@ export default function TripLocalFileBar({
 
   const showSaveFeedback = (result: Awaited<ReturnType<typeof saveTripToChosenHandle>>) => {
     if (result.outcome === "linked" && result.linkState.status === "linked") {
+      markTripSavedToFile(trip.id, result.linkState.fileName);
+      markTripFileJustOpened(trip.id);
+      setNeedsFileOpen(false);
       setSaveToast(t("localFileSavedLinked", { name: result.linkState.fileName }));
       setBannerOpen(false);
     } else if (result.outcome === "download") {
-      setSaveToast(t("localFileSavedDownload", { name: result.fileName ?? "" }));
+      const name = result.fileName ?? suggestTripFileName(latestTrip());
+      markTripSavedToFile(trip.id, name);
+      markTripFileJustOpened(trip.id);
+      setNeedsFileOpen(false);
+      setSaveToast(t("localFileSavedDownloadNextOpen", { name }));
       setBannerOpen(false);
     } else if (result.outcome === "failed") {
       setSaveToast(t("localFilePickerFailed"));
@@ -171,10 +186,13 @@ export default function TripLocalFileBar({
     const name = suggestTripFileName(current);
     // Download zuerst – vor setState, damit Safari «Für jeden Download fragen» greift.
     downloadTripFile(current, name);
+    markTripSavedToFile(current.id, name);
+    markTripFileJustOpened(current.id);
+    setNeedsFileOpen(false);
     onFileWriteAfterBrowserSave();
     setMenuOpen(false);
     setBannerOpen(false);
-    setSaveToast(t("localFileSavedDownloadSafari", { name }));
+    setSaveToast(t("localFileSavedDownloadNextOpen", { name }));
   };
 
   const runSaveFilePicker = () => {
@@ -229,6 +247,9 @@ export default function TripLocalFileBar({
           const state = await tripLocalFileSession.flushWrite(latestTrip());
           setLinkState(state);
           if (state.status === "linked") {
+            markTripSavedToFile(latestTrip().id, state.fileName);
+            markTripFileJustOpened(latestTrip().id);
+            setNeedsFileOpen(false);
             setSaveToast(t("localFileSavedLinked", { name: state.fileName }));
             return;
           }
@@ -255,6 +276,7 @@ export default function TripLocalFileBar({
     try {
       const imported = await tripLocalFileSession.openFileAsNewTrip();
       if (imported) {
+        setNeedsFileOpen(false);
         onTripImported(imported);
         const state = await tripLocalFileSession.resolveLinkState(imported.id);
         setLinkState(state);
@@ -264,6 +286,10 @@ export default function TripLocalFileBar({
     } finally {
       setFileBusySafe(false);
     }
+  };
+
+  const continueWithBrowserCopy = () => {
+    setNeedsFileOpen(false);
   };
 
   const handleReconnect = async () => {
@@ -303,14 +329,46 @@ export default function TripLocalFileBar({
       ? linkState.fileName
       : getTripFileLinkMeta(trip.id)?.fileName ?? suggestFallbackName(trip);
 
-  const showIntroBanner = bannerOpen && linkState.status === "none";
+  const showIntroBanner = bannerOpen && linkState.status === "none" && !needsFileOpen;
   const showRelinkActions = isFileSystemAccessSupported();
+  const knownFileName = getTripFileLinkMeta(trip.id)?.fileName ?? fileNameForHint;
 
   const menuItemClass =
     "flex w-full items-center gap-2.5 px-3 py-2.5 text-sm text-gray-800 hover:bg-gray-50 disabled:opacity-50 text-left";
 
   return (
     <>
+      {needsFileOpen && (
+        <div className="border-b border-sky-300 bg-sky-50 px-4 py-3">
+          <div className="max-w-7xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 text-sm text-sky-950 leading-relaxed">
+              <p className="font-semibold">{t("localFileTruthTitle")}</p>
+              <p className="mt-0.5 text-sky-900/90">
+                {t("localFileTruthBody", { name: knownFileName })}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                disabled={fileBusy}
+                onClick={() => void handleOpen()}
+                className="inline-flex items-center gap-2 rounded-xl bg-sky-700 hover:bg-sky-800 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                <FolderOpen className="w-4 h-4 shrink-0" aria-hidden />
+                {t("localFileOpen")}
+              </button>
+              <button
+                type="button"
+                onClick={continueWithBrowserCopy}
+                className="inline-flex items-center gap-1 rounded-xl border border-sky-300 bg-white/80 px-3 py-2 text-xs font-medium text-sky-900 hover:bg-white"
+              >
+                {t("localFileUseBrowserCopy")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
         className={`border-b px-4 py-2.5 ${
           showIntroBanner ? "bg-amber-50 border-amber-200" : "bg-gray-50/90 border-gray-200"
@@ -321,7 +379,7 @@ export default function TripLocalFileBar({
             {showIntroBanner && (
               <p className="text-sm text-amber-950 leading-relaxed">{t("localFileBannerShort")}</p>
             )}
-            {linkState.status === "linked" && (
+            {!needsFileOpen && linkState.status === "linked" && (
               <p className="flex flex-wrap items-center gap-2 text-gray-600">
                 <span className="inline-flex shrink-0 items-center gap-1 text-green-800 bg-green-100 px-2 py-0.5 rounded-md text-xs font-medium">
                   <Check className="w-3.5 h-3.5" />
@@ -332,7 +390,7 @@ export default function TripLocalFileBar({
                 </span>
               </p>
             )}
-            {linkState.status === "needs_reconnect" && showRelinkActions && (
+            {!needsFileOpen && linkState.status === "needs_reconnect" && showRelinkActions && (
               <p className="text-amber-900 text-xs sm:text-sm">
                 {t("localFileReconnectSteps", { name: fileNameForHint })}
               </p>
