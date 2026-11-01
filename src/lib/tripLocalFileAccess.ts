@@ -406,6 +406,7 @@ export class TripLocalFileSession {
   private writeQueue: Promise<void> = Promise.resolve();
   /** Immer der neueste Trip, der noch auf die Platte geschrieben werden soll. */
   private pendingWriteTrip: Trip | null = null;
+  private pendingWriteSeq = 0;
 
   get linkedFileName(): string {
     return this.fileName;
@@ -415,11 +416,32 @@ export class TripLocalFileSession {
     return !!this.handle;
   }
 
+  /** Älteren Snapshot nicht über einen reicheren (mehr Stopps / neuer) legen. */
+  private static isRicherOrSame(candidate: Trip, current: Trip | null): boolean {
+    if (!current) return true;
+    const cStops = candidate.stops?.length || 0;
+    const pStops = current.stops?.length || 0;
+    if (cStops !== pStops) return cStops > pStops;
+    const cTime = Date.parse(candidate.updatedAt || "") || 0;
+    const pTime = Date.parse(current.updatedAt || "") || 0;
+    return cTime >= pTime;
+  }
+
+  private setPendingWriteTrip(trip: Trip): void {
+    const frozen = freezeTripForFile(trip);
+    if (!TripLocalFileSession.isRicherOrSame(frozen, this.pendingWriteTrip)) {
+      return;
+    }
+    this.pendingWriteTrip = frozen;
+    this.pendingWriteSeq += 1;
+  }
+
   /** Schreibt in einer Queue immer den zuletzt gesetzten Trip (kein veraltetes ZIP mehr). */
   private enqueueDiskWrite(): Promise<void> {
     this.writeQueue = this.writeQueue.catch(() => undefined).then(async () => {
       while (this.pendingWriteTrip && this.handle) {
         const trip = this.pendingWriteTrip;
+        const seq = this.pendingWriteSeq;
         this.pendingWriteTrip = null;
         const ok = await ensureWritePermission(this.handle);
         if (!ok) {
@@ -427,6 +449,8 @@ export class TripLocalFileSession {
           throw new Error("permission_denied");
         }
         await writeToHandle(this.handle, trip);
+        // Während des Schreibens kam ein neuerer Stand → Schleife erneut
+        if (this.pendingWriteSeq === seq && !this.pendingWriteTrip) break;
       }
     });
     return this.writeQueue;
@@ -595,10 +619,13 @@ export class TripLocalFileSession {
     }
   }
 
-  /** Debounced / auto: merkt den Trip; die Queue schreibt immer den letzten Stand. */
+  /**
+   * Auto-Write nur als Hinweis auf pending – überschreibt keinen reicheren Flush.
+   * Explizites Speichern nutzt flushWrite.
+   */
   scheduleWrite(trip: Trip): void {
     if (!this.handle || trip.id !== this.tripId) return;
-    this.pendingWriteTrip = freezeTripForFile(trip);
+    this.setPendingWriteTrip(trip);
     void this.enqueueDiskWrite().catch((err) => {
       console.warn("[TripLocalFileSession] auto-write failed", err);
     });
@@ -612,13 +639,14 @@ export class TripLocalFileSession {
         return restored;
       }
     }
+    // Flush erzwingt diesen Stand (auch wenn pending älter war)
     this.pendingWriteTrip = freezeTripForFile(trip);
+    this.pendingWriteSeq += 1;
     try {
       await this.enqueueDiskWrite();
       if (!this.handle) {
         return { status: "needs_reconnect", fileName: this.fileName };
       }
-      // Während des Schreibens kam ein neuerer Stand → nochmals flushen
       if (this.pendingWriteTrip) {
         await this.enqueueDiskWrite();
       }

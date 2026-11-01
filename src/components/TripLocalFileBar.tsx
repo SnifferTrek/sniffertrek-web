@@ -35,6 +35,8 @@ type Props = {
   hasUnsavedChanges?: boolean;
   onTripImported: (trip: Trip) => void;
   onFileWriteAfterBrowserSave: () => void;
+  /** Nach erfolgreichem Datei-Speichern (unsaved zurücksetzen). */
+  onFileSaveComplete?: () => void;
 };
 
 export default function TripLocalFileBar({
@@ -43,6 +45,7 @@ export default function TripLocalFileBar({
   hasUnsavedChanges = false,
   onTripImported,
   onFileWriteAfterBrowserSave,
+  onFileSaveComplete,
 }: Props) {
   const t = useTranslations("planer");
   const [linkState, setLinkState] = useState<TripFileLinkState>({ status: "none" });
@@ -112,13 +115,11 @@ export default function TripLocalFileBar({
   useEffect(() => {
     if (linkState.status !== "linked") return;
     if (isSafariBrowser()) return;
-    // Nicht beim bloßen Öffnen schreiben – Chrome zeigt sonst «Änderungen speichern?»
+    // Nicht beim bloßen Öffnen / nicht mit scheduleWrite (sonst überschreibt ein alter Snapshot).
     if (!hasUnsavedChanges) return;
-    const snapshot = latestTrip();
-    tripLocalFileSession.scheduleWrite(snapshot);
     const timer = setTimeout(() => {
-      void tripLocalFileSession.flushWrite(latestTrip()).then(setLinkState);
-    }, 1600);
+      void tripLocalFileSession.flushWrite(freezeTripForFile(latestTrip())).then(setLinkState);
+    }, 2000);
     return () => clearTimeout(timer);
   }, [trip, linkState.status, hasUnsavedChanges]);
 
@@ -162,41 +163,43 @@ export default function TripLocalFileBar({
 
   const closeMenu = () => setMenuOpen(false);
 
+  const markSaved = (fileName: string) => {
+    markTripSavedToFile(latestTrip().id, fileName);
+    markTripFileJustOpened(latestTrip().id);
+    setNeedsFileOpen(false);
+    setBannerOpen(false);
+    onFileSaveComplete?.();
+  };
+
   const showSaveFeedback = (result: Awaited<ReturnType<typeof saveTripToChosenHandle>>) => {
     if (result.outcome === "linked" && result.linkState.status === "linked") {
-      markTripSavedToFile(trip.id, result.linkState.fileName);
-      markTripFileJustOpened(trip.id);
-      setNeedsFileOpen(false);
+      markSaved(result.linkState.fileName);
       setSaveToast(t("localFileSavedLinked", { name: result.linkState.fileName }));
-      setBannerOpen(false);
     } else if (result.outcome === "download") {
       const name = result.fileName ?? suggestTripFileName(latestTrip());
-      markTripSavedToFile(trip.id, name);
-      markTripFileJustOpened(trip.id);
-      setNeedsFileOpen(false);
+      markSaved(name);
       setSaveToast(t("localFileSavedDownloadNextOpen", { name }));
-      setBannerOpen(false);
     } else if (result.outcome === "failed") {
       setSaveToast(t("localFilePickerFailed"));
     }
   };
 
-  /** Safari: Download – Trip sofort einfrieren; Toast erst nach fertigem ZIP. */
+  /** Safari: zuerst Browser-Kopie, dann ZIP aus demselben Stand; Toast erst nach Download. */
   const runSafariDownloadSave = () => {
+    onFileWriteAfterBrowserSave();
     const frozen = freezeTripForFile(latestTrip());
     const name = suggestTripFileName(frozen);
-    // Promise in derselben User-Gesture starten (Safari-Download-Attribution)
     const downloadPromise = downloadTripFileAsync(frozen, name);
-    onFileWriteAfterBrowserSave();
     setMenuOpen(false);
     setFileBusySafe(true);
     void downloadPromise
       .then(() => {
-        markTripSavedToFile(frozen.id, name);
-        markTripFileJustOpened(frozen.id);
-        setNeedsFileOpen(false);
-        setBannerOpen(false);
-        setSaveToast(t("localFileSavedDownloadNextOpen", { name }));
+        markSaved(name);
+        setSaveToast(
+          t("localFileSavedDownloadNextOpen", {
+            name: `${name} · ${frozen.stops?.length || 0} Stopps`,
+          })
+        );
       })
       .catch((err) => {
         console.warn("[TripLocalFileBar] safari download failed", err);
@@ -206,10 +209,28 @@ export default function TripLocalFileBar({
   };
 
   const runSaveFilePicker = () => {
+    onFileWriteAfterBrowserSave();
     const frozen = freezeTripForFile(latestTrip());
-    // Safari / ohne File-Picker: Download – bei «Für jeden Download fragen» erscheint der Speicherort-Dialog.
     if (isSafariBrowser() || !isFileSystemAccessSupported()) {
-      runSafariDownloadSave();
+      // Browser-Kopie schon geschrieben – Download mit frozen
+      const name = suggestTripFileName(frozen);
+      const downloadPromise = downloadTripFileAsync(frozen, name);
+      setMenuOpen(false);
+      setFileBusySafe(true);
+      void downloadPromise
+        .then(() => {
+          markSaved(name);
+          setSaveToast(
+            t("localFileSavedDownloadNextOpen", {
+              name: `${name} · ${frozen.stops?.length || 0} Stopps`,
+            })
+          );
+        })
+        .catch((err) => {
+          console.warn("[TripLocalFileBar] download failed", err);
+          setSaveToast(t("localFileSaveFailed"));
+        })
+        .finally(() => setFileBusySafe(false));
       return;
     }
 
@@ -223,7 +244,7 @@ export default function TripLocalFileBar({
     setFileBusySafe(true);
     void started.promise
       .then((handle) =>
-        saveTripToChosenHandle(frozen, handle, tripLocalFileSession, onFileWriteAfterBrowserSave)
+        saveTripToChosenHandle(frozen, handle, tripLocalFileSession, undefined)
       )
       .then((result) => {
         setLinkState(result.linkState);
@@ -253,22 +274,24 @@ export default function TripLocalFileBar({
       void (async () => {
         let handedOffToPicker = false;
         try {
-          const frozen = freezeTripForFile(latestTrip());
+          // Zuerst localStorage (Union beim ZIP-Bau kann Stopps nachziehen)
           onFileWriteAfterBrowserSave();
+          const frozen = freezeTripForFile(latestTrip());
           const state = await tripLocalFileSession.flushWrite(frozen);
           setLinkState(state);
           if (state.status === "linked") {
-            markTripSavedToFile(frozen.id, state.fileName);
-            markTripFileJustOpened(frozen.id);
-            setNeedsFileOpen(false);
-            setSaveToast(t("localFileSavedLinked", { name: state.fileName }));
+            markSaved(state.fileName);
+            setSaveToast(
+              t("localFileSavedLinked", {
+                name: `${state.fileName} · ${frozen.stops?.length || 0} Stopps`,
+              })
+            );
             return;
           }
           if (state.status === "write_failed") {
             setSaveToast(t("localFileWriteFailed"));
             return;
           }
-          // Kein aktiver Schreibzugriff → Nutzer muss Datei wählen
           handedOffToPicker = true;
           setFileBusySafe(false);
           runSaveFilePicker();

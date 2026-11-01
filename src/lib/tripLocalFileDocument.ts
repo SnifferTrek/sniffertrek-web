@@ -1,7 +1,8 @@
 import JSZip from "jszip";
 import type { Trip } from "./types";
 import { hydrateTripMedia } from "./tripMediaSidecar";
-import { syncTripRouteStops } from "./tripStopMerge";
+import { mergeStopsById, syncTripRouteStops } from "./tripStopMerge";
+import { getTrip } from "./tripStorage";
 import {
   ingestDataUrl,
   isMediaRef,
@@ -112,12 +113,45 @@ export async function migrateInlineDataUrlsToAssets(trip: Trip): Promise<Trip> {
 }
 
 /**
- * Trip für Datei: UI-Stand ist Source of Truth (Stops/Route).
+ * Trip für Datei: UI-Stand + localStorage-Union (kein Stopp-Verlust durch Stale-Snapshot).
  * Kein hydrate aus Sidecar – das überschreibt sonst frische Edits mit altem Cache.
  */
 export async function prepareTripForFile(trip: Trip): Promise<Trip> {
+  let merged: Trip = trip;
+  try {
+    const stored = getTrip(trip.id);
+    if (stored?.stops?.length) {
+      const stops =
+        (trip.stops?.length || 0) >= (stored.stops?.length || 0)
+          ? mergeStopsById(trip.stops || [], stored.stops || [])
+          : mergeStopsById(stored.stops || [], trip.stops || []);
+      merged = { ...trip, stops };
+      if (trip.routes?.route || stored.routes?.route) {
+        const routeStops =
+          (trip.routes?.route?.stops?.length || 0) >= (stored.routes?.route?.stops?.length || 0)
+            ? mergeStopsById(trip.routes?.route?.stops || stops, stored.routes?.route?.stops || [])
+            : mergeStopsById(stored.routes?.route?.stops || stops, trip.routes?.route?.stops || []);
+        merged = {
+          ...merged,
+          routes: {
+            ...stored.routes,
+            ...trip.routes,
+            route: {
+              ...stored.routes?.route,
+              ...trip.routes?.route,
+              stops: routeStops,
+              viaPoints: trip.routes?.route?.viaPoints || stored.routes?.route?.viaPoints || [],
+            },
+          },
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[prepareTripForFile] storage union skipped", err);
+  }
+
   const stamped = syncTripRouteStops({
-    ...trip,
+    ...merged,
     updatedAt: new Date().toISOString(),
   });
   try {

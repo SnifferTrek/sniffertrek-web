@@ -670,10 +670,17 @@ export default function PlanerPage() {
   }, [user]);
 
   const persistBrowserCopyForFile = useCallback(() => {
-    const snapshot = tripLatestRef.current;
+    const snapshot = freezeTripForFile(tripLatestRef.current);
+    tripLatestRef.current = snapshot;
     saveTrip(snapshot);
     setActiveTripId(snapshot.id);
     setSavedTrips(getAllTrips());
+  }, []);
+
+  const markFileSaveComplete = useCallback(() => {
+    setHasUnsavedChanges(false);
+    setSaveStatus("saved");
+    setTimeout(() => setSaveStatus("idle"), 2000);
   }, []);
 
   const handleTripFileImported = useCallback((imported: Trip) => {
@@ -699,10 +706,14 @@ export default function PlanerPage() {
     if (typeof window === "undefined") return;
 
     const flushPendingTrip = () => {
-      if (!hasUnsavedChanges) return;
-      const snapshot = { ...trip, updatedAt: new Date().toISOString() };
+      if (!hasUnsavedChangesRef.current) return;
+      const snapshot = freezeTripForFile({
+        ...tripLatestRef.current,
+        updatedAt: new Date().toISOString(),
+      });
+      tripLatestRef.current = snapshot;
       saveTrip(snapshot);
-      setActiveTripId(trip.id);
+      setActiveTripId(snapshot.id);
       void tripLocalFileSession.flushWrite(snapshot);
     };
 
@@ -721,7 +732,7 @@ export default function PlanerPage() {
       window.removeEventListener("beforeunload", flushPendingTrip);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [trip, hasUnsavedChanges]);
+  }, []);
 
   const handleNewTrip = () => {
     if (hasUnsavedChanges) {
@@ -3505,6 +3516,7 @@ export default function PlanerPage() {
         hasUnsavedChanges={hasUnsavedChanges}
         onTripImported={handleTripFileImported}
         onFileWriteAfterBrowserSave={persistBrowserCopyForFile}
+        onFileSaveComplete={markFileSaveComplete}
       />
       </div>
 
