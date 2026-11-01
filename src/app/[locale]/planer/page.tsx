@@ -162,7 +162,7 @@ import { partnerLabelFromUrl, partnerLinkCta } from "@/lib/partnerLabelFromUrl";
 import { PartnerAffiliateMark } from "@/components/PartnerLinkBadge";
 import { parseHotelBookingIcs } from "@/lib/parseHotelBookingIcs";
 import TripLocalFileBar from "@/components/TripLocalFileBar";
-import { freezeTripForFile, tripLocalFileSession } from "@/lib/tripLocalFileAccess";
+import { freezeTripForFile } from "@/lib/tripLocalFileAccess";
 import {
   computeHotelStaysTimeline,
   getBookedHotelDatesOnly,
@@ -655,7 +655,8 @@ export default function PlanerPage() {
   }, []);
 
   const handleSave = useCallback(() => {
-    // Titel=Ziel ohne Koordinaten: nur PDF blockieren, Browser-/Cloud-Save immer erlauben
+    // Nur Browser-/Cloud-Kopie. Datei schreibt ausschliesslich «Speichern» in TripLocalFileBar –
+    // sonst überschreibt Autosave eine langsamere ZIP-Schreibe mit einem älteren Stand.
     const snapshot = freezeTripForFile(tripLatestRef.current);
     tripLatestRef.current = snapshot;
     setSaveBlockedMessage(null);
@@ -668,7 +669,6 @@ export default function PlanerPage() {
     if (user) {
       saveTripToCloud(snapshot, user.id);
     }
-    void tripLocalFileSession.flushWrite(snapshot);
   }, [user]);
 
   const persistBrowserCopyForFile = useCallback(() => {
@@ -716,7 +716,7 @@ export default function PlanerPage() {
       tripLatestRef.current = snapshot;
       saveTrip(snapshot);
       setActiveTripId(snapshot.id);
-      void tripLocalFileSession.flushWrite(snapshot);
+      // Kein flushWrite hier: Tab-Wechsel darf keine halbfertige/ältere ZIP erzeugen.
     };
 
     const handleVisibility = () => {

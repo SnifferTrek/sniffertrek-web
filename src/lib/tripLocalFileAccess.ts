@@ -8,6 +8,7 @@ import {
   TRIP_FILE_EXTENSION_PLAIN,
   TRIP_FILE_MIME,
 } from "./tripLocalFileDocument";
+import { mergeStopsById, syncTripRouteStops } from "./tripStopMerge";
 import type { Trip } from "./types";
 
 const LINK_META_KEY = "sniffertrek_trip_file_links";
@@ -367,32 +368,62 @@ async function ensureWritePermission(handle: FileSystemFileHandle): Promise<bool
   return true;
 }
 
+/**
+ * trip.stops und routes.route.stops zusammenführen (längere Liste gewinnt als Basis).
+ * Verhindert, dass UI und Route-Kopie divergieren und Stopps beim Speichern fehlen.
+ */
+export function coalesceTripStopsForFile(trip: Trip): Trip {
+  const a = trip.stops || [];
+  const b = trip.routes?.route?.stops || [];
+  const stops = a.length >= b.length ? mergeStopsById(a, b) : mergeStopsById(b, a);
+  return syncTripRouteStops({
+    ...trip,
+    stops,
+    updatedAt: trip.updatedAt || new Date().toISOString(),
+  });
+}
+
 /** Stoppliste zum Speichern-Zeitpunkt einfrieren (keine späteren Mutation/Stale-Refs). */
 export function freezeTripForFile(trip: Trip): Trip {
+  const coalesced = coalesceTripStopsForFile(trip);
   try {
-    return JSON.parse(JSON.stringify(trip)) as Trip;
+    return JSON.parse(JSON.stringify(coalesced)) as Trip;
   } catch {
     return {
-      ...trip,
-      stops: (trip.stops || []).map((s) => ({ ...s })),
-      routes: trip.routes
+      ...coalesced,
+      stops: (coalesced.stops || []).map((s) => ({ ...s })),
+      routes: coalesced.routes
         ? {
-            ...trip.routes,
-            route: trip.routes.route
+            ...coalesced.routes,
+            route: coalesced.routes.route
               ? {
-                  ...trip.routes.route,
-                  stops: (trip.routes.route.stops || []).map((s) => ({ ...s })),
-                  viaPoints: [...(trip.routes.route.viaPoints || [])],
+                  ...coalesced.routes.route,
+                  stops: (coalesced.routes.route.stops || []).map((s) => ({ ...s })),
+                  viaPoints: [...(coalesced.routes.route.viaPoints || [])],
                 }
-              : trip.routes.route,
+              : coalesced.routes.route,
           }
-        : trip.routes,
+        : coalesced.routes,
     };
   }
 }
 
 async function writeToHandle(handle: FileSystemFileHandle, trip: Trip): Promise<void> {
+  const expectedStops = trip.stops?.length || 0;
   const blob = await buildTripFileBlobAsync(trip);
+  // Verifikation vor dem Schreiben: ZIP muss mindestens so viele Stopps haben
+  try {
+    const check = await parseTripFileBlob(blob);
+    const got = check.stops?.length || 0;
+    if (expectedStops > 0 && got < expectedStops) {
+      throw new Error(
+        `stop_count_mismatch: expected ${expectedStops} stops in ZIP, got ${got}`
+      );
+    }
+  } catch (err) {
+    if (String(err).includes("stop_count_mismatch")) throw err;
+    console.warn("[writeToHandle] pre-write parse check skipped", err);
+  }
   const h = handle as WritableFileHandle;
   const writable = await h.createWritable();
   await writable.write(blob);
@@ -404,8 +435,10 @@ export class TripLocalFileSession {
   private fileName = "";
   private tripId = "";
   private writeQueue: Promise<void> = Promise.resolve();
-  /** Immer der neueste Trip, der noch auf die Platte geschrieben werden soll. */
+  /** Nächster zu schreibender Stand. */
   private pendingWriteTrip: Trip | null = null;
+  /** Stand, der gerade geschrieben wird (gegen ärmere Pending-Snapshots). */
+  private writingTrip: Trip | null = null;
   private pendingWriteSeq = 0;
 
   get linkedFileName(): string {
@@ -427,13 +460,15 @@ export class TripLocalFileSession {
     return cTime >= pTime;
   }
 
-  private setPendingWriteTrip(trip: Trip): void {
+  private setPendingWriteTrip(trip: Trip): boolean {
     const frozen = freezeTripForFile(trip);
-    if (!TripLocalFileSession.isRicherOrSame(frozen, this.pendingWriteTrip)) {
-      return;
+    const baseline = this.pendingWriteTrip || this.writingTrip;
+    if (!TripLocalFileSession.isRicherOrSame(frozen, baseline)) {
+      return false;
     }
     this.pendingWriteTrip = frozen;
     this.pendingWriteSeq += 1;
+    return true;
   }
 
   /** Schreibt in einer Queue immer den zuletzt gesetzten Trip (kein veraltetes ZIP mehr). */
@@ -443,13 +478,18 @@ export class TripLocalFileSession {
         const trip = this.pendingWriteTrip;
         const seq = this.pendingWriteSeq;
         this.pendingWriteTrip = null;
-        const ok = await ensureWritePermission(this.handle);
-        if (!ok) {
-          this.handle = null;
-          throw new Error("permission_denied");
+        this.writingTrip = trip;
+        try {
+          const ok = await ensureWritePermission(this.handle);
+          if (!ok) {
+            this.handle = null;
+            throw new Error("permission_denied");
+          }
+          await writeToHandle(this.handle, trip);
+        } finally {
+          this.writingTrip = null;
         }
-        await writeToHandle(this.handle, trip);
-        // Während des Schreibens kam ein neuerer Stand → Schleife erneut
+        // Während des Schreibens kam ein neuerer (reicherer) Stand → Schleife erneut
         if (this.pendingWriteSeq === seq && !this.pendingWriteTrip) break;
       }
     });
@@ -620,8 +660,8 @@ export class TripLocalFileSession {
   }
 
   /**
-   * Auto-Write nur als Hinweis auf pending – überschreibt keinen reicheren Flush.
-   * Explizites Speichern nutzt flushWrite.
+   * Auto-Write: nur reicheren Stand merken. Kein erzwungenes Überschreiben.
+   * Explizites Speichern nutzt flushWrite (ebenfalls nur wenn nicht ärmer).
    */
   scheduleWrite(trip: Trip): void {
     if (!this.handle || trip.id !== this.tripId) return;
@@ -639,9 +679,9 @@ export class TripLocalFileSession {
         return restored;
       }
     }
-    // Flush erzwingt diesen Stand (auch wenn pending älter war)
-    this.pendingWriteTrip = freezeTripForFile(trip);
-    this.pendingWriteSeq += 1;
+    // WICHTIG: nie einen ärmeren Snapshot (weniger Stopps) erzwingen –
+    // sonst überschreibt Autosave/Stale-Closure eine laufende Speicherung.
+    const accepted = this.setPendingWriteTrip(trip);
     try {
       await this.enqueueDiskWrite();
       if (!this.handle) {
@@ -649,6 +689,10 @@ export class TripLocalFileSession {
       }
       if (this.pendingWriteTrip) {
         await this.enqueueDiskWrite();
+      }
+      // Auch wenn dieser Snapshot abgelehnt wurde: Queue hat reicheren Stand geschrieben
+      if (!accepted && !this.writingTrip && !this.pendingWriteTrip) {
+        return { status: "linked", fileName: this.fileName };
       }
       return { status: "linked", fileName: this.fileName };
     } catch (err) {

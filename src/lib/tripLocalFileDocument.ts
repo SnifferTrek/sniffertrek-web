@@ -364,7 +364,14 @@ export async function downloadTripFileAsync(trip: Trip, fileName?: string): Prom
   } catch {
     frozen = trip;
   }
+  const expected = frozen.stops?.length || 0;
   const blob = await buildTripFileBlobAsync(frozen);
+  // Harte Kontrolle: ZIP muss die Stopps enthalten, bevor der Download startet
+  const parsed = await parseTripFileBlob(blob);
+  const got = parsed.stops?.length || 0;
+  if (expected > 0 && got < expected) {
+    throw new Error(`stop_count_mismatch: expected ${expected} stops in ZIP, got ${got}`);
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

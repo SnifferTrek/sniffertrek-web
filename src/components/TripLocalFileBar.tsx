@@ -112,16 +112,8 @@ export default function TripLocalFileBar({
     });
   }, [linkState.status, trip.id]);
 
-  useEffect(() => {
-    if (linkState.status !== "linked") return;
-    if (isSafariBrowser()) return;
-    // Nicht beim bloßen Öffnen / nicht mit scheduleWrite (sonst überschreibt ein alter Snapshot).
-    if (!hasUnsavedChanges) return;
-    const timer = setTimeout(() => {
-      void tripLocalFileSession.flushWrite(freezeTripForFile(latestTrip())).then(setLinkState);
-    }, 2000);
-    return () => clearTimeout(timer);
-  }, [trip, linkState.status, hasUnsavedChanges]);
+  // Kein Auto-flush in die Datei: nur der Speichern-Button schreibt die ZIP.
+  // (Autosave im Planer speichert nur Browser/Cloud – sonst Race mit weniger Stopps.)
 
   useEffect(() => {
     if (!menuOpen) return;
