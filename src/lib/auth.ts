@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from "./supabase";
+import { supabase, isSupabaseConfigured, getAuthCallbackUrl } from "./supabase";
 import type { User } from "@supabase/supabase-js";
 import {
  parseResidenceCountry,
@@ -28,8 +28,26 @@ function mapUser(user: User): AuthUser {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
  if (!isSupabaseConfigured()) return null;
- const { data } = await supabase.auth.getUser();
- return data.user ? mapUser(data.user) : null;
+
+ const { data: sessionData } = await supabase.auth.getSession();
+ const fromSession = sessionData.session?.user;
+ if (fromSession) return mapUser(fromSession);
+
+ try {
+ const verify = await Promise.race([
+ supabase.auth.getUser(),
+ new Promise<null>((resolve) => {
+ setTimeout(() => resolve(null), 5000);
+ }),
+ ]);
+ if (verify && typeof verify === "object" && "data" in verify && verify.data.user) {
+ return mapUser(verify.data.user);
+ }
+ } catch {
+ /* Supabase offline / pausiert */
+ }
+
+ return null;
 }
 
 export async function signInWithEmail(
@@ -49,29 +67,46 @@ export async function signInWithEmail(
 }
 
 export async function signUpWithEmail(
- email: string,
- password: string,
- name?: string,
- residenceCountry?: ResidenceCountry
+  email: string,
+  password: string,
+  name?: string,
+  residenceCountry?: ResidenceCountry
 ): Promise<{ user: AuthUser | null; error: string | null }> {
- if (!isSupabaseConfigured())
- return { user: null, error: "Supabase nicht konfiguriert" };
+  if (!isSupabaseConfigured())
+    return { user: null, error: "Supabase nicht konfiguriert" };
 
- const { data, error } = await supabase.auth.signUp({
- email,
- password,
- options: {
- data: {
- full_name: name,
- ...(residenceCountry
- ? { [RESIDENCE_COUNTRY_META_KEY]: residenceCountry }
- : {}),
- },
- },
- });
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: getAuthCallbackUrl(),
+      data: {
+        full_name: name,
+        ...(residenceCountry
+          ? { [RESIDENCE_COUNTRY_META_KEY]: residenceCountry }
+          : {}),
+      },
+    },
+  });
 
- if (error) return { user: null, error: error.message };
- return { user: data.user ? mapUser(data.user) : null, error: null };
+  if (error) return { user: null, error: error.message };
+  return { user: data.user ? mapUser(data.user) : null, error: null };
+}
+
+/** Bestätigungsmail erneut senden (wenn Konto noch nicht bestätigt). */
+export async function resendSignupConfirmation(
+  email: string
+): Promise<{ error: string | null }> {
+  if (!isSupabaseConfigured())
+    return { error: "Supabase nicht konfiguriert" };
+
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: { emailRedirectTo: getAuthCallbackUrl() },
+  });
+  if (error) return { error: error.message };
+  return { error: null };
 }
 
 export async function updateResidenceCountry(
@@ -89,27 +124,27 @@ export async function updateResidenceCountry(
 }
 
 export async function signInWithGoogle(): Promise<void> {
- if (!isSupabaseConfigured()) return;
- await supabase.auth.signInWithOAuth({
- provider: "google",
- options: {
- redirectTo: `${window.location.origin}/auth/callback`,
- },
- });
+  if (!isSupabaseConfigured()) return;
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: getAuthCallbackUrl(),
+    },
+  });
 }
 
 export async function resetPassword(
- email: string
+  email: string
 ): Promise<{ error: string | null }> {
- if (!isSupabaseConfigured())
- return { error: "Supabase nicht konfiguriert" };
+  if (!isSupabaseConfigured())
+    return { error: "Supabase nicht konfiguriert" };
 
- const { error } = await supabase.auth.resetPasswordForEmail(email, {
- redirectTo: `${typeof window !== "undefined" ? window.location.origin : ""}/auth/callback?type=recovery`,
- });
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: getAuthCallbackUrl("type=recovery"),
+  });
 
- if (error) return { error: error.message };
- return { error: null };
+  if (error) return { error: error.message };
+  return { error: null };
 }
 
 export async function updatePassword(

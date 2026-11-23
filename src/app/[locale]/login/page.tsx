@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@/i18n/navigation";
 import { useRouter } from "@/i18n/navigation";
 import {
@@ -21,23 +21,27 @@ import {
   signInWithEmail,
   signUpWithEmail,
   resetPassword,
+  resendSignupConfirmation,
 } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 const errorMessages: Record<string, string> = {
   "Invalid login credentials": "E-Mail oder Passwort ist falsch. Falls du noch kein Konto hast, registriere dich zuerst.",
-  "Email not confirmed": "Bitte bestätige zuerst deine E-Mail-Adresse. Prüfe deinen Posteingang.",
+  "Email not confirmed": "Bitte bestätige zuerst deine E-Mail-Adresse. Prüfe deinen Posteingang (auch Spam).",
+  email_not_confirmed: "Bitte bestätige zuerst deine E-Mail-Adresse. Prüfe deinen Posteingang (auch Spam).",
   "User already registered": "Diese E-Mail ist bereits registriert. Versuche dich anzumelden.",
   "Password should be at least 6 characters": "Das Passwort muss mindestens 6 Zeichen lang sein.",
   "Unable to validate email address: invalid format": "Ungültiges E-Mail-Format.",
   "Email rate limit exceeded": "Zu viele Versuche. Bitte warte 5–10 Minuten und versuche es dann erneut.",
   "rate limit exceeded": "Zu viele Versuche. Bitte warte 5–10 Minuten und versuche es dann erneut.",
-  "over_email_send_rate_limit": "E-Mail-Limit erreicht. Bitte warte einige Minuten.",
+  over_email_send_rate_limit: "E-Mail-Limit erreicht. Bitte warte einige Minuten.",
   "Signup requires a valid password": "Bitte gib ein gültiges Passwort ein.",
   "For security purposes": "Aus Sicherheitsgründen: Bitte warte einige Minuten vor dem nächsten Versuch.",
-  "Load failed": "Netzwerkfehler. Bitte prüfe deine Internetverbindung, deaktiviere Ad-Blocker und versuche es erneut.",
+  "Load failed":
+    "Verbindung zum Server fehlgeschlagen. Bitte Seite neu laden (Cmd+Shift+R) und erneut anmelden.",
   "Failed to fetch": "Netzwerkfehler. Bitte prüfe deine Internetverbindung und versuche es erneut.",
-  "NetworkError": "Netzwerkfehler. Bitte versuche es erneut oder nutze einen anderen Browser.",
+  NetworkError: "Netzwerkfehler. Bitte versuche es erneut oder nutze einen anderen Browser.",
+  auth_failed: "Der Bestätigungslink war ungültig oder abgelaufen. Bitte Bestätigungsmail erneut senden oder Passwort zurücksetzen.",
 };
 
 /** Only same-site paths, so `?next=` cannot redirect to another domain. */
@@ -64,13 +68,43 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [needsEmailConfirm, setNeedsEmailConfirm] = useState(false);
 
   const configured = isSupabaseConfigured();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const err = new URLSearchParams(window.location.search).get("error");
+    if (err) setError(translateError(err));
+  }, []);
+
+  const handleResendConfirmation = async () => {
+    if (!email.trim()) {
+      setError("Bitte gib zuerst deine E-Mail-Adresse ein.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const result = await resendSignupConfirmation(email.trim());
+      if (result.error) {
+        setError(translateError(result.error));
+      } else {
+        setSuccess("Bestätigungsmail wurde erneut gesendet. Bitte Posteingang und Spam prüfen.");
+      }
+    } catch {
+      setError("Senden fehlgeschlagen. Bitte später erneut versuchen.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
+    setNeedsEmailConfirm(false);
     setLoading(true);
 
     try {
@@ -84,11 +118,14 @@ export default function LoginPage() {
         if (result.error) {
           setError(translateError(result.error));
         } else {
-          setSuccess("E-Mail zum Zurücksetzen wurde gesendet. Prüfe deinen Posteingang.");
+          setSuccess("E-Mail zum Zurücksetzen wurde gesendet. Prüfe deinen Posteingang (auch Spam).");
         }
       } else if (mode === "login") {
         const result = await signInWithEmail(email, password);
         if (result.error) {
+          const unconfirmed =
+            /email not confirmed|email_not_confirmed/i.test(result.error);
+          setNeedsEmailConfirm(unconfirmed);
           setError(translateError(result.error));
         } else {
           router.push(getRedirectAfterLogin());
@@ -103,8 +140,9 @@ export default function LoginPage() {
         if (result.error) {
           setError(translateError(result.error));
         } else {
+          setNeedsEmailConfirm(true);
           setSuccess(
-            "Konto erstellt! Bitte überprüfe deine E-Mail zur Bestätigung, danach kannst du dich anmelden."
+            "Konto erstellt! Bitte überprüfe deine E-Mail zur Bestätigung (auch Spam), danach kannst du dich anmelden."
           );
         }
       }
@@ -116,6 +154,7 @@ export default function LoginPage() {
   };
 
   const switchMode = (newMode: "login" | "register" | "reset") => {
+    setNeedsEmailConfirm(false);
     setMode(newMode);
     setError("");
     setSuccess("");
@@ -264,6 +303,16 @@ export default function LoginPage() {
                 <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                 <div>
                   <span>{error}</span>
+                  {needsEmailConfirm && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => void handleResendConfirmation()}
+                      className="block mt-2 text-blue-600 hover:text-blue-800 font-semibold text-sm disabled:opacity-50"
+                    >
+                      Bestätigungsmail erneut senden →
+                    </button>
+                  )}
                   {error.includes("registriere dich") && mode === "login" && (
                     <button
                       type="button"
